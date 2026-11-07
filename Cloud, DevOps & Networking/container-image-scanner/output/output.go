@@ -1,0 +1,272 @@
+package output
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/deepfence/YaraHunter/pkg/output"
+	pb "github.com/deepfence/agent-plugins-grpc/srcgo"
+	"github.com/fatih/color"
+	tw "github.com/olekukonko/tablewriter"
+	"github.com/rs/zerolog/log"
+)
+
+const (
+	Indent = "  " // Indentation for Json printing
+)
+
+// severity
+const (
+	HIGH   = "high"
+	MEDIUM = "medium"
+	LOW    = "low"
+)
+
+type SecretFound struct {
+	LayerID               string  `json:"Image Layer ID,omitempty"`
+	RuleID                int     `json:"Matched Rule ID,omitempty"`
+	RuleName              string  `json:"Matched Rule Name,omitempty"`
+	PartToMatch           string  `json:"Matched Part,omitempty"`
+	Match                 string  `json:"String to Match,omitempty"`
+	Regex                 string  `json:"Signature to Match,omitempty"`
+	Severity              string  `json:"Severity,omitempty"`
+	SeverityScore         float64 `json:"Severity Score,omitempty"`
+	PrintBufferStartIndex int     `json:"Starting Index of Match in Original Content,omitempty"`
+	MatchFromByte         int     `json:"Relative Starting Index of Match in Displayed Substring"`
+	MatchToByte           int     `json:"Relative Ending Index of Match in Displayed Substring"`
+	CompleteFilename      string  `json:"Full File Name,omitempty"`
+	MatchedContents       string  `json:"Matched Contents,omitempty"`
+}
+
+type JSONDirSecretsOutput struct {
+	Timestamp time.Time
+	DirName   string `json:"Directory Name"`
+	Secrets   []SecretFound
+}
+
+type JSONImageSecretsOutput struct {
+	Timestamp   time.Time
+	ImageName   string `json:"Image Name"`
+	ImageID     string `json:"Image ID"`
+	ContainerID string `json:"Container ID"`
+	Secrets     []SecretFound
+}
+
+func (imageOutput *JSONImageSecretsOutput) SetImageName(imageName string) {
+	imageOutput.ImageName = imageName
+}
+
+func (imageOutput *JSONImageSecretsOutput) SetImageID(imageID string) {
+	imageOutput.ImageID = imageID
+}
+
+func (imageOutput *JSONImageSecretsOutput) SetTime() {
+	imageOutput.Timestamp = time.Now()
+}
+
+func (imageOutput *JSONImageSecretsOutput) SetSecrets(secrets []SecretFound) {
+	imageOutput.Secrets = secrets
+}
+
+func (imageOutput *JSONImageSecretsOutput) GetSecrets() []SecretFound {
+	return imageOutput.Secrets
+}
+
+func (imageOutput *JSONImageSecretsOutput) AddSecret(secret SecretFound) {
+	imageOutput.Secrets = append(imageOutput.Secrets, secret)
+}
+
+func (imageOutput JSONImageSecretsOutput) WriteJSON() error {
+	return printSecretsToJSON(imageOutput)
+
+}
+
+func (imageOutput JSONImageSecretsOutput) WriteTable() error {
+	return WriteTableOutput(&imageOutput.Secrets)
+}
+
+func (dirOutput *JSONDirSecretsOutput) SetDirName(dirName string) {
+	dirOutput.DirName = dirName
+}
+
+func (dirOutput *JSONDirSecretsOutput) SetTime() {
+	dirOutput.Timestamp = time.Now()
+}
+
+func (dirOutput *JSONDirSecretsOutput) SetSecrets(secrets []SecretFound) {
+	dirOutput.Secrets = secrets
+}
+func (dirOutput *JSONDirSecretsOutput) GetSecrets() []SecretFound {
+	return dirOutput.Secrets
+}
+
+func (dirOutput JSONDirSecretsOutput) WriteJSON() error {
+	return printSecretsToJSON(dirOutput)
+}
+
+func (dirOutput JSONDirSecretsOutput) WriteTable() error {
+	return WriteTableOutput(&dirOutput.Secrets)
+}
+
+func (imageOutput *JSONDirSecretsOutput) AddSecret(secret SecretFound) {
+	imageOutput.Secrets = append(imageOutput.Secrets, secret)
+}
+
+func printSecretsToJSON(secretsJSON interface{}) error {
+	file, err := json.MarshalIndent(secretsJSON, "", Indent)
+	if err != nil {
+		log.Error().Err(err).Msg("printSecretsToJsonFile: Couldn't format json output")
+		return err
+	}
+
+	fmt.Println(string(file))
+
+	return nil
+}
+
+func PrintColoredSecrets(secrets []SecretFound, isFirstSecret *bool) {
+	for _, secret := range secrets {
+		printColoredSecretJSONObject(secret, isFirstSecret)
+		*isFirstSecret = false
+	}
+}
+
+// Function to print json object with the matches secret string in color
+func printColoredSecretJSONObject(secret SecretFound, isFirstSecret *bool) {
+	Indent3 := Indent + Indent + Indent
+
+	if *isFirstSecret {
+		fmt.Printf(Indent + Indent + "{\n")
+	} else {
+		fmt.Printf(",\n" + Indent + Indent + "{\n")
+	}
+
+	fmt.Printf(Indent3+"\"Image Layer ID\": %s,\n", jsonMarshal(secret.LayerID))
+	fmt.Printf(Indent3+"\"Matched Rule ID\": %d,\n", secret.RuleID)
+	fmt.Printf(Indent3+"\"Matched Rule Name\": %s,\n", jsonMarshal(secret.RuleName))
+	fmt.Printf(Indent3+"\"Matched Part\": %s,\n", jsonMarshal(secret.PartToMatch))
+	fmt.Printf(Indent3+"\"String to Match\": %s,\n", jsonMarshal(secret.Match))
+	fmt.Printf(Indent3+"\"Signature to Match\": %s,\n", jsonMarshal(secret.Regex))
+	fmt.Printf(Indent3+"\"Severity\": %s,\n", jsonMarshal(secret.Severity))
+	fmt.Printf(Indent3+"\"Severity Score\": %.2f,\n", secret.SeverityScore)
+	fmt.Printf(Indent3+"\"Starting Index of Match in Original Content\": %d,\n", secret.PrintBufferStartIndex)
+	fmt.Printf(Indent3+"\"Relative Starting Index of Match in Displayed Substring\": %d,\n", secret.MatchFromByte)
+	fmt.Printf(Indent3+"\"Relative Ending Index of Match in Displayed Substring\": %d,\n", secret.MatchToByte)
+	fmt.Printf(Indent3+"\"Full File Name\": %s,\n", jsonMarshal(secret.CompleteFilename))
+	match := secret.MatchedContents
+	from := secret.MatchFromByte
+	to := secret.MatchToByte
+	prefix := removeFirstLastChar(jsonMarshal(match[0:from]))
+	coloredMatch := color.RedString(removeFirstLastChar(jsonMarshal(string(match[from:to]))))
+	suffix := removeFirstLastChar(jsonMarshal(match[to:]))
+	fmt.Printf(Indent3+"\"Matched Contents\": \"%s%s%s\"\n", prefix, coloredMatch, suffix)
+
+	fmt.Printf(Indent + Indent + "}")
+}
+
+func jsonMarshal(input string) string {
+	output, _ := json.Marshal(input)
+	return string(output)
+}
+
+func removeFirstLastChar(input string) string {
+	if len(input) <= 1 {
+		return input
+	}
+	return input[1 : len(input)-1]
+}
+
+func SecretToSecretInfo(out output.IOCFound, matchIndex int) *pb.SecretInfo {
+	signature := ""
+	if len(out.Meta) != 0 {
+		signature = out.Meta[0]
+	}
+	severity := "low"
+	if out.FileSeverity != "" {
+		severity = out.FileSeverity
+	}
+	return &pb.SecretInfo{
+		ImageLayerId: out.LayerID,
+		Rule: &pb.MatchRule{
+			Name:             out.RuleName,
+			SignatureToMatch: signature,
+		},
+		Match: &pb.Match{
+			FullFilename:   out.CompleteFilename,
+			MatchedContent: out.Matches[matchIndex].Data,
+			StartingIndex:  int64(out.Matches[matchIndex].Offset),
+		},
+		Severity: &pb.Severity{
+			Level: severity,
+			Score: float32(out.SeverityScore),
+		},
+	}
+}
+
+func WriteTableOutput(report *[]SecretFound) error {
+	table := tw.NewTable(os.Stdout,
+		tw.WithHeader([]string{"MATCHED PART", "RULE NAME", "SEVERITY", "FILE NAME", "SIGNATURE"}),
+	)
+
+	for _, r := range *report {
+		table.Append([]string{r.PartToMatch, r.RuleName, r.Severity, r.CompleteFilename, r.Regex})
+	}
+	table.Render()
+	return nil
+}
+
+type SevCount struct {
+	Total  int
+	High   int
+	Medium int
+	Low    int
+}
+
+func CountBySeverity(report []SecretFound) SevCount {
+	detail := SevCount{}
+
+	for _, r := range report {
+		detail.Total += 1
+		switch r.Severity {
+		case HIGH:
+			detail.High += 1
+		case MEDIUM:
+			detail.Medium += 1
+		case LOW:
+			detail.Low += 1
+		}
+	}
+
+	return detail
+}
+
+func ExitOnSeverity(severity string, count int, failOnCount int) {
+	log.Debug().Str("severity", severity).Int("count", count).Int("failOnCount", failOnCount).Msg("ExitOnSeverity")
+	if count >= failOnCount {
+		if len(severity) > 0 {
+			msg := "Exit secret scan. Number of %s secrets (%d) reached/exceeded the limit (%d).\n"
+			fmt.Printf(msg, severity, count, failOnCount)
+			os.Exit(1)
+		}
+		msg := "Exit secret scan. Number of secrets (%d) reached/exceeded the limit (%d).\n"
+		fmt.Printf(msg, count, failOnCount)
+		os.Exit(1)
+	}
+}
+
+func FailOn(details SevCount, failOnHighCount int, failOnMediumCount int, failOnLowCount int, failOnCount int) {
+	if failOnHighCount > 0 {
+		ExitOnSeverity(HIGH, details.High, failOnHighCount)
+	}
+	if failOnMediumCount > 0 {
+		ExitOnSeverity(MEDIUM, details.Medium, failOnMediumCount)
+	}
+	if failOnLowCount > 0 {
+		ExitOnSeverity(LOW, details.Low, failOnLowCount)
+	}
+	if failOnCount > 0 {
+		ExitOnSeverity("", details.Total, failOnCount)
+	}
+}

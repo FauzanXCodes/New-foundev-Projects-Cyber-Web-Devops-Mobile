@@ -1,0 +1,11 @@
+<h1>{{ campaign.name }}</h1>
+<table border="1" cellpadding="6">
+  <tr><th>Email</th><th>Sent</th><th>Clicked</th></tr>
+  {% for r in campaign.recipients.all %}
+  <tr>
+    <td>{{ r.email }}</td>
+    <td>{{ r.sent_at|default:"-" }}</td>
+    <td>{{ r.clicked_at|default:"No" }}</td>
+  </tr>
+  {% endfor %}
+</table>

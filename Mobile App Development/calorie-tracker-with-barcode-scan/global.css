@@ -1,0 +1,861 @@
+/*
+ * Cyberpunk Brutalist face: Departure Mono, the one bundled face.
+ * Registered at runtime by src/utils/web-fonts.ts, which
+ * requires the binary through Metro so dev and exported builds both serve it.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Cyberpunk Brutalist field computer. Squared, sharp, fast.
+ */
+html,
+body {
+  font-family: "Departure Mono", monospace;
+  /* Pixel face: neutral tracking and default subpixel smoothing keep the
+   * glyph grids even; antialiasing or negative tracking smears them. */
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+  touch-action: manipulation;
+  background: var(--app-background);
+  letter-spacing: 0;
+}
+html.dark,
+html.dark body {
+  background: var(--app-background);
+}
+
+input,
+button,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/*
+ * Tailwind v3 preflight paints placeholders AND empty inputs (::placeholder-shown)
+ * gray-400 (#9ca3af, 2.5:1 on white). That overrides themed input colors on
+ * react-native-web TextInputs whose color lives in a lower-specificity class.
+ * Neutralize it so the app's own colors (and RNW's --placeholderTextColor)
+ * win; the app sets an explicit placeholderTextColor on every input.
+ */
+:is(input:placeholder-shown, textarea:placeholder-shown) {
+  color: inherit;
+}
+input::placeholder,
+textarea::placeholder {
+  color: inherit;
+}
+
+/*
+ * Theme tokens - single source is src/theme/themes.ts (lightColors / darkColors)
+ * plus src/theme/css.ts (CssVar generation). Update the palette there and this
+ * block follows. Do not duplicate hex values elsewhere; add new vars to
+ * lightCssVars() / darkCssVars() in src/theme/css.ts instead.
+ *
+ * Canonical vars use --app-* prefix. Legacy aliases (--bg, --surface etc.)
+ * map via var() so only one hex copy exists.
+ */
+:root {
+  --app-background: #f1f5f9;
+  --app-surface: #ffffff;
+  --app-surface-alt: #e2e8f0;
+  --app-primary: #0b57d0;
+  --app-border: #0f172a;
+  --app-text: #0f172a;
+  --app-text-muted: #475569;
+  --app-danger: #be123c;
+  --app-warning: #92400e;
+  --app-on-primary: #ffffff;
+  --meal-b: #0369a1;
+  --meal-l: #92400e;
+  --meal-d: #be123c;
+  --meal-s: #0f766e;
+  --app-water: #0e7490;
+  --app-weight: #6d28d9;
+  --app-success: #15803d;
+  --bg-grid: rgba(15, 23, 42, 0.035);
+  --paper-grid: rgba(15, 23, 42, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-alt: #e2e8f0;
+  --ink: #0f172a;
+  --ink-muted: #475569;
+  --primary: #0b57d0;
+  --on-primary: #ffffff;
+  --border: #0f172a;
+}
+
+html.dark {
+  --app-background: #1a1b26;
+  --app-surface: #24283b;
+  --app-surface-alt: #292e42;
+  --app-primary: #7aa2f7;
+  --app-border: #6b739c;
+  --app-text: #c0caf5;
+  --app-text-muted: #a9b1d6;
+  --app-danger: #ff7a8e;
+  --app-warning: #e0af68;
+  --app-on-primary: #1a1b26;
+  --meal-b: #8db8ff;
+  --meal-l: #ffb020;
+  --meal-d: #ff92a6;
+  --meal-s: #2ec4b6;
+  --app-water: #38bdf8;
+  --app-weight: #c4b5fd;
+  --app-success: #4ade80;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #1a1b26;
+  --surface: #24283b;
+  --surface-alt: #292e42;
+  --ink: #c0caf5;
+  --ink-muted: #a9b1d6;
+  --primary: #7aa2f7;
+  --on-primary: #1a1b26;
+  --border: #6b739c;
+}
+
+html.theme-vscode-dark {
+  --app-background: #1e1e1e;
+  --app-surface: #252526;
+  --app-surface-alt: #2d2d30;
+  --app-primary: #007acc;
+  --app-border: #6e6e6e;
+  --app-text: #cccccc;
+  --app-text-muted: #949494;
+  --app-danger: #f14c4c;
+  --app-warning: #cca700;
+  --app-on-primary: #ffffff;
+  --meal-b: #569cd6;
+  --meal-l: #dcdcaa;
+  --meal-d: #ce9178;
+  --meal-s: #4ec9b0;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #1e1e1e;
+  --surface: #252526;
+  --surface-alt: #2d2d30;
+  --ink: #cccccc;
+  --ink-muted: #949494;
+  --primary: #007acc;
+  --on-primary: #ffffff;
+  --border: #6e6e6e;
+}
+
+html.theme-vscode-light {
+  --app-background: #ffffff;
+  --app-surface: #f3f3f3;
+  --app-surface-alt: #e8e8e8;
+  --app-primary: #007acc;
+  --app-border: #8c8c8c;
+  --app-text: #000000;
+  --app-text-muted: #5a5a5a;
+  --app-danger: #cd3131;
+  --app-warning: #8f6a00;
+  --app-on-primary: #ffffff;
+  --meal-b: #001080;
+  --meal-l: #795e26;
+  --meal-d: #a31515;
+  --meal-s: #267f99;
+  --bg-grid: rgba(15, 23, 42, 0.035);
+  --paper-grid: rgba(15, 23, 42, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #ffffff;
+  --surface: #f3f3f3;
+  --surface-alt: #e8e8e8;
+  --ink: #000000;
+  --ink-muted: #5a5a5a;
+  --primary: #007acc;
+  --on-primary: #ffffff;
+  --border: #8c8c8c;
+}
+
+html.theme-dracula {
+  --app-background: #282a36;
+  --app-surface: #44475a;
+  --app-surface-alt: #343746;
+  --app-primary: #bd93f9;
+  --app-border: #8d98c1;
+  --app-text: #f8f8f2;
+  --app-text-muted: #aeb7d0;
+  --app-danger: #ff6b6b;
+  --app-warning: #ffb86c;
+  --app-on-primary: #282a36;
+  --meal-b: #8be9fd;
+  --meal-l: #ffb86c;
+  --meal-d: #ff79c6;
+  --meal-s: #50fa7b;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #282a36;
+  --surface: #44475a;
+  --surface-alt: #343746;
+  --ink: #f8f8f2;
+  --ink-muted: #aeb7d0;
+  --primary: #bd93f9;
+  --on-primary: #282a36;
+  --border: #8d98c1;
+}
+
+html.theme-monokai {
+  --app-background: #272822;
+  --app-surface: #3e3d32;
+  --app-surface-alt: #49483e;
+  --app-primary: #a6e22e;
+  --app-border: #9a978a;
+  --app-text: #f8f8f2;
+  --app-text-muted: #b8b6a8;
+  --app-danger: #ff4b8b;
+  --app-warning: #fd971f;
+  --app-on-primary: #272822;
+  --meal-b: #66d9ef;
+  --meal-l: #e6db74;
+  --meal-d: #ff4b8b;
+  --meal-s: #a6e22e;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #272822;
+  --surface: #3e3d32;
+  --surface-alt: #49483e;
+  --ink: #f8f8f2;
+  --ink-muted: #b8b6a8;
+  --primary: #a6e22e;
+  --on-primary: #272822;
+  --border: #9a978a;
+}
+
+html.theme-nord {
+  --app-background: #2e3440;
+  --app-surface: #3b4252;
+  --app-surface-alt: #434c5e;
+  --app-primary: #88c0d0;
+  --app-border: #8a95ad;
+  --app-text: #eceff4;
+  --app-text-muted: #b8bfd0;
+  --app-danger: #d68a90;
+  --app-warning: #ebcb8b;
+  --app-on-primary: #2e3440;
+  --meal-b: #88c0d0;
+  --meal-l: #ebcb8b;
+  --meal-d: #d68a90;
+  --meal-s: #a3be8c;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #2e3440;
+  --surface: #3b4252;
+  --surface-alt: #434c5e;
+  --ink: #eceff4;
+  --ink-muted: #b8bfd0;
+  --primary: #88c0d0;
+  --on-primary: #2e3440;
+  --border: #8a95ad;
+}
+
+html.theme-solarized-dark {
+  --app-background: #002b36;
+  --app-surface: #063242;
+  --app-surface-alt: #0a4e5e;
+  --app-primary: #2678ce;
+  --app-border: #6d8a93;
+  --app-text: #adb8b8;
+  --app-text-muted: #b0c4c4;
+  --app-danger: #e35d5b;
+  --app-warning: #b58900;
+  --app-on-primary: #ffffff;
+  --meal-b: #268bd2;
+  --meal-l: #b58900;
+  --meal-d: #dc322f;
+  --meal-s: #2aa198;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #002b36;
+  --surface: #063242;
+  --surface-alt: #0a4e5e;
+  --ink: #adb8b8;
+  --ink-muted: #b0c4c4;
+  --primary: #2678ce;
+  --on-primary: #ffffff;
+  --border: #6d8a93;
+}
+
+html.theme-solarized-light {
+  --app-background: #fdf6e3;
+  --app-surface: #eee8d5;
+  --app-surface-alt: #d6d0b8;
+  --app-primary: #1a6093;
+  --app-border: #768989;
+  --app-text: #3a4a4e;
+  --app-text-muted: #4c5c5d;
+  --app-danger: #a82a28;
+  --app-warning: #7a5f00;
+  --app-on-primary: #ffffff;
+  --meal-b: #268bd2;
+  --meal-l: #b58900;
+  --meal-d: #dc322f;
+  --meal-s: #2aa198;
+  --bg-grid: rgba(15, 23, 42, 0.035);
+  --paper-grid: rgba(15, 23, 42, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #fdf6e3;
+  --surface: #eee8d5;
+  --surface-alt: #d6d0b8;
+  --ink: #3a4a4e;
+  --ink-muted: #4c5c5d;
+  --primary: #1a6093;
+  --on-primary: #ffffff;
+  --border: #768989;
+}
+
+html.theme-one-dark-pro {
+  --app-background: #282c34;
+  --app-surface: #21252b;
+  --app-surface-alt: #2c323c;
+  --app-primary: #61afef;
+  --app-border: #6a758a;
+  --app-text: #abb2bf;
+  --app-text-muted: #9aa0b0;
+  --app-danger: #e06c75;
+  --app-warning: #e5c07b;
+  --app-on-primary: #282c34;
+  --meal-b: #61afef;
+  --meal-l: #e5c07b;
+  --meal-d: #e06c75;
+  --meal-s: #98c379;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #282c34;
+  --surface: #21252b;
+  --surface-alt: #2c323c;
+  --ink: #abb2bf;
+  --ink-muted: #9aa0b0;
+  --primary: #61afef;
+  --on-primary: #282c34;
+  --border: #6a758a;
+}
+
+html.theme-github-dark {
+  --app-background: #0d1117;
+  --app-surface: #161b22;
+  --app-surface-alt: #21262d;
+  --app-primary: #58a6ff;
+  --app-border: #656d76;
+  --app-text: #e6edf3;
+  --app-text-muted: #9198a1;
+  --app-danger: #f85149;
+  --app-warning: #d29922;
+  --app-on-primary: #0d1117;
+  --meal-b: #58a6ff;
+  --meal-l: #d29922;
+  --meal-d: #f85149;
+  --meal-s: #3fb950;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-alt: #21262d;
+  --ink: #e6edf3;
+  --ink-muted: #9198a1;
+  --primary: #58a6ff;
+  --on-primary: #0d1117;
+  --border: #656d76;
+}
+
+html.theme-github-light {
+  --app-background: #ffffff;
+  --app-surface: #f6f8fa;
+  --app-surface-alt: #eaeef2;
+  --app-primary: #0969da;
+  --app-border: #7a8591;
+  --app-text: #24292f;
+  --app-text-muted: #57606a;
+  --app-danger: #cf222e;
+  --app-warning: #9a6700;
+  --app-on-primary: #ffffff;
+  --meal-b: #0969da;
+  --meal-l: #9a6700;
+  --meal-d: #cf222e;
+  --meal-s: #1a7f37;
+  --bg-grid: rgba(15, 23, 42, 0.035);
+  --paper-grid: rgba(15, 23, 42, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --surface-alt: #eaeef2;
+  --ink: #24292f;
+  --ink-muted: #57606a;
+  --primary: #0969da;
+  --on-primary: #ffffff;
+  --border: #7a8591;
+}
+
+html.theme-material-palenight {
+  --app-background: #292d3e;
+  --app-surface: #34324a;
+  --app-surface-alt: #3a3e5c;
+  --app-primary: #c792ea;
+  --app-border: #7f85a6;
+  --app-text: #a6accd;
+  --app-text-muted: #a8acc3;
+  --app-danger: #ff5370;
+  --app-warning: #ffcb6b;
+  --app-on-primary: #292d3e;
+  --meal-b: #82aaff;
+  --meal-l: #ffcb6b;
+  --meal-d: #f07178;
+  --meal-s: #c3e88d;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #292d3e;
+  --surface: #34324a;
+  --surface-alt: #3a3e5c;
+  --ink: #a6accd;
+  --ink-muted: #a8acc3;
+  --primary: #c792ea;
+  --on-primary: #292d3e;
+  --border: #7f85a6;
+}
+
+html.theme-tokyo-night {
+  --app-background: #1a1b26;
+  --app-surface: #16161e;
+  --app-surface-alt: #1e202e;
+  --app-primary: #7aa2f7;
+  --app-border: #636a8c;
+  --app-text: #c0caf5;
+  --app-text-muted: #828ab3;
+  --app-danger: #f7768e;
+  --app-warning: #e0af68;
+  --app-on-primary: #1a1b26;
+  --meal-b: #7aa2f7;
+  --meal-l: #e0af68;
+  --meal-d: #f7768e;
+  --meal-s: #9ece6a;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #1a1b26;
+  --surface: #16161e;
+  --surface-alt: #1e202e;
+  --ink: #c0caf5;
+  --ink-muted: #828ab3;
+  --primary: #7aa2f7;
+  --on-primary: #1a1b26;
+  --border: #636a8c;
+}
+
+html.theme-tokyo-night-storm {
+  --app-background: #24283b;
+  --app-surface: #1f2335;
+  --app-surface-alt: #292e42;
+  --app-primary: #7aa2f7;
+  --app-border: #6b7296;
+  --app-text: #c0caf5;
+  --app-text-muted: #959cc0;
+  --app-danger: #f7768e;
+  --app-warning: #e0af68;
+  --app-on-primary: #1a1b26;
+  --meal-b: #7aa2f7;
+  --meal-l: #e0af68;
+  --meal-d: #f7768e;
+  --meal-s: #9ece6a;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #24283b;
+  --surface: #1f2335;
+  --surface-alt: #292e42;
+  --ink: #c0caf5;
+  --ink-muted: #959cc0;
+  --primary: #7aa2f7;
+  --on-primary: #1a1b26;
+  --border: #6b7296;
+}
+
+html.theme-tokyo-night-moon {
+  --app-background: #222436;
+  --app-surface: #1e2030;
+  --app-surface-alt: #2f334d;
+  --app-primary: #82aaff;
+  --app-border: #686ea0;
+  --app-text: #c8d3f5;
+  --app-text-muted: #9aa0c8;
+  --app-danger: #ff757f;
+  --app-warning: #ffc777;
+  --app-on-primary: #1e2030;
+  --meal-b: #82aaff;
+  --meal-l: #ffc777;
+  --meal-d: #ff757f;
+  --meal-s: #c3e88d;
+  --bg-grid: rgba(192, 202, 245, 0.035);
+  --paper-grid: rgba(192, 202, 245, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #222436;
+  --surface: #1e2030;
+  --surface-alt: #2f334d;
+  --ink: #c8d3f5;
+  --ink-muted: #9aa0c8;
+  --primary: #82aaff;
+  --on-primary: #1e2030;
+  --border: #686ea0;
+}
+
+html.theme-tokyo-night-light {
+  --app-background: #d5d6db;
+  --app-surface: #cbccd1;
+  --app-surface-alt: #b4b5b9;
+  --app-primary: #34548a;
+  --app-border: #6e7085;
+  --app-text: #343b58;
+  --app-text-muted: #3a3e54;
+  --app-danger: #8c4351;
+  --app-warning: #8f5e15;
+  --app-on-primary: #d5d6db;
+  --meal-b: #34548a;
+  --meal-l: #8f5e15;
+  --meal-d: #8c4351;
+  --meal-s: #33635c;
+  --bg-grid: rgba(15, 23, 42, 0.035);
+  --paper-grid: rgba(15, 23, 42, 0.035);
+  --scrim: rgba(26, 27, 38, 0.65);
+  --bg: #d5d6db;
+  --surface: #cbccd1;
+  --surface-alt: #b4b5b9;
+  --ink: #343b58;
+  --ink-muted: #3a3e54;
+  --primary: #34548a;
+  --on-primary: #d5d6db;
+  --border: #6e7085;
+}
+
+/*
+ * gluestack-ui Tokyo Night alignment - derived from theme surfaceAlt / border
+ * Keep in sync with src/theme/tokens. For new themes, add a selector like
+ * html.theme-sepia below.
+ */
+html.dark {
+  --color-background-50: 36 40 59;
+  --color-background-100: 41 46 66;
+  --color-background-200: 107 115 156;
+  --color-background-300: 73 82 120;
+}
+html:not(.dark) {
+  --color-background-50: 255 255 255;
+  --color-background-100: 241 245 249;
+  --color-background-200: 226 232 240;
+  --color-background-300: 203 213 225;
+}
+
+/*
+ * Typography Utilities: Departure Mono for tabular numeric data
+ * For pixel-perfect results, set the font size to increments of 11px.
+ * Departure Mono is drawn on an 11px grid. 11, 22, 33 keep stems
+ * on device pixels. Body 14 is the readability compromise.
+ */
+.font-tabular,
+.font-mono,
+.font-jetbrains {
+  font-family: "Departure Mono", monospace !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  font-feature-settings: "tnum" 1;
+}
+
+.font-heading {
+  font-family: "Departure Mono", monospace;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* 11px grid snap for tabular data on wide where crispness matters */
+@media (min-width: 900px) {
+  .font-tabular,
+  .font-mono {
+    font-size: 11px;
+  }
+  .text-\[14px\].font-tabular,
+  .text-\[16px\].font-tabular {
+    font-size: 14px;
+  }
+}
+
+/*
+ * Modern text wrapping and legibility
+ */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
+p,
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* Big screen: stabilize scrollbar and avoid layout shift */
+html {
+  scrollbar-gutter: stable;
+  interpolate-size: allow-keywords;
+}
+
+@media (min-width: 1280px) {
+  body {
+    text-rendering: geometricPrecision;
+  }
+}
+
+/*
+ * Scrollbars: hidden everywhere, ledger stays clean
+ */
+*::-webkit-scrollbar {
+  display: none;
+}
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Browser surfaces. Tokyo Night ink */
+::selection {
+  background: var(--app-primary);
+  color: #ffffff;
+}
+html.dark ::selection {
+  background: var(--app-primary);
+  color: var(--app-background);
+}
+::placeholder {
+  color: inherit;
+  opacity: 0.85;
+}
+input {
+  caret-color: var(--app-primary);
+}
+html.dark input {
+  caret-color: var(--app-primary);
+}
+
+/* Sharp focus. 1.5px solid Tokyo Night ink, square */
+:focus-visible {
+  outline: 1.5px solid var(--app-primary);
+  outline-offset: 1px;
+  border-radius: 0 !important;
+}
+html.dark :focus-visible {
+  outline-color: var(--app-primary);
+}
+
+/* Borderless inputs nested in their own bordered container (log-meal
+ * expanding search) draw focus on the container, not as an inner box. */
+.logmeal-search-input:focus-visible {
+  outline: none;
+}
+
+/* Terminal world - square, sharp, no soft shadows */
+.rounded-3xl,
+.rounded-2xl,
+.rounded-xl,
+.rounded-lg,
+.rounded-md,
+.rounded {
+  border-radius: 0 !important;
+}
+.rounded-full {
+  border-radius: 0 !important;
+}
+/* cards lose soft shadow, gain 1.5px ink rule */
+.shadow-soft-1,
+.shadow-soft-2,
+.shadow-soft-3,
+.shadow-soft-4,
+[class*="shadow-"] {
+  box-shadow: none !important;
+}
+/* elevated cards -> sharp Tokyo Night border */
+.bg-background-50 {
+  border: 1.5px solid var(--app-border);
+}
+html.dark .bg-background-50 {
+  border-color: var(--app-border);
+}
+/* primary buttons square */
+.bg-primary-500 {
+  border: 1.5px solid var(--app-primary);
+  border-radius: 0 !important;
+}
+html.dark .bg-primary-500 {
+  border-color: var(--app-primary);
+}
+/* paper grid. Tokyo Night graph. Tokenized via CSS variables */
+html:not(.dark) body,
+html:not(.dark) .app-grid {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+html.dark body,
+html.dark .app-grid {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+/* tabular numbers forced everywhere for ledger speed */
+.font-tabular,
+.font-mono,
+.font-jetbrains,
+[class*="font-tabular"] {
+  font-variant-numeric: tabular-nums !important;
+}
+/* Tokyo Night rule color for outline */
+[class*="border-outline"] {
+  border-color: var(--app-border) !important;
+}
+html.dark [class*="border-outline"] {
+  border-color: var(--app-border) !important;
+}
+
+/* Big screen performance: content-visibility for long diaries and stats.
+   Only on web where the CSS is parsed. Cards below the fold skip paint
+   until scrolled near the viewport. intrinsic-size keeps scrollbar stable. */
+@media (min-width: 600px) {
+  .meal-card,
+  [data-meal-card] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 220px;
+    contain: layout paint style;
+  }
+}
+
+/* Wide shell: floating detached rail and centered diary column.
+   Keeps interactive chrome away from the monitor edge on 1280+ screens,
+   so reach stays inside the 1440 shell with 24px outer gutters. */
+@media (min-width: 900px) {
+  /* Soften the paper grid at wide where it can buzz at 24px repeat */
+  body {
+    background-size: 28px 28px;
+  }
+  /* Meal cards gain a calm hover without lifting off the paper */
+  .meal-card:hover {
+    border-color: var(--app-primary) !important;
+  }
+}
+@media (min-width: 1280px) {
+  body {
+    background-size: 32px 32px;
+  }
+}
+@media (min-width: 1440px) {
+  html {
+    scrollbar-gutter: stable both-edges;
+  }
+}
+
+/* Hide inactive tab screens kept mounted by React Navigation (z-index -1).
+   Without this, the inactive diary shows through the transparent empty area
+   of the active Stats/Settings page on web. Keep the paper grid visible by
+   keeping all screens transparent and hiding the inactive one via display. */
+div[style*="z-index: -1"] {
+  display: none !important;
+}
+
+/* Subtle view transition for diary date changes on supporting browsers */
+@supports (view-transition-name: diary) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.18s;
+  }
+}
+
+/* reduce motion. Preserve feedback without scale */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* pressed states fall back to opacity and invert not scale */
+  [style*="scale"] {
+    transform: none !important;
+  }
+  .active\:opacity-80:active,
+  .active\:bg-background-100:active,
+  .active\:bg-background-200:active {
+    opacity: 0.85 !important;
+  }
+}
+
+/* ledger skeleton. Ruled placeholder while SQLite hydrates */
+@keyframes ledger-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+.ledger-skeleton {
+  background: var(--app-surface-alt);
+  background-image: linear-gradient(
+    to right,
+    var(--app-surface-alt) 0%,
+    var(--app-background) 50%,
+    var(--app-surface-alt) 100%
+  );
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  animation: ledger-shimmer 1.2s ease-in-out infinite;
+  border: 1px solid var(--app-border);
+}
+html.dark .ledger-skeleton {
+  background: var(--app-surface-alt);
+  background-image: linear-gradient(
+    to right,
+    var(--app-surface-alt) 0%,
+    var(--app-border) 50%,
+    var(--app-surface-alt) 100%
+  );
+  border-color: var(--app-border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ledger-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/*
+ * Aligning list icons with the first line of text across wrapped lines.
+ * Formula: --offset: calc((1lh - var(--size)) / 2); transform: translateY(var(--offset));
+ */
+.list-item-icon {
+  flex-shrink: 0;
+  --size: 1.25rem;
+  width: var(--size);
+  height: var(--size);
+  --offset: calc((1lh - var(--size)) / 2);
+  transform: translateY(var(--offset));
+}

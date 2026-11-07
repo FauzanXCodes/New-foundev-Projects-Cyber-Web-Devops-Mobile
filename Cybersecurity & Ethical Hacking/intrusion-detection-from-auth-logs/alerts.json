@@ -1,0 +1,16 @@
+[
+  {
+    "timestamp": "2025-11-23 12:05:33",
+    "ip": "192.168.0.2",
+    "severity": "High",
+    "rule": "Failed Login",
+    "details": "Failed login attempt "
+  },
+  {
+    "timestamp": "2025-11-23 12:15:45",
+    "ip": "1.2.3.4",
+    "severity": "Medium",
+    "rule": "Suspicious Path Access",
+    "details": "Path traversal attempt /etc/passwd "
+  }
+]

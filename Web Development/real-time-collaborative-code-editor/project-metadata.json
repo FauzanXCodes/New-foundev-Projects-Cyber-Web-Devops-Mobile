@@ -1,0 +1,14 @@
+﻿{
+    "id":  "real-time-collaborative-code-editor",
+    "name":  "Real-time Collaborative Code Editor",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/code-friends/CodeFriends",
+    "stack":  "React; Socket.IO; Node",
+    "goal":  "Multi-user rooms, syntax highlighting, run-in-sandbox and chat sidebar.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "client/index.html",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  172
+}

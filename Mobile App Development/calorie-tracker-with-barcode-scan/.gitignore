@@ -1,0 +1,71 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# local env files (may contain test credentials)
+.env
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Jest coverage
+coverage/
+
+# Lighthouse reports
+lighthouse-reports/
+
+# Android release signing key and credentials
+keystore/
+
+# One-off manual verification screenshots (canonical shots live in docs/screenshots/)
+docs/screenshots/verification-*/
+
+# Local AI design-review tooling state
+.impeccable/
+
+# Generated expo-sqlite web worker (built on postinstall)
+public/worker.js
+public/wa-sqlite-*.wasm

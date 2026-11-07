@@ -1,0 +1,14 @@
+﻿{
+    "id":  "encrypted-password-manager",
+    "name":  "Encrypted Password Manager",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/geo-tp/Password-Manager",
+    "stack":  "Python; PyQt/Tkinter; SQLCipher",
+    "goal":  "Master-password vault with AES-GCM, auto-lock, clipboard clear and audit log.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "src/main.cpp",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  119
+}

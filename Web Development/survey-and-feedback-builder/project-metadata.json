@@ -1,0 +1,14 @@
+﻿{
+    "id":  "survey-and-feedback-builder",
+    "name":  "Survey \u0026 Feedback Builder",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/Ryczko/FormsLab",
+    "stack":  "Next.js; Postgres",
+    "goal":  "Drag-drop question builder, conditional logic, public link and response analytics.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "lib/serverAuth.ts",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  239
+}

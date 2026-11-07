@@ -1,0 +1,234 @@
+<%
+const isEditMode = Boolean(isEdit && user);
+const formAction = isEditMode ? `/panel/users/${user.userId}` : '/panel/users';
+const selectedGroupIds = new Set(
+    (isEditMode && Array.isArray(user.groups) ? user.groups : []).map((group) => String(group._id || group))
+);
+const trafficLimitGB = isEditMode ? Math.round((user.trafficLimit || 0) / (1024 * 1024 * 1024)) : 0;
+const maxDevicesValue = isEditMode ? (parseInt(user.maxDevices, 10) || 0) : 0;
+const hwidModeVal = isEditMode ? (user.hwidMode || 'inherit') : 'inherit';
+let hwidEnforceStr = '';
+if (isEditMode && user.hwidEnforceFrom) {
+    const _d = new Date(user.hwidEnforceFrom);
+    const p = (n) => String(n).padStart(2, '0');
+    hwidEnforceStr = `${_d.getFullYear()}-${p(_d.getMonth()+1)}-${p(_d.getDate())}T${p(_d.getHours())}:${p(_d.getMinutes())}`;
+}
+const hasExpireAt = isEditMode && user.expireAt;
+const expireAtIso = hasExpireAt ? new Date(user.expireAt).toISOString() : '';
+%>
+<div class="page-header">
+    <a href="/panel/users" class="btn btn-back"><i class="ti ti-chevron-left"></i> <%= t('common.backToList') %></a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2><%= isEditMode ? t('users.editUser') : t('users.newUser') %></h2>
+    </div>
+    <div class="card-body">
+        <% if (error) { %>
+        <div class="alert alert-danger"><%= error %></div>
+        <% } %>
+        <form id="userForm" method="POST" action="<%= formAction %>" class="form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="userId"><%= t('users.userId') %></label>
+                    <input type="text" id="userId" name="userId" placeholder="<%= t('users.userIdPlaceholder') %>" value="<%= isEditMode ? user.userId : '' %>" <%= isEditMode ? 'readonly' : 'required' %>>
+                    <small><%= t('users.userIdHint') %></small>
+                </div>
+
+                <div class="form-group">
+                    <label for="username"><%= t('users.username') %></label>
+                    <input type="text" id="username" name="username" placeholder="<%= t('users.usernamePlaceholder') %>" value="<%= isEditMode ? (user.username || '') : '' %>">
+                    <small><%= t('users.usernameHint') %></small>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="comment"><%= t('users.comment') %></label>
+                <input type="text" id="comment" name="comment"
+                       value="<%= isEditMode ? (user.comment || '') : '' %>"
+                       placeholder="<%= t('users.commentPlaceholder') %>"
+                       maxlength="500" autocomplete="off">
+                <small><%= t('users.commentHint') %></small>
+            </div>
+            
+                <div class="form-group">
+                <label><%= t('users.groups') %></label>
+                <div class="groups-select">
+                    <% if (groups && groups.length > 0) { %>
+                        <% groups.forEach(group => { %>
+                            <label class="checkbox-tag" style="border-color: <%= group.color %>">
+                                <input type="checkbox" name="groups" value="<%= group._id %>" <%= selectedGroupIds.has(String(group._id)) ? 'checked' : '' %>>
+                                <span class="tag-dot" style="background: <%= group.color %>"></span>
+                                <span><%= group.name %></span>
+                            </label>
+                        <% }); %>
+                    <% } else { %>
+                        <p class="hint"><%= t('nodes.noGroups') %> <a href="/panel/groups"><%= t('nodes.createGroup') %></a></p>
+                    <% } %>
+                </div>
+                <small><%= t('users.groupsHint') %></small>
+                </div>
+                
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="trafficLimit"><%= t('users.trafficLimit') %></label>
+                    <input type="number" id="trafficLimit" name="trafficLimitGB" placeholder="0" value="<%= trafficLimitGB %>" min="0">
+                    <small><%= t('users.trafficLimitHint') %></small>
+            </div>
+            
+                    <div class="form-group">
+                    <label for="maxDevices"><%= t('users.maxDevices') %></label>
+                    <input type="number" id="maxDevices" name="maxDevices" placeholder="0" value="<%= maxDevicesValue %>" min="-1">
+                    <small><%= t('users.maxDevicesHint') %></small>
+                </div>
+            </div>
+
+            <% if (typeof hwidEnabled !== 'undefined' && hwidEnabled) { %>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="hwidMode"><%= t('users.hwidMode') %></label>
+                    <select name="hwidMode" id="hwidMode">
+                        <option value="inherit" <%= hwidModeVal === 'inherit' ? 'selected' : '' %>><%= t('users.hwidModeInherit') %></option>
+                        <option value="off" <%= hwidModeVal === 'off' ? 'selected' : '' %>><%= t('users.hwidModeOff') %></option>
+                        <option value="strict" <%= hwidModeVal === 'strict' ? 'selected' : '' %>><%= t('users.hwidModeStrict') %></option>
+                    </select>
+                    <small class="hint"><%= t('users.hwidModeHint') %></small>
+                </div>
+                <div class="form-group">
+                    <label for="hwidEnforceFrom"><%= t('users.hwidEnforceFrom') %></label>
+                    <input type="datetime-local" name="hwidEnforceFrom" id="hwidEnforceFrom" value="<%= hwidEnforceStr %>">
+                    <small class="hint"><%= t('users.hwidEnforceFromHint') %></small>
+                </div>
+            </div>
+            <% } else { %>
+            <%# Preserve existing per-user HWID overrides as hidden inputs when feature is off globally. %>
+            <input type="hidden" name="hwidMode" value="<%= hwidModeVal %>">
+            <input type="hidden" name="hwidEnforceFrom" value="<%= hwidEnforceStr %>">
+            <% } %>
+            
+            <div class="form-group">
+                <label><%= t('users.expireModeLabel') %></label>
+                <div class="radio-group">
+                    <label class="checkbox-label">
+                        <input type="radio" name="expireMode" value="days" <%= hasExpireAt ? '' : 'checked' %>>
+                        <%= t('users.expireModeDays') %>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="radio" name="expireMode" value="datetime" <%= hasExpireAt ? 'checked' : '' %>>
+                        <%= t('users.expireModeDatetime') %>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group" id="expireDaysGroup" style="display: <%= hasExpireAt ? 'none' : 'block' %>;">
+                <label for="expireDays"><%= t('users.expireDays') %></label>
+                <input type="number" id="expireDays" name="expireDays" placeholder="30" value="<%= isEditMode ? '0' : '30' %>" min="0">
+                <small><%= t('users.expireDaysHint') %></small>
+            </div>
+
+            <div class="form-group" id="expireDatetimeGroup" style="display: <%= hasExpireAt ? 'block' : 'none' %>;">
+                <label for="expireAtLocal"><%= t('users.expireAtLabel') %></label>
+                <input type="datetime-local" id="expireAtLocal" name="expireAtLocal" class="datetime-input" data-utc="<%= expireAtIso %>">
+                <small><%= t('users.expireAtHint') %></small>
+            </div>
+
+            <input type="hidden" id="expireAt" name="expireAt" value="<%= expireAtIso %>">
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="enabled" <%= isEditMode ? (user.enabled ? 'checked' : '') : 'checked' %>>
+                    <%= t('users.activateNow') %>
+                </label>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <i class="ti <%= isEditMode ? 'ti-device-floppy' : 'ti-user-plus' %>"></i>
+                    <%= isEditMode ? t('common.save') : t('users.createUser') %>
+                </button>
+                <a href="<%= isEditMode ? ('/panel/users/' + user.userId) : '/panel/users' %>" class="btn"><%= t('common.cancel') %></a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        (function() {
+            const expireModeInputs = document.querySelectorAll('input[name="expireMode"]');
+            const expireDaysGroup = document.getElementById('expireDaysGroup');
+            const expireDatetimeGroup = document.getElementById('expireDatetimeGroup');
+            const expireDaysInput = document.getElementById('expireDays');
+            const expireAtLocalInput = document.getElementById('expireAtLocal');
+            const expireAtInput = document.getElementById('expireAt');
+            const form = document.getElementById('userForm');
+
+            function utcToLocal(isoString) {
+                if (!isoString) return '';
+                const d = new Date(isoString);
+                if (Number.isNaN(d.getTime())) return '';
+                const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+                return local.toISOString().slice(0, 16);
+            }
+
+            function initExpireAtLocal() {
+                const utc = expireAtLocalInput.dataset.utc;
+                if (utc) {
+                    expireAtLocalInput.value = utcToLocal(utc);
+                }
+            }
+
+            function updateExpireMode(skipInit) {
+                const selectedMode = document.querySelector('input[name="expireMode"]:checked').value;
+
+                if (selectedMode === 'datetime') {
+                    expireDaysGroup.style.display = 'none';
+                    expireDatetimeGroup.style.display = 'block';
+                    expireDaysInput.value = '';
+                } else {
+                    expireDaysGroup.style.display = 'block';
+                    expireDatetimeGroup.style.display = 'none';
+                    expireAtLocalInput.value = '';
+                    expireAtInput.value = '';
+                }
+            }
+
+            function syncExpireAt() {
+                if (!expireAtLocalInput.value) {
+                    expireAtInput.value = '';
+                    return;
+                }
+
+                const localDateTime = new Date(expireAtLocalInput.value);
+                if (Number.isNaN(localDateTime.getTime())) {
+                    expireAtInput.value = '';
+                    return;
+                }
+
+                expireAtInput.value = localDateTime.toISOString();
+            }
+
+            expireModeInputs.forEach((input) => {
+                input.addEventListener('change', () => updateExpireMode());
+            });
+
+            expireAtLocalInput.addEventListener('change', syncExpireAt);
+            expireAtLocalInput.addEventListener('input', syncExpireAt);
+
+            form.addEventListener('submit', () => {
+                const selectedMode = document.querySelector('input[name="expireMode"]:checked').value;
+
+                if (selectedMode === 'days') {
+                    expireAtLocalInput.value = '';
+                    expireAtInput.value = '';
+                    return;
+                }
+
+                expireDaysInput.value = '';
+                syncExpireAt();
+            });
+
+            initExpireAtLocal();
+            updateExpireMode();
+        })();
+    </script>
+</div>

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "mini-freelance-marketplace",
+    "name":  "Mini Freelance Marketplace",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/MUKESHBOLISETTY/GigFlow-Mini-Freelance-Marketplace-Platform",
+    "stack":  "MERN; Stripe test mode",
+    "goal":  "Gigs posted by employers, bids by students, milestone escrow simulation and reviews.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "client/index.html",
+    "expectedFileCount":  50,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  63
+}

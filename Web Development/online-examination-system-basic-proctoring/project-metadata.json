@@ -1,0 +1,14 @@
+﻿{
+    "id":  "online-examination-system-basic-proctoring",
+    "name":  "Online Examination System (basic proctoring)",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/Anushree0123/Audio-Based-Online-Examination-Proctoring-System",
+    "stack":  "Django; WebRTC",
+    "goal":  "Timed papers, randomised question order, tab-switch logging and snapshot capture.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "Blinds_Quiz.py",
+    "expectedFileCount":  3,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  6
+}

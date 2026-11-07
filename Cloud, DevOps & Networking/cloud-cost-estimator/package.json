@@ -1,0 +1,27 @@
+{
+  "name": "cloud-cost-calculator",
+  "version": "4.0.0",
+  "description": "A dependency-free AWS FinOps planning workbench: multi-service estimates, decision readiness, scenario comparison, and simplified sample pricing.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "check": "node scripts/check-syntax.mjs",
+    "quality": "node scripts/check-quality.mjs",
+    "test": "node --test",
+    "validate": "npm run check && npm run quality && npm test"
+  },
+  "keywords": [
+    "aws",
+    "cloud",
+    "cost-calculator",
+    "finops",
+    "ec2",
+    "ebs",
+    "s3",
+    "rds",
+    "javascript",
+    "github-pages"
+  ],
+  "author": "",
+  "license": "MIT"
+}

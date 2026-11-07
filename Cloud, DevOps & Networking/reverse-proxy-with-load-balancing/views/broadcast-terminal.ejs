@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <title><%= typeof t !== 'undefined' ? t('broadcast.title') : 'Broadcast Terminal' %> | C³ CELERITY</title>
+    <%- include('partials/favicon') %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+    <style>
+        html, body { height: 100%; }
+
+        body {
+            background:
+                radial-gradient(1200px 600px at 100% -10%, rgba(124, 58, 237, 0.10), transparent 60%),
+                radial-gradient(900px 500px at -10% 110%, rgba(99, 102, 241, 0.10), transparent 60%),
+                var(--bg-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ──────────────────────────────────────────────────────── */
+        .header {
+            background: rgba(17, 17, 19, 0.72);
+            border-bottom: 1px solid var(--glass-border);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            min-width: 0;
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-size: 15px;
+        }
+
+        .header-logo .logo-icon {
+            font-size: 20px;
+            filter: drop-shadow(0 0 12px var(--accent-glow));
+        }
+
+        .header-logo .logo-text {
+            background: linear-gradient(135deg, var(--accent) 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-divider {
+            width: 1px;
+            height: 22px;
+            background: var(--glass-border);
+        }
+
+        .header h1 {
+            color: var(--text-primary);
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: -0.005em;
+        }
+
+        .header h1 i {
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.22), rgba(168,85,247,0.16));
+            color: #c7d2fe;
+            border: 1px solid rgba(99, 102, 241, 0.25);
+        }
+
+        .broadcast-tabs {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--glass-border);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+
+        .broadcast-tab {
+            border: 0;
+            background: transparent;
+            color: var(--text-muted);
+            padding: 7px 12px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.16s ease;
+        }
+
+        .broadcast-tab.active {
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent), #7c3aed);
+            box-shadow: 0 8px 26px rgba(99,102,241,0.28);
+        }
+
+        .header-right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18);
+        }
+        .status-dot.connected  { background: var(--success); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+        .status-dot.connecting { background: var(--warning); box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.18); animation: pulse 1.2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.45; }
+        }
+
+        /* ── Broadcast-only button variant ───────────────────────────────── */
+        .btn-ghost-danger {
+            background: transparent;
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+        }
+        .btn-ghost-danger:hover {
+            background: rgba(239, 68, 68, 0.12);
+            border-color: var(--danger);
+            color: #fff;
+        }
+
+        /* ── Layout ──────────────────────────────────────────────────────── */
+        .page {
+            padding: 18px 24px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* ── Glass surface utility ───────────────────────────────────────── */
+        .glass-surface {
+            position: relative;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius);
+            box-shadow: var(--glass-shadow);
+            backdrop-filter: var(--glass-blur-sm);
+            -webkit-backdrop-filter: var(--glass-blur-sm);
+            overflow: hidden;
+        }
+        .glass-surface::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(180deg,
+                rgba(255, 255, 255, 0.05) 0%,
+                rgba(255, 255, 255, 0.0) 28%,
+                transparent 100%);
+            border-radius: inherit;
+        }
+        .glass-surface > * { position: relative; z-index: 1; }
+
+        /* ── Control bar ─────────────────────────────────────────────────── */
+        .control-bar {
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .node-selector-block {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .node-selector-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .node-selector-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .node-selector-title .count-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #c7d2fe;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .node-selector-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .node-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            background: rgba(10, 10, 11, 0.45);
+            border: 1px solid var(--glass-border);
+            max-height: 144px;
+            overflow-y: auto;
+        }
+
+        .node-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.03);
+            font-size: 12.5px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+            line-height: 1.2;
+        }
+        .node-chip:hover     { background: rgba(255, 255, 255, 0.06); color: var(--text-primary); }
+        .node-chip:active    { transform: scale(0.97); }
+        .node-chip .chip-flag { font-size: 13px; line-height: 1; }
+        .node-chip .chip-name { font-weight: 500; }
+
+        .node-chip.selected {
+            border-color: rgba(99, 102, 241, 0.55);
+            background: rgba(99, 102, 241, 0.16);
+            color: #c7d2fe;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.10);
+        }
+        .node-chip.error    { border-color: rgba(239, 68, 68, 0.55); color: #fca5a5; }
+        .node-chip.running  { border-color: rgba(234, 179, 8, 0.55); color: #fde68a; }
+        .node-chip.done-ok  { border-color: rgba(34, 197, 94, 0.55); color: #86efac; }
+        .node-chip.done-fail{ border-color: rgba(239, 68, 68, 0.55); color: #fca5a5; }
+
+        .chip-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .node-chip.selected   .chip-dot { background: #a5b4fc; }
+        .node-chip.running    .chip-dot { background: var(--warning); animation: pulse 1.2s infinite; }
+        .node-chip.done-ok    .chip-dot { background: var(--success); }
+        .node-chip.done-fail  .chip-dot,
+        .node-chip.error      .chip-dot { background: var(--danger); }
+
+        /* ── Command input ───────────────────────────────────────────────── */
+        .command-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+
+        .command-input {
+            flex: 1;
+            background: rgba(10, 10, 11, 0.55);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 11px 14px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.18s ease;
+            resize: none;
+            overflow: hidden;
+            min-height: 44px;
+            max-height: 220px;
+            line-height: 1.5;
+        }
+        .command-input:focus {
+            background: rgba(10, 10, 11, 0.8);
+            border-color: rgba(99, 102, 241, 0.55);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
+        }
+        .command-input::placeholder { color: var(--text-muted); }
+        .command-input:disabled     { opacity: 0.55; cursor: not-allowed; }
+
+        .command-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: stretch;
+            justify-content: flex-start;
+            flex-shrink: 0;
+            min-width: 132px;
+        }
+
+        .command-actions .btn { width: 100%; }
+
+        .hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 0.02em;
+        }
+
+        .mode-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .mode-panel.hidden { display: none; }
+
+        .cron-panel {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .cron-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .cron-panel-title {
+            color: var(--text-primary);
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cron-panel-subtitle {
+            color: var(--text-muted);
+            font-size: 12.5px;
+            margin-top: 4px;
+        }
+
+        .cron-grid {
+            display: grid;
+            grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+            gap: 12px;
+        }
+
+        .cron-field {
+            width: 100%;
+            background: rgba(10, 10, 11, 0.55);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            color: var(--text-primary);
+            outline: none;
+        }
+
+        .cron-editor {
+            width: 100%;
+            min-height: 280px;
+            resize: vertical;
+            background: rgba(10, 10, 11, 0.55);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            color: var(--text-primary);
+            outline: none;
+            font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .cron-field:focus,
+        .cron-editor:focus {
+            border-color: rgba(99, 102, 241, 0.55);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
+        }
+
+        .cron-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .cron-results {
+            min-height: 180px;
+            max-height: 420px;
+            overflow: auto;
+            background: rgba(10, 10, 11, 0.55);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .cron-result-row {
+            display: grid;
+            grid-template-columns: minmax(140px, 220px) 1fr;
+            gap: 10px;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--glass-border);
+            font-size: 12.5px;
+        }
+
+        .cron-result-row.ok { border-color: rgba(34,197,94,0.45); }
+        .cron-result-row.fail { border-color: rgba(239,68,68,0.45); }
+        .cron-result-node { color: var(--text-primary); font-weight: 600; }
+        .cron-result-message { color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-word; }
+
+        /* ── Output area ─────────────────────────────────────────────────── */
+        .output-area {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 4px 2px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 12px;
+            align-content: start;
+        }
+
+        .output-area.is-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 14px;
+            text-align: center;
+            gap: 12px;
+            padding: 60px 20px;
+        }
+        .empty-state i {
+            font-size: 44px;
+            color: var(--text-muted);
+            opacity: 0.7;
+            background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.08));
+            border: 1px solid var(--glass-border);
+            width: 80px;
+            height: 80px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 24px;
+        }
+
+        /* ── Node cards ──────────────────────────────────────────────────── */
+        .node-card {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .node-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            cursor: pointer;
+            user-select: none;
+            gap: 10px;
+            transition: background 0.15s;
+        }
+        .node-card-header:hover { background: rgba(255, 255, 255, 0.03); }
+
+        .node-card-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            flex: 1;
+            min-width: 0;
+            color: var(--text-primary);
+            letter-spacing: -0.005em;
+        }
+
+        .node-card-title .card-flag { font-size: 15px; line-height: 1; flex-shrink: 0; }
+
+        .node-card-title .card-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .node-card-ip {
+            color: var(--text-muted);
+            font-size: 11.5px;
+            font-weight: 400;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .node-card-badge {
+            font-size: 11px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            flex-shrink: 0;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .badge-connecting { border-color: rgba(234,179,8,0.5);  color: #fde68a; background: rgba(234,179,8,0.10); }
+        .badge-connected  { border-color: var(--glass-border);  color: var(--text-secondary); background: rgba(255,255,255,0.04); }
+        .badge-running    { border-color: rgba(234,179,8,0.5);  color: #fde68a; background: rgba(234,179,8,0.10); }
+        .badge-ok         { border-color: rgba(34,197,94,0.5);  color: #86efac; background: rgba(34,197,94,0.10); }
+        .badge-fail       { border-color: rgba(239,68,68,0.5);  color: #fca5a5; background: rgba(239,68,68,0.10); }
+        .badge-error      { border-color: rgba(239,68,68,0.5);  color: #fca5a5; background: rgba(239,68,68,0.10); }
+        .badge-timeout    { border-color: rgba(255,123,114,0.5);color: #fecaca; background: rgba(239,68,68,0.10); }
+
+        .node-card-toggle {
+            color: var(--text-muted);
+            font-size: 14px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .node-card.collapsed .node-card-toggle { transform: rotate(-90deg); }
+
+        .node-card-body {
+            background: rgba(10, 10, 11, 0.55);
+            border-top: 1px solid var(--glass-border);
+            padding: 10px 14px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .node-card.collapsed .node-card-body { display: none; }
+
+        .node-output {
+            font-family: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #d4d4d8;
+            max-height: 280px;
+            overflow-y: auto;
+            min-height: 22px;
+            padding: 2px 0;
+        }
+        .node-output:empty::before {
+            content: '—';
+            color: var(--text-muted);
+            opacity: 0.5;
+        }
+        .node-output .stderr { color: #fca5a5; }
+
+        .node-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Summary bar ─────────────────────────────────────────────────── */
+        .summary-bar {
+            padding: 10px 16px;
+            font-size: 12.5px;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 18px;
+            flex-shrink: 0;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .summary-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            background: rgba(255,255,255,0.03);
+            font-weight: 500;
+        }
+        .summary-stat strong { font-weight: 700; color: var(--text-primary); }
+        .summary-stat.ok      { border-color: rgba(34,197,94,0.4);  background: rgba(34,197,94,0.08); }
+        .summary-stat.ok strong{ color: #86efac; }
+        .summary-stat.fail    { border-color: rgba(239,68,68,0.4);  background: rgba(239,68,68,0.08); }
+        .summary-stat.fail strong{ color: #fca5a5; }
+
+        /* ── Overlay ─────────────────────────────────────────────────────── */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 8, 10, 0.65);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .overlay.hidden { display: none; }
+        .overlay-content {
+            background: var(--glass-bg-strong);
+            border: 1px solid var(--glass-border-strong);
+            border-radius: var(--radius);
+            box-shadow: var(--glass-shadow-lg);
+            padding: 28px 32px;
+            text-align: center;
+            color: var(--text-primary);
+            max-width: 420px;
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+        }
+        .overlay-content h2 { font-size: 17px; margin-bottom: 8px; font-weight: 600; }
+        .overlay-content p  { color: var(--text-secondary); font-size: 13px; }
+        .spinner {
+            width: 42px; height: 42px;
+            border: 3px solid var(--glass-border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-box {
+            background: rgba(239, 68, 68, 0.10);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            color: #fca5a5;
+        }
+        .error-box h2 { font-size: 14.5px; margin-bottom: 6px; color: #fca5a5; display: inline-flex; align-items: center; gap: 8px; }
+        .error-box p  { color: var(--text-secondary); font-size: 13px; }
+
+        /* ── Scrollbar ───────────────────────────────────────────────────── */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* ── Responsive ──────────────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .page { padding: 12px; gap: 10px; }
+            .header { padding: 12px 14px; }
+            .header-divider { display: none; }
+            .header h1 { font-size: 14px; }
+            .output-area { grid-template-columns: 1fr; }
+            .command-actions { min-width: 0; flex-direction: row; }
+            .command-actions .btn { flex: 1; }
+            .hint { display: none; }
+            .node-selector { max-height: 120px; }
+            .cron-grid { grid-template-columns: 1fr; }
+            .cron-actions { justify-content: stretch; }
+            .cron-actions .btn { flex: 1; }
+            .cron-result-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <%
+    const i18nKeys = {
+        title:              typeof t !== 'undefined' ? t('broadcast.title')             : 'Broadcast Terminal',
+        selectAll:          typeof t !== 'undefined' ? t('broadcast.selectAll')         : 'Select All',
+        deselectAll:        typeof t !== 'undefined' ? t('broadcast.deselectAll')       : 'Deselect All',
+        execute:            typeof t !== 'undefined' ? t('broadcast.execute')           : 'Execute',
+        cancel:             typeof t !== 'undefined' ? t('broadcast.cancel')            : 'Cancel',
+        disconnect:         typeof t !== 'undefined' ? t('common.close')                : 'Close',
+        cmdPlaceholder:     typeof t !== 'undefined' ? t('broadcast.commandPlaceholder'): 'Enter command...',
+        nodesLabel:         typeof t !== 'undefined' ? t('broadcast.nodes')             : 'Nodes:',
+        connecting:         typeof t !== 'undefined' ? t('terminal.connecting')         : 'Connecting...',
+        connected:          typeof t !== 'undefined' ? t('terminal.connected')          : 'Connected',
+        disconnected:       typeof t !== 'undefined' ? t('terminal.disconnected')       : 'Disconnected',
+        wsError:            typeof t !== 'undefined' ? t('terminal.wsError')            : 'WebSocket connection error',
+        running:            typeof t !== 'undefined' ? t('broadcast.running')           : 'Running...',
+        done:               typeof t !== 'undefined' ? t('broadcast.done')              : 'Done',
+        noSSHNodes:         typeof t !== 'undefined' ? t('broadcast.noSSHNodes')        : 'No nodes with SSH configured',
+        summaryTotal:       typeof t !== 'undefined' ? t('broadcast.summaryTotal')      : 'Total:',
+        summaryOk:          typeof t !== 'undefined' ? t('broadcast.summaryOk')         : 'OK:',
+        summaryFailed:      typeof t !== 'undefined' ? t('broadcast.summaryFailed')     : 'Failed:',
+        timeout:            typeof t !== 'undefined' ? t('broadcast.timeout')           : 'Timed out',
+        exitCode:           typeof t !== 'undefined' ? t('broadcast.exitCode')          : 'exit',
+        empty:              typeof t !== 'undefined' ? t('broadcast.empty')             : 'Execute a command to see output',
+        terminalTab:        typeof t !== 'undefined' ? t('broadcast.terminalTab')       : 'Terminal',
+        cronTab:            typeof t !== 'undefined' ? t('broadcast.cronTab')           : 'Multicast Cron',
+        betaBadge:          typeof t !== 'undefined' ? t('network.betaBadge')           : 'BETA',
+        cronTitle:          typeof t !== 'undefined' ? t('broadcast.cronTitle')         : 'Multicast Cron',
+        cronUser:           typeof t !== 'undefined' ? t('broadcast.cronUser')          : 'Cron user',
+        cronRawBlock:       typeof t !== 'undefined' ? t('broadcast.cronRawBlock')      : 'Raw cron block',
+        cronRawPlaceholder: typeof t !== 'undefined' ? t('broadcast.cronRawPlaceholder'): '*/5 * * * * /opt/job.sh',
+        cronSave:           typeof t !== 'undefined' ? t('broadcast.cronSave')          : 'Save C³ block',
+        cronSaveRun:        typeof t !== 'undefined' ? t('broadcast.cronSaveRun')       : 'Save + Run now',
+        cronResults:        typeof t !== 'undefined' ? t('broadcast.cronResults')       : 'Cron results',
+        cronSaved:          typeof t !== 'undefined' ? t('broadcast.cronSaved')         : 'Saved',
+        cronSkipped:        typeof t !== 'undefined' ? t('broadcast.cronSkipped')       : 'No changes',
+        cronFailed:         typeof t !== 'undefined' ? t('broadcast.cronFailed')        : 'Failed',
+        cronRunFailed:      typeof t !== 'undefined' ? t('broadcast.cronRunFailed')     : 'Run failed',
+        cronSelectNodes:    typeof t !== 'undefined' ? t('broadcast.cronSelectNodes')   : 'Select at least one node',
+        cronEmpty:          typeof t !== 'undefined' ? t('broadcast.cronEmpty')         : 'Save a cron block to see per-node results',
+    };
+    %>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <a href="/panel/nodes" class="header-logo" title="C³ CELERITY">
+                <span class="logo-icon">⚡</span>
+                <span class="logo-text">C³ CELERITY</span>
+            </a>
+            <div class="header-divider"></div>
+            <h1><i class="ti ti-broadcast"></i> <%- i18nKeys.title %></h1>
+            <div class="broadcast-tabs" id="broadcastTabs">
+                <button type="button" class="broadcast-tab active" data-mode="terminal" onclick="switchBroadcastMode('terminal')">
+                    <i class="ti ti-terminal-2"></i> <%- i18nKeys.terminalTab %>
+                </button>
+                <button type="button" class="broadcast-tab" data-mode="cron" onclick="switchBroadcastMode('cron')">
+                    <i class="ti ti-clock-cog"></i> <%- i18nKeys.cronTab %> <span class="beta-badge"><%- i18nKeys.betaBadge %></span>
+                </button>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="status">
+                <div class="status-dot connecting" id="statusDot"></div>
+                <span id="statusText"><%- i18nKeys.connecting %></span>
+            </div>
+            <button class="btn btn-ghost-danger" onclick="doDisconnect()">
+                <i class="ti ti-x"></i> <%- i18nKeys.disconnect %>
+            </button>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="glass-surface control-bar">
+            <div class="node-selector-block">
+                <div class="node-selector-head">
+                    <div class="node-selector-title">
+                        <i class="ti ti-server-2" style="font-size:14px"></i>
+                        <span><%- i18nKeys.nodesLabel %></span>
+                        <span class="count-pill" id="selectedCount">0 / <%= nodes.length %></span>
+                    </div>
+                    <div class="node-selector-actions">
+                        <button class="btn btn-sm" id="btnSelectAll" onclick="toggleSelectAll()"><%- i18nKeys.deselectAll %></button>
+                    </div>
+                </div>
+                <div class="node-selector" id="nodeSelector">
+                    <% nodes.forEach(function(node) { %>
+                    <div class="node-chip selected"
+                         id="chip-<%= node._id %>"
+                         onclick="toggleNode('<%= node._id %>')"
+                         title="<%= node.ip %>:<%= node.sshPort %> (<%= node.sshUsername %>)">
+                        <span class="chip-dot"></span>
+                        <% if (node.flag) { %><span class="chip-flag"><%= node.flag %></span><% } %>
+                        <span class="chip-name"><%= node.name %></span>
+                    </div>
+                    <% }); %>
+                </div>
+            </div>
+        </div>
+
+        <div class="mode-panel" id="terminalPanel">
+        <!-- Control bar -->
+        <div class="glass-surface control-bar">
+            <!-- Command input -->
+            <div class="command-row">
+                <textarea
+                    class="command-input"
+                    id="cmdInput"
+                    placeholder="<%- i18nKeys.cmdPlaceholder %>"
+                    rows="1"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                ></textarea>
+                <div class="command-actions">
+                    <button class="btn btn-primary" id="btnExecute" onclick="doExecute()" disabled>
+                        <i class="ti ti-player-play"></i> <%- i18nKeys.execute %>
+                    </button>
+                    <button class="btn btn-danger" id="btnCancel" onclick="doCancel()" style="display:none">
+                        <i class="ti ti-player-stop"></i> <%- i18nKeys.cancel %>
+                    </button>
+                    <span class="hint">Ctrl + Enter</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Output area -->
+        <div class="output-area is-empty" id="outputArea">
+            <div class="empty-state" id="emptyState">
+                <i class="ti ti-terminal-2"></i>
+                <span><%- i18nKeys.empty %></span>
+            </div>
+        </div>
+
+        <!-- Summary bar (hidden until first run) -->
+        <div class="glass-surface summary-bar" id="summaryBar" style="display:none">
+            <span class="summary-stat"><%- i18nKeys.summaryTotal %> <strong id="sumTotal">0</strong></span>
+            <span class="summary-stat ok"><%- i18nKeys.summaryOk %> <strong id="sumOk">0</strong></span>
+            <span class="summary-stat fail"><%- i18nKeys.summaryFailed %> <strong id="sumFailed">0</strong></span>
+        </div>
+        </div>
+
+        <div class="mode-panel hidden" id="cronPanel">
+            <div class="glass-surface cron-panel">
+                <div class="cron-panel-header">
+                    <div>
+                        <div class="cron-panel-title"><i class="ti ti-clock-cog"></i> <%- i18nKeys.cronTitle %></div>
+                        <div class="cron-panel-subtitle"><%- i18nKeys.cronEmpty %></div>
+                    </div>
+                    <div class="cron-actions">
+                        <button type="button" class="btn btn-success" id="btnCronSave" onclick="applyCronBlock(false)">
+                            <i class="ti ti-device-floppy"></i> <%- i18nKeys.cronSave %>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="btnCronSaveRun" onclick="applyCronBlock(true)">
+                            <i class="ti ti-player-play"></i> <%- i18nKeys.cronSaveRun %>
+                        </button>
+                    </div>
+                </div>
+                <div class="cron-grid">
+                    <div class="form-group">
+                        <label for="cronUser"><%- i18nKeys.cronUser %></label>
+                        <input type="text" class="cron-field" id="cronUser" value="root" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="cronRawBlock"><%- i18nKeys.cronRawBlock %></label>
+                        <textarea id="cronRawBlock" class="cron-editor" spellcheck="false" placeholder="<%- i18nKeys.cronRawPlaceholder %>"></textarea>
+                    </div>
+                </div>
+                <div>
+                    <div class="node-selector-title" style="margin-bottom:8px">
+                        <i class="ti ti-list-check" style="font-size:14px"></i>
+                        <span><%- i18nKeys.cronResults %></span>
+                    </div>
+                    <div class="cron-results" id="cronResults">
+                        <div class="empty-state" style="padding:24px 12px">
+                            <i class="ti ti-clock-cog"></i>
+                            <span><%- i18nKeys.cronEmpty %></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connecting overlay -->
+    <div class="overlay" id="connectingOverlay">
+        <div class="overlay-content">
+            <div class="spinner"></div>
+            <h2><%- i18nKeys.connecting %></h2>
+        </div>
+    </div>
+
+    <!-- Error overlay -->
+    <div class="overlay hidden" id="errorOverlay">
+        <div class="overlay-content">
+            <div class="error-box">
+                <h2><i class="ti ti-alert-circle"></i> <%- i18nKeys.wsError %></h2>
+                <p id="errorText"></p>
+            </div>
+            <button class="btn btn-primary" onclick="doReconnect()" style="margin-top:14px">
+                <i class="ti ti-refresh"></i> <%- typeof t !== 'undefined' ? t('terminal.tryAgain') : 'Try Again' %>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ── Data from server ──────────────────────────────────────────────
+        const ALL_NODES = <%- JSON.stringify(nodes) %>;
+        const i18n = <%- JSON.stringify(i18nKeys) %>;
+
+        // ── State ─────────────────────────────────────────────────────────
+        let ws = null;
+        let running = false;
+        let selectedNodeIds = new Set(ALL_NODES.map(n => String(n._id)));
+        let cmdHistory = [];
+        let cmdHistoryIdx = -1;
+        const CRON_ENDPOINT = '/panel/broadcast/cron/apply';
+
+        try { cmdHistory = JSON.parse(localStorage.getItem('bc_cmd_history') || '[]'); } catch (_) {}
+
+        // ── WebSocket ─────────────────────────────────────────────────────
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/broadcast`);
+
+            ws.onopen = () => {};
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                switch (msg.type) {
+                    case 'ready':
+                        document.getElementById('connectingOverlay').classList.add('hidden');
+                        updateStatus('connected', i18n.connected);
+                        setExecuteEnabled(true);
+                        break;
+                    case 'node-status':
+                        handleNodeStatus(msg);
+                        break;
+                    case 'output':
+                        handleOutput(msg);
+                        break;
+                    case 'exit':
+                        handleExit(msg);
+                        break;
+                    case 'done':
+                        handleDone(msg);
+                        break;
+                    case 'error':
+                        if (running) {
+                            setRunning(false);
+                        } else {
+                            showError(msg.message);
+                        }
+                        break;
+                }
+            };
+
+            ws.onerror = () => showError(i18n.wsError);
+
+            ws.onclose = () => {
+                updateStatus('disconnected', i18n.disconnected);
+                setExecuteEnabled(false);
+                setRunning(false);
+            };
+        }
+
+        function doReconnect() {
+            document.getElementById('errorOverlay').classList.add('hidden');
+            document.getElementById('connectingOverlay').classList.remove('hidden');
+            updateStatus('connecting', i18n.connecting);
+            connect();
+        }
+
+        // ── Node selection ────────────────────────────────────────────────
+        function toggleNode(id) {
+            if (selectedNodeIds.has(id)) {
+                selectedNodeIds.delete(id);
+                document.getElementById('chip-' + id).classList.remove('selected');
+            } else {
+                selectedNodeIds.add(id);
+                document.getElementById('chip-' + id).classList.add('selected');
+            }
+            syncSelectAllBtn();
+        }
+
+        function toggleSelectAll() {
+            if (selectedNodeIds.size === ALL_NODES.length) {
+                selectedNodeIds.clear();
+                ALL_NODES.forEach(n => document.getElementById('chip-' + n._id).classList.remove('selected'));
+            } else {
+                ALL_NODES.forEach(n => {
+                    selectedNodeIds.add(String(n._id));
+                    document.getElementById('chip-' + n._id).classList.add('selected');
+                });
+            }
+            syncSelectAllBtn();
+        }
+
+        function syncSelectAllBtn() {
+            document.getElementById('btnSelectAll').textContent =
+                selectedNodeIds.size === ALL_NODES.length ? i18n.deselectAll : i18n.selectAll;
+            const counter = document.getElementById('selectedCount');
+            if (counter) counter.textContent = `${selectedNodeIds.size} / ${ALL_NODES.length}`;
+        }
+
+        // ── Execute / Cancel ──────────────────────────────────────────────
+        function doExecute() {
+            const cmd = document.getElementById('cmdInput').value.trim();
+            if (!cmd || running || !ws || ws.readyState !== WebSocket.OPEN) return;
+            if (selectedNodeIds.size === 0) {
+                const sel = document.getElementById('nodeSelector');
+                sel.style.animation = 'pulse 0.4s';
+                setTimeout(() => sel.style.animation = '', 400);
+                return;
+            }
+
+            // Save to history
+            if (cmdHistory[0] !== cmd) {
+                cmdHistory.unshift(cmd);
+                if (cmdHistory.length > 50) cmdHistory.pop();
+                try { localStorage.setItem('bc_cmd_history', JSON.stringify(cmdHistory)); } catch (_) {}
+            }
+            cmdHistoryIdx = -1;
+
+            clearOutput();
+            setRunning(true);
+
+            ws.send(JSON.stringify({
+                type: 'exec',
+                command: cmd,
+                nodeIds: Array.from(selectedNodeIds),
+            }));
+        }
+
+        function doCancel() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'cancel' }));
+            }
+            setRunning(false);
+        }
+
+        function doDisconnect() {
+            if (ws) ws.close();
+            window.close();
+            setTimeout(() => { window.location.href = '/panel/nodes'; }, 100);
+        }
+
+        // ── Message handlers ──────────────────────────────────────────────
+        function handleNodeStatus(msg) {
+            const card = ensureCard(msg.nodeId, msg.name, msg.ip);
+
+            if (msg.status === 'connecting') {
+                setChipState(msg.nodeId, 'running');
+                setCardBadge(card, 'connecting', i18n.connecting);
+            } else if (msg.status === 'connected') {
+                setCardBadge(card, 'connected', i18n.running);
+            } else if (msg.status === 'error') {
+                setChipState(msg.nodeId, 'error');
+                setCardBadge(card, 'error', msg.error || 'Error');
+                appendOutput(msg.nodeId, msg.error || 'SSH error', 'stderr');
+            }
+        }
+
+        function handleOutput(msg) {
+            appendOutput(msg.nodeId, msg.data, msg.stream);
+        }
+
+        function handleExit(msg) {
+            const card = ensureCard(msg.nodeId);
+            const ok = msg.code === 0;
+            const timedOut = msg.timedOut;
+
+            if (timedOut) {
+                setChipState(msg.nodeId, 'done-fail');
+                setCardBadge(card, 'timeout', i18n.timeout);
+            } else if (ok) {
+                setChipState(msg.nodeId, 'done-ok');
+                setCardBadge(card, 'ok', `${i18n.exitCode} 0  ${formatDuration(msg.durationMs)}`);
+            } else {
+                setChipState(msg.nodeId, 'done-fail');
+                setCardBadge(card, 'fail', `${i18n.exitCode} ${msg.code}  ${formatDuration(msg.durationMs)}`);
+            }
+
+            const footer = card.querySelector('.node-footer');
+            if (footer) footer.textContent = formatDuration(msg.durationMs);
+        }
+
+        function handleDone(msg) {
+            setRunning(false);
+            const s = msg.summary || {};
+            document.getElementById('sumTotal').textContent  = s.total  || 0;
+            document.getElementById('sumOk').textContent     = s.success || 0;
+            document.getElementById('sumFailed').textContent = s.failed  || 0;
+            document.getElementById('summaryBar').style.display = '';
+        }
+
+        // ── DOM helpers ───────────────────────────────────────────────────
+        const cardMap = new Map();
+
+        function clearOutput() {
+            const area = document.getElementById('outputArea');
+            area.innerHTML = '';
+            area.classList.remove('is-empty');
+            cardMap.clear();
+            document.getElementById('summaryBar').style.display = 'none';
+            ALL_NODES.forEach(n => {
+                if (selectedNodeIds.has(String(n._id))) setChipState(String(n._id), 'selected');
+            });
+        }
+
+        function ensureCard(nodeId, name, ip) {
+            if (cardMap.has(nodeId)) return cardMap.get(nodeId);
+
+            // Remove empty state if present
+            const emptyEl = document.getElementById('emptyState');
+            if (emptyEl) emptyEl.remove();
+            document.getElementById('outputArea').classList.remove('is-empty');
+
+            // Find node info
+            const node = ALL_NODES.find(n => String(n._id) === nodeId);
+            const displayName = name || node?.name || nodeId;
+            const displayIp   = ip   || node?.ip   || '';
+
+            const card = document.createElement('div');
+            card.className = 'glass-surface node-card';
+            card.id = 'card-' + nodeId;
+            card.innerHTML = `
+                <div class="node-card-header" onclick="toggleCard('${nodeId}')">
+                    <div class="node-card-title">
+                        ${node?.flag ? `<span class="card-flag">${escHtml(node.flag)}</span>` : ''}
+                        <span class="card-name">${escHtml(displayName)}</span>
+                        <span class="node-card-ip">${escHtml(displayIp)}</span>
+                    </div>
+                    <span class="node-card-badge badge-connecting" id="badge-${nodeId}">${i18n.connecting}</span>
+                    <i class="ti ti-chevron-down node-card-toggle"></i>
+                </div>
+                <div class="node-card-body">
+                    <pre class="node-output" id="output-${nodeId}"></pre>
+                    <div class="node-footer" id="footer-${nodeId}"></div>
+                </div>`;
+
+            document.getElementById('outputArea').appendChild(card);
+            cardMap.set(nodeId, card);
+            return card;
+        }
+
+        function appendOutput(nodeId, data, stream) {
+            const pre = document.getElementById('output-' + nodeId);
+            if (!pre) return;
+            if (stream === 'stderr') {
+                const span = document.createElement('span');
+                span.className = 'stderr';
+                span.textContent = data;
+                pre.appendChild(span);
+            } else {
+                pre.appendChild(document.createTextNode(data));
+            }
+            pre.scrollTop = pre.scrollHeight;
+        }
+
+        function setCardBadge(card, cls, text) {
+            const badge = card.querySelector('.node-card-badge');
+            if (!badge) return;
+            badge.className = `node-card-badge badge-${cls}`;
+            badge.textContent = text;
+        }
+
+        function setChipState(nodeId, state) {
+            const chip = document.getElementById('chip-' + nodeId);
+            if (!chip) return;
+            chip.className = 'node-chip ' + state;
+        }
+
+        function toggleCard(nodeId) {
+            const card = document.getElementById('card-' + nodeId);
+            if (card) card.classList.toggle('collapsed');
+        }
+
+        function setRunning(val) {
+            running = val;
+            document.getElementById('btnExecute').style.display  = val ? 'none'  : '';
+            document.getElementById('btnCancel').style.display   = val ? ''      : 'none';
+            document.getElementById('cmdInput').disabled         = val;
+        }
+
+        function setExecuteEnabled(val) {
+            document.getElementById('btnExecute').disabled = !val;
+        }
+
+        function updateStatus(cls, text) {
+            document.getElementById('statusDot').className  = 'status-dot ' + cls;
+            document.getElementById('statusText').textContent = text;
+        }
+
+        function showError(msg) {
+            document.getElementById('connectingOverlay').classList.add('hidden');
+            document.getElementById('errorOverlay').classList.remove('hidden');
+            document.getElementById('errorText').textContent = msg;
+            updateStatus('disconnected', i18n.disconnected);
+        }
+
+        function formatDuration(ms) {
+            if (!ms && ms !== 0) return '';
+            if (ms < 1000) return ms + 'ms';
+            return (ms / 1000).toFixed(1) + 's';
+        }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Multicast cron ────────────────────────────────────────────────
+        function switchBroadcastMode(mode) {
+            document.querySelectorAll('#broadcastTabs .broadcast-tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            document.getElementById('terminalPanel').classList.toggle('hidden', mode !== 'terminal');
+            document.getElementById('cronPanel').classList.toggle('hidden', mode !== 'cron');
+        }
+
+        function setCronBusy(value) {
+            document.getElementById('btnCronSave').disabled = value;
+            document.getElementById('btnCronSaveRun').disabled = value;
+            document.getElementById('cronRawBlock').disabled = value;
+            document.getElementById('cronUser').disabled = value;
+        }
+
+        function clearCronResults(message) {
+            const results = document.getElementById('cronResults');
+            results.textContent = '';
+            if (message) {
+                const row = document.createElement('div');
+                row.className = 'empty-state';
+                row.style.padding = '24px 12px';
+                const icon = document.createElement('i');
+                icon.className = 'ti ti-clock-cog';
+                const text = document.createElement('span');
+                text.textContent = message;
+                row.appendChild(icon);
+                row.appendChild(text);
+                results.appendChild(row);
+            }
+        }
+
+        function appendCronResult(result) {
+            const results = document.getElementById('cronResults');
+            const row = document.createElement('div');
+            row.className = 'cron-result-row ' + (result.success ? 'ok' : 'fail');
+
+            const node = document.createElement('div');
+            node.className = 'cron-result-node';
+            node.textContent = `${result.name || result.nodeId}${result.ip ? ' · ' + result.ip : ''}`;
+
+            const message = document.createElement('div');
+            message.className = 'cron-result-message';
+            const runFailed = Array.isArray(result.runNow) && result.runNow.some(item => item.success === false);
+            if (result.error) {
+                message.textContent = `${i18n.cronFailed}: ${result.error}`;
+            } else if (runFailed) {
+                message.textContent = i18n.cronRunFailed;
+            } else if (result.saved) {
+                message.textContent = i18n.cronSaved;
+            } else {
+                message.textContent = i18n.cronSkipped;
+            }
+
+            row.appendChild(node);
+            row.appendChild(message);
+            results.appendChild(row);
+        }
+
+        async function applyCronBlock(runNow) {
+            if (selectedNodeIds.size === 0) {
+                clearCronResults(i18n.cronSelectNodes);
+                return;
+            }
+
+            setCronBusy(true);
+            clearCronResults(i18n.running);
+            try {
+                const payload = {
+                    selectedNodeIds: Array.from(selectedNodeIds),
+                    user: document.getElementById('cronUser').value.trim() || 'root',
+                    content: document.getElementById('cronRawBlock').value,
+                    runNow: runNow === true,
+                };
+                payload.nodeIds = payload.selectedNodeIds;
+
+                const response = await fetch(CRON_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                if (!response.ok || data.success === false && !Array.isArray(data.results)) {
+                    throw new Error(data.error || i18n.wsError);
+                }
+
+                clearCronResults('');
+                (data.results || []).forEach(appendCronResult);
+                if (!data.results || data.results.length === 0) {
+                    clearCronResults(i18n.cronEmpty);
+                }
+            } catch (error) {
+                clearCronResults(error.message || i18n.wsError);
+            } finally {
+                setCronBusy(false);
+            }
+        }
+
+        // ── Textarea auto-resize ──────────────────────────────────────────
+        function autoResize(el) {
+            el.style.height = 'auto';
+            el.style.overflow = 'hidden';
+            const next = Math.min(el.scrollHeight, 220);
+            el.style.height = next + 'px';
+            if (el.scrollHeight > 220) el.style.overflow = 'auto';
+        }
+
+        // ── Keyboard shortcuts ────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('cmdInput');
+            const cronRawBlock = document.getElementById('cronRawBlock');
+
+            input.addEventListener('input', () => autoResize(input));
+            cronRawBlock.addEventListener('input', () => autoResize(cronRawBlock));
+
+            input.addEventListener('keydown', (e) => {
+                const multiline = input.value.includes('\n');
+
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    doExecute();
+                } else if (e.key === 'ArrowUp' && !multiline) {
+                    const cursorAtStart = input.selectionStart === 0;
+                    if (cursorAtStart && cmdHistoryIdx < cmdHistory.length - 1) {
+                        e.preventDefault();
+                        cmdHistoryIdx++;
+                        input.value = cmdHistory[cmdHistoryIdx];
+                        autoResize(input);
+                    }
+                } else if (e.key === 'ArrowDown' && !multiline) {
+                    const cursorAtEnd = input.selectionStart === input.value.length;
+                    if (cursorAtEnd) {
+                        e.preventDefault();
+                        if (cmdHistoryIdx > 0) {
+                            cmdHistoryIdx--;
+                            input.value = cmdHistory[cmdHistoryIdx];
+                        } else {
+                            cmdHistoryIdx = -1;
+                            input.value = '';
+                        }
+                        autoResize(input);
+                    }
+                }
+            });
+
+            syncSelectAllBtn();
+            connect();
+        });
+    </script>
+</body>
+</html>

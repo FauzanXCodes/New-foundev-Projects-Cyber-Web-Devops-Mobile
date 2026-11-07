@@ -1,0 +1,14 @@
+﻿{
+    "id":  "internship-and-job-board-with-scraper",
+    "name":  "Internship \u0026 Job Board with Scraper",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/ricsign/Ricsign-New-Grads-Jobs-2027",
+    "stack":  "Django; Celery; Postgres",
+    "goal":  "Scheduled scraping of listings, dedupe, tag filters and email digest to subscribers.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "index.html",
+    "expectedFileCount":  30,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  75
+}

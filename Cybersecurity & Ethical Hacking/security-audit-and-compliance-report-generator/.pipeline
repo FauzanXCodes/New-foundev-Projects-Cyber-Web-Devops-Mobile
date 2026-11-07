@@ -1,0 +1,152 @@
+
+def imgname = 'hubblestack/jenkins:centos-v1.0.17'
+
+pipeline {
+    agent {
+        docker {
+            image "${imgname}"
+        }
+    }
+
+    options {
+        timestamps()
+        ansiColor 'xterm'
+        buildDiscarder(logRotator(numToKeepStr: '2', artifactNumToKeepStr: '1'))
+    }
+
+    environment {
+        PY_COLORS = 1
+        HS_PROFILE = 1
+        TEST_PY_V = '3.7.9'
+        OUTPUT = 'tests/unittests/output'
+        REF = 'tests/unittests/output/relevant-files.txt'
+        SKIP_0_POOL_NTP_TEST = 1
+    }
+
+    stages {
+        stage('setup') {
+            steps {
+                sh '''#!/bin/bash
+                    echo "---=: CLEAN UP WORKSPACE :=---"
+                    git clean -dfx -e .pip-cache
+                    mkdir -vp $OUTPUT
+                    '''
+
+                sh '''#!/bin/bash
+                    echo "---=: RELEVANT-FILES.TXT :=---"
+                    echo "CHANGE_TARGET=$CHANGE_TARGET BRANCH_NAME=$BRANCH_NAME"
+                    LHS='' RHS=''
+                    if [ -n "$CHANGE_TARGET" ]; then
+                        if tmp=$(git rev-parse origin/$CHANGE_TARGET 2>/dev/null)
+                        then LHS=$tmp
+                        else LHS=$CHANGE_TARGET
+                        fi
+                    fi
+
+                    if [ -n "$BRANCH_NAME" ]; then
+                        if tmp=$(git rev-parse origin/$BRANCH_NAME 2>/dev/null)
+                        then RHS=$tmp
+                        else RHS=$BRANCH_NAME
+                        fi
+                    fi
+
+                    if [ -z "$LHS" ]; then
+                        git log --decorate --pretty=%H%d --simplify-by-decoration > git-log.txt
+                        tail -n +2 git-log.txt | head -n 1 > nearest-ancestor.txt
+                        echo "nearest ancestor seems to be $(<nearest-ancestor.txt)"
+                        LHS=$(cut -d' ' -f1 < nearest-ancestor.txt)
+                        echo "using nearest ancestor for LHS (because it was empty)"
+                    fi
+
+                    if [ -z "$RHS" ]; then
+                        echo "using HEAD for RHS (because it was empty)"
+                        RHS=HEAD
+                    fi
+
+                    echo "computed git diff LHS: $LHS"
+                    echo "computed git diff RHS: $RHS"
+
+                    if [ -n "$LHS" -a -n "$RHS" ]
+                    then find hubblestack -name "*.py" -print0 \\
+                        | xargs -r0 git diff --name-only "$LHS" "$RHS" > $REF
+                        head -v $REF
+                    else cat /dev/null > $REF
+                         echo "*** NULL $REF ***"
+                    fi
+                '''
+
+                sh '''#!/bin/bash
+                    echo "---=: CONFIGURE TEST ENVIRONMENT :=---"
+                    source /etc/profile.d/kersplat.sh
+                    export PY_V="$TEST_PY_V"
+                    pyenv local $TEST_PY_V
+                    pyenv shell $TEST_PY_V
+                    echo "pyenv version-name: $(pyenv version-name)"
+                    set -e
+                    pip install --cache-dir .pip-cache -t ./vlib virtualenv
+                    PYTHONPATH=./vlib ./vlib/bin/virtualenv ./venv
+                    source ./venv/bin/activate
+                    echo no | ./mk-requires.sh
+                    pip install --cache-dir .pip-cache -U -r requirements.txt
+                    pip install --cache-dir .pip-cache -U -r tests/automation/requirements.txt
+                    pip uninstall -y salt-ssh
+                    python -c "
+import sys
+try:
+    import salt
+    print('ERROR, SALT IS FOUND, ERROR')
+    sys.exit(1)
+except:
+    pass
+"
+                    '''
+            }
+        }
+        stage('lint/test') {
+            parallel {
+                stage('pytest') {
+                    steps {
+                        sh '''#!/bin/bash
+                            source ./venv/bin/activate
+                            pytest -v tests/unittests --html=tests/unittests/output/pytest.html
+                            x=$?
+                            cp tests/unittests/output/combined.svg tests/unittests/output/profile-diagram.svg
+                            exit $x
+                            '''
+                    }
+                }
+                stage('pylint') {
+                    steps {
+                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                            sh '''#!/bin/bash
+                                source ./venv/bin/activate
+                                if [ -s $REF ]
+                                then xargs -r pylint --output-format=json < $REF > $OUTPUT/pylint.json; x=$?
+                                     echo "Wrote $(wc -l < $OUTPUT/pylint.json) line(s) to $OUTPUT/pylint.json with exit($x)"
+                                else echo SKIPPING PYLINT "$REF is empty"; x=0
+                                fi
+                                test -s $OUTPUT/pylint.json || echo '[]' > $OUTPUT/pylint.json
+                                python ./tests/automation/pylint-json-to-html $OUTPUT/pylint.json
+                                echo "Wrote $(wc -l < $OUTPUT/pylint.html) line(s) to $OUTPUT/pylint.html (see test reports)"
+                                exit $x
+                                '''
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML (target: [
+                allowMissing: false,
+                alwaysLinkToLastBuild: false,
+                keepAll: true,
+                reportDir: 'tests/unittests/output',
+                reportFiles: 'pytest.html, coverage/index.html, pylint.html, profile-diagram.svg, relevant-files.txt',
+                reportName: "Test Reports"
+            ])
+        }
+    }
+}

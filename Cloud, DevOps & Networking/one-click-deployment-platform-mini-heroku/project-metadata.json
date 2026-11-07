@@ -1,0 +1,14 @@
+﻿{
+    "id":  "one-click-deployment-platform-mini-heroku",
+    "name":  "One-Click Deployment Platform (mini Heroku)",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/mhd-Sami/mini-heroku",
+    "stack":  "Node; Docker API; React",
+    "goal":  "Paste a Git URL, build an image, run a container, expose a subdomain.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "backend/auth_routes.py",
+    "expectedFileCount":  28,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  44
+}

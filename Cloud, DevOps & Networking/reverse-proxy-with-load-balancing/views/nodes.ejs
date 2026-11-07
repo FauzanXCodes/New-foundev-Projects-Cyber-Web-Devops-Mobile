@@ -1,0 +1,1484 @@
+<%
+const nodeMetaLabels = {
+    transportTitle: t('nodes.nodeMetaTransport'),
+    securityTitle: t('nodes.nodeMetaSecurity'),
+    certificateTitle: t('nodes.nodeMetaCertificate'),
+    certPanel: t('nodes.nodeMetaCertPanel'),
+    certAcme: t('nodes.nodeMetaCertAcme'),
+    certManual: t('nodes.nodeMetaCertManual'),
+    certSelfSigned: t('nodes.nodeMetaCertSelfSigned'),
+    certFiles: t('nodes.nodeMetaCertFiles'),
+    securityNone: t('nodes.nodeMetaSecurityNone'),
+    virtualTransport: t('nodes.nodeMetaVirtual'),
+};
+function nodeMetaFor(node) {
+    if (typeof buildNodeUiMeta !== 'function') {
+        return { displayDomain: node?.domain || '', badges: [] };
+    }
+    return buildNodeUiMeta(node, {
+        panelDomain: typeof panelDomain === 'string' ? panelDomain : '',
+        labels: nodeMetaLabels,
+    });
+}
+%>
+
+<div class="page-header sticky-header">
+    <div class="page-header-left">
+        <div class="view-tabs">
+            <button class="view-tab active" id="tabList" onclick="switchNodesView('list')">
+                <i class="ti ti-list"></i> <%= t('nodes.title') %>
+                <span class="tab-badge"><%= nodes.length %></span>
+            </button>
+            <button class="view-tab" id="tabNetwork" onclick="switchNodesView('network')">
+                <i class="ti ti-topology-star-3"></i> <%= t('network.title') %>
+                <span class="beta-badge" style="margin-left:4px"><%= t('network.betaBadge') %></span>
+                <% if (linksCount) { %><span class="tab-badge"><%= linksCount %></span><% } %>
+            </button>
+        </div>
+    </div>
+    <div class="page-header-center" id="listFilters">
+        <div class="filters-bar">
+            <select id="filterStatus" class="filter-select" onchange="applyFilters()">
+                <option value=""><%= t('nodes.allStatuses') %></option>
+                <option value="online"><%= t('nodes.statusOnline') %></option>
+                <option value="offline"><%= t('nodes.statusOffline') %></option>
+                <option value="error"><%= t('nodes.statusError') %></option>
+            </select>
+            <select id="filterGroup" class="filter-select" onchange="applyFilters()">
+                <option value=""><%= t('users.allGroups') %></option>
+                <% if (groups) { groups.forEach(group => { %>
+                <option value="<%= group._id %>"><%= group.name %></option>
+                <% }); } %>
+            </select>
+            <select id="sortNodes" class="filter-select" onchange="sortNodesTable()">
+                <option value="ranking"><%= t('nodes.sortByPriority') %></option>
+                <option value="name"><%= t('nodes.sortByName') %></option>
+                <option value="online"><%= t('nodes.sortByOnline') %></option>
+                <option value="status"><%= t('nodes.sortByStatus') %></option>
+            </select>
+            <span id="resultsCount" class="filter-count"></span>
+        </div>
+    </div>
+    <div class="page-header-center" id="networkToolbar" style="display:none">
+        <div class="filters-bar">
+            <button class="btn btn-sm" id="btnAutoLayout" title="<%= t('network.autoLayout') %>">
+                <i class="ti ti-layout-distribute-horizontal"></i> <%= t('network.autoLayout') %>
+            </button>
+            <button class="btn btn-sm" id="btnFitView" title="<%= t('network.fitView') %>">
+                <i class="ti ti-arrows-maximize"></i>
+            </button>
+            <button class="btn btn-sm" id="btnRefresh" title="<%= t('network.refresh') %>">
+                <i class="ti ti-refresh"></i>
+            </button>
+        </div>
+    </div>
+    <div class="page-header-right" id="listActions">
+        <a href="/panel/broadcast" target="_blank" class="btn"><i class="ti ti-broadcast"></i> <%= t('nodes.broadcastTerminal') %></a>
+        <a href="/panel/nodes/add" class="btn btn-primary"><i class="ti ti-server-2"></i> <%= t('nodes.addNode') %></a>
+    </div>
+    <div class="page-header-right" id="networkActions" style="display:none">
+        <button class="btn btn-primary" id="btnAddLink"><i class="ti ti-plus"></i> <%= t('network.addLink') %></button>
+    </div>
+</div>
+
+<div id="viewList">
+<div class="card">
+    <div class="card-body no-padding">
+        <div class="table-wrapper">
+            <table class="table" id="nodesTable">
+                <thead>
+                    <tr>
+                        <th style="width:32px;text-align:center" title="<%= t('nodes.sortByPriority') %>">#</th>
+                        <th><%= t('common.name') %></th>
+                        <th><%= t('common.server') %></th>
+                        <th><%= t('common.ports') %></th>
+                        <th><%= t('common.status') %></th>
+                        <th class="node-active-col"><%= t('nodes.activeColumn') %></th>
+                        <th><%= t('common.online') %></th>
+                        <th><%= t('nodes.groups') %></th>
+                        <th><%= t('nodes.nodeInfo') %></th>
+                        <th><%= t('common.actions') %></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (nodes.length === 0) { %>
+                    <tr>
+                        <td colspan="10" class="text-center text-muted">
+                            <div class="empty-state">
+                                <span class="empty-icon"><i class="ti ti-server"></i></span>
+                                <p><%= t('nodes.noNodes') %></p>
+                                <a href="/panel/nodes/add" class="btn btn-primary"><i class="ti ti-plus"></i> <%= t('nodes.addFirstNode') %></a>
+                            </div>
+                        </td>
+                    </tr>
+                    <% } %>
+                    <% nodes.forEach(node => { 
+                        const groupIds = (node.groups || []).map(g => g._id?.toString() || g.toString()).join(',');
+                        const nodeMeta = nodeMetaFor(node);
+                    %>
+                    <tr class="node-row"
+                        data-status="<%= node.status %>"
+                        data-groups="<%= groupIds %>"
+                        data-active="<%= node.active %>"
+                        data-type="<%= node.type || 'hysteria' %>"
+                        data-id="<%= node._id %>"
+                        data-name="<%= (node.name || '').replace(/"/g, '&quot;') %>"
+                        data-ranking="<%= node.rankingCoefficient || 1 %>"
+                        data-online="<%= node.onlineUsers || 0 %>">
+                        <td class="drag-handle" title="<%= t('nodes.dragToReorder') %>" style="text-align:center"><span class="ranking-num"><%= node.rankingCoefficient || 1 %></span><i class="ti ti-grip-vertical" style="color:var(--text-muted)"></i></td>
+                        <td>
+                            <div class="node-name-cell">
+                                <% if (node.flag) { %><span class="node-flag"><%= node.flag %></span><% } %>
+                                <div>
+                                    <strong><%= node.name %></strong>
+                                    <% if (node.type === 'xray') { %>
+                                    <img src="/img/xray.svg" alt="Xray" title="Xray VLESS" style="width:16px;height:16px;vertical-align:middle;margin-left:6px;opacity:0.7;">
+                                    <% } else if (node.type === 'virtual') { %>
+                                    <i class="ti ti-route" title="Virtual / Balancer" style="font-size:16px;vertical-align:middle;margin-left:6px;opacity:0.7;"></i>
+                                    <% } else if (node.type === 'cdn') { %>
+                                    <i class="ti ti-cloud-network" title="CDN" style="font-size:16px;vertical-align:middle;margin-left:6px;opacity:0.7;"></i>
+                                    <% } else { %>
+                                    <img src="/img/hysteria.svg" alt="Hysteria" title="Hysteria 2" style="width:16px;height:16px;vertical-align:middle;margin-left:6px;opacity:0.7;">
+                                    <% } %>
+                                    <% if (node.type !== 'virtual' && node.type !== 'cdn' && (ipProtocolCount || {})[node.ip] > 1) { %>
+                                    <span class="badge-cascade relay" title="<%= t('nodes.dualProtocol') %>"><i class="ti ti-layers-subtract" style="font-size:10px;"></i> dual</span>
+                                    <% } %>
+                                    <% if (node.cascadeRole && node.cascadeRole !== 'standalone') { %>
+                                    <span class="badge-cascade <%= node.cascadeRole %>"><%= node.cascadeRole.toUpperCase() %></span>
+                                    <% } %>
+                                    <% if (nodeMeta.badges && nodeMeta.badges.length > 0) { %>
+                                    <div class="node-meta-strip">
+                                        <% nodeMeta.badges.forEach(badge => { %>
+                                        <span class="<%= badge.className %>" title="<%= badge.title %>">
+                                            <i class="<%= badge.icon %>"></i><%= badge.label %>
+                                        </span>
+                                        <% }); %>
+                                    </div>
+                                    <% } %>
+                                    <% if (nodeMeta.displayDomain) { %>
+                                    <small class="node-domain-line"><i class="ti ti-world"></i> <%= nodeMeta.displayDomain %></small>
+                                    <% } %>
+                                    <% if (node.comment) { %>
+                                    <br><small class="node-comment" title="<%= node.comment %>"><i class="ti ti-message-circle"></i> <%= node.comment %></small>
+                                    <% } %>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <% if (node.type === 'virtual') { %>
+                                <span class="text-muted">—</span>
+                            <% } else if (node.type === 'cdn') { %>
+                                <span class="text-muted">CDN → <%= node.cdn?.originNode?.name || 'origin' %></span>
+                            <% } else { %>
+                                <code><%= node.ip %></code>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (node.type === 'virtual') { %>
+                                <span class="text-muted" title="<%= (node.virtual && node.virtual.strategy) || 'leastLoad' %>">
+                                    <i class="ti ti-route"></i> <%= (node.virtual && node.virtual.strategy) || 'leastLoad' %>
+                                </span>
+                            <% } else if (node.type === 'cdn') { %>
+                                <code><%= node.cdn?.port || 443 %></code>
+                            <% } else if (node.type === 'xray' && node.xray && Array.isArray(node.xray.extraInbounds) && node.xray.extraInbounds.length > 0) { %>
+                                <div class="port-chip-list">
+                                    <span class="port-chip" title="<%= (node.xray.transport || 'tcp') %>/<%= (node.xray.security || 'reality') %>"><%= node.port %></span>
+                                    <% node.xray.extraInbounds.forEach(function(ei) { %>
+                                        <span class="port-chip port-chip-extra" title="<%= ei.transport %>/<%= ei.security %><%= ei.label ? ' — ' + ei.label : '' %>"><%= ei.port %></span>
+                                    <% }); %>
+                                </div>
+                            <% } else { %>
+                                <code><%= node.port %></code>
+                            <% } %>
+                            <% if (node.type !== 'virtual' && node.type !== 'cdn' && node.portRange) { %>
+                            <br><small class="text-muted">hop: <%= node.portRange %></small>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (node.type === 'virtual') { %>
+                                <span class="badge badge-secondary" data-node-status-badge data-node-id="<%= node._id %>" data-node-virtual-status="true" title="<%= t('nodes.virtualNoStatus') %>">virtual</span>
+                            <% } else if (node.type === 'cdn') { %>
+                                <span class="badge badge-secondary" data-node-status-badge data-node-id="<%= node._id %>" data-node-virtual-status="true">cdn</span>
+                            <% } else { %>
+                                <span class="badge badge-<%= node.status === 'online' ? 'success' : (node.status === 'error' ? 'danger' : 'warning') %>" data-node-status-badge data-node-id="<%= node._id %>">
+                                    <%= node.status %>
+                                </span>
+                            <% } %>
+                            <% if (!node.active) { %>
+                            <span class="badge badge-secondary node-active-off-badge" data-node-active-off-badge data-node-id="<%= node._id %>"><%= t('nodes.off') %></span>
+                            <% } else { %>
+                            <span class="badge badge-secondary node-active-off-badge" data-node-active-off-badge data-node-id="<%= node._id %>" style="display:none"><%= t('nodes.off') %></span>
+                            <% } %>
+                        </td>
+                        <td class="node-active-col">
+                            <label class="toggle-switch node-active-toggle" title="<%= node.active ? t('nodes.disableActiveTitle') : t('nodes.enableActiveTitle') %>">
+                                <input type="checkbox"
+                                       data-node-active-input
+                                       data-node-id="<%= node._id %>"
+                                       data-node-name="<%= node.name %>"
+                                       aria-label="<%= node.active ? t('nodes.disableActiveAria') : t('nodes.enableActiveAria') %>: <%= node.name %>"
+                                       <%= node.active ? 'checked' : '' %>
+                                       onchange="toggleNodeActive('<%= node._id %>', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <% if (node.type === 'virtual' || node.type === 'cdn') { %>
+                                <span class="text-muted">—</span>
+                            <% } else { %>
+                                <span class="<%= node.maxOnlineUsers && node.onlineUsers >= node.maxOnlineUsers ? 'text-danger' : '' %>">
+                                    <%= node.onlineUsers || 0 %><% if (node.maxOnlineUsers) { %>/<%= node.maxOnlineUsers %><% } %>
+                                </span>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (node.groups && node.groups.length > 0) { %>
+                                <% node.groups.slice(0,2).forEach(group => { %>
+                                    <span class="group-tag-sm" style="background: <%= group.color %>20; border-color: <%= group.color %>; color: <%= group.color %>">
+                                        <%= group.name %>
+                                    </span>
+                                <% }); %>
+                                <% if (node.groups.length > 2) { %>
+                                    <span class="group-more">+<%= node.groups.length - 2 %></span>
+                                <% } %>
+                            <% } else { %>
+                                <span class="text-muted"><%= t('common.all') %></span>
+                            <% } %>
+                        </td>
+                        <td class="node-info-cell">
+                            <% if (node.type === 'xray') { %>
+                                <% if (node.xrayVersion) { %>
+                                <span class="node-info-badge" title="<%= t('nodes.xrayVersion') %>">
+                                    <img src="/img/xray.svg" style="width:12px;height:12px;vertical-align:middle;"> v<%= node.xrayVersion %>
+                                </span>
+                                <% } %>
+                                <span class="node-info-badge badge-agent-<%= node.agentStatus || 'unknown' %>" title="<%= t('nodes.agentStatus') %>">
+                                    <i class="ti ti-cpu"></i> <%= node.agentStatus || 'unknown' %>
+                                </span>
+                                <% const rgState = node.xray?.realityGuard?.status; %>
+                                <% if (node.xray?.realityGuard?.mode !== 'off' && (rgState === 'dead' || rgState === 'no_candidate')) { %>
+                                <span class="node-info-badge badge-agent-offline"
+                                      title="<%= t(rgState === 'dead' ? 'nodes.realityGuardStatusDead' : 'nodes.realityGuardStatusNoCandidate') %><%= node.xray.realityGuard.lastError ? ': ' + node.xray.realityGuard.lastError : '' %>">
+                                    <i class="ti ti-alert-triangle"></i> <%= t('nodes.realityGuardBadge') %>
+                                </span>
+                                <% } else if (node.xray?.realityGuard?.mode !== 'off' && node.xray?.realityGuard?.warning) { %>
+                                <span class="node-info-badge badge-agent-unknown"
+                                      title="<%= t('nodes.realityGuardWarningTitle') %>: <%= t('nodes.realityGuardWarningNoH2') %>">
+                                    <i class="ti ti-alert-circle"></i> <%= t('nodes.realityGuardWarningBadge') %>
+                                </span>
+                                <% } %>
+                            <% } else { %>
+                                <span class="text-muted">—</span>
+                            <% } %>
+                            <%
+                                const probeInfo = (typeof probeSummary !== 'undefined' && probeSummary)
+                                    ? probeSummary[String(node._id)]
+                                    : null;
+                            %>
+                            <% if (probeInfo) { %>
+                                <span class="probe-badge <%= probeInfo.failing > 0 ? 'probe-badge-fail' : 'probe-badge-ok' %>"
+                                      title="<%= t('probes.badgeTitle') %>">
+                                    <i class="ti ti-radar"></i>
+                                    <%= probeInfo.checks - probeInfo.failing %>/<%= probeInfo.checks %>
+                                </span>
+                            <% } %>
+                        </td>
+                        <td class="td-actions">
+                            <div class="node-actions">
+                                <% if (node.type !== 'virtual' && node.type !== 'cdn') { %>
+                                    <a href="/panel/nodes/<%= node._id %>/terminal" class="btn-icon" title="<%= t('nodes.terminal') %>" <%= !node.ssh?.password && !node.ssh?.privateKey ? 'style="pointer-events:none;opacity:0.5"' : '' %>><i class="ti ti-terminal-2"></i></a>
+                                <% } %>
+                                <a href="/panel/nodes/<%= node._id %>" class="btn-icon" title="<%= t('common.edit') %>"><i class="ti ti-pencil"></i></a>
+                                <%- include('partials/nodes/more-menu', { node: node }) %>
+                                <button class="btn-icon btn-icon-danger" onclick="deleteNode('<%= node._id %>')" title="<%= t('common.delete') %>"><i class="ti ti-trash"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Mobile Cards -->
+        <div class="mobile-nodes-list">
+            <% if (nodes.length === 0) { %>
+                <div style="text-align: center; padding: 40px 20px;">
+                    <p style="color: var(--text-muted); margin-bottom: 16px;"><%= t('nodes.noNodes') %></p>
+                    <a href="/panel/nodes/add" class="btn btn-primary btn-sm"><%= t('nodes.addFirstNode') %></a>
+                </div>
+            <% } %>
+            <% nodes.forEach(node => { 
+                const groupIds = (node.groups || []).map(g => g._id?.toString() || g.toString()).join(',');
+                const nodeMeta = nodeMetaFor(node);
+            %>
+                <div class="mobile-node-card node-row-mobile"
+                     data-status="<%= node.status %>"
+                     data-groups="<%= groupIds %>"
+                     data-active="<%= node.active %>"
+                     data-type="<%= node.type || 'hysteria' %>"
+                     data-id="<%= node._id %>"
+                     data-name="<%= (node.name || '').replace(/"/g, '&quot;') %>"
+                     data-ranking="<%= node.rankingCoefficient || 1 %>"
+                     data-online="<%= node.onlineUsers || 0 %>">
+                    <div class="mobile-node-header">
+                        <div class="mobile-node-title">
+                            <% if (node.flag) { %><span><%= node.flag %></span><% } %>
+                            <strong><%= node.name %></strong>
+                            <% if (node.type === 'xray') { %>
+                            <img src="/img/xray.svg" alt="Xray" title="Xray VLESS" style="width:14px;height:14px;vertical-align:middle;opacity:0.7;">
+                            <% } else if (node.type === 'virtual') { %>
+                            <i class="ti ti-route" title="Virtual / Balancer" style="font-size:14px;vertical-align:middle;opacity:0.7;"></i>
+                            <% } else if (node.type === 'cdn') { %>
+                            <i class="ti ti-cloud-network" title="CDN" style="font-size:14px;vertical-align:middle;opacity:0.7;"></i>
+                            <% } else { %>
+                            <img src="/img/hysteria.svg" alt="Hysteria" title="Hysteria 2" style="width:14px;height:14px;vertical-align:middle;opacity:0.7;">
+                            <% } %>
+                            <code style="font-size: 11px;"><%= node.type === 'virtual'
+                                ? ((node.virtual && node.virtual.strategy) || 'leastLoad')
+                                : (node.type === 'cdn' ? (node.cdn?.domain || `${node.cdn?.edges?.length || 0} edges`) : node.ip) %></code>
+                            <% if (nodeMeta.badges && nodeMeta.badges.length > 0) { %>
+                            <div class="node-meta-strip node-meta-strip-mobile">
+                                <% nodeMeta.badges.forEach(badge => { %>
+                                <span class="<%= badge.className %>" title="<%= badge.title %>">
+                                    <i class="<%= badge.icon %>"></i><%= badge.label %>
+                                </span>
+                                <% }); %>
+                            </div>
+                            <% } %>
+                            <% if (nodeMeta.displayDomain) { %>
+                            <small class="node-domain-line"><i class="ti ti-world"></i> <%= nodeMeta.displayDomain %></small>
+                            <% } %>
+                        </div>
+                        <div class="mobile-node-state">
+                            <% if (node.type === 'virtual') { %>
+                            <span class="badge badge-secondary" data-node-status-badge data-node-id="<%= node._id %>" data-node-virtual-status="true" title="<%= t('nodes.virtualNoStatus') %>">virtual</span>
+                            <% } else if (node.type === 'cdn') { %>
+                            <span class="badge badge-secondary" data-node-status-badge data-node-id="<%= node._id %>" data-node-virtual-status="true">cdn</span>
+                            <% } else { %>
+                            <span class="badge badge-<%= node.status === 'online' ? 'success' : (node.status === 'error' ? 'danger' : 'warning') %>" data-node-status-badge data-node-id="<%= node._id %>">
+                                <%= node.status %>
+                            </span>
+                            <% } %>
+                            <% if (!node.active) { %>
+                            <span class="badge badge-secondary node-active-off-badge" data-node-active-off-badge data-node-id="<%= node._id %>"><%= t('nodes.off') %></span>
+                            <% } else { %>
+                            <span class="badge badge-secondary node-active-off-badge" data-node-active-off-badge data-node-id="<%= node._id %>" style="display:none"><%= t('nodes.off') %></span>
+                            <% } %>
+                        </div>
+                    </div>
+
+                    <% if (node.comment) { %>
+                    <div class="node-comment node-comment-mobile" title="<%= node.comment %>">
+                        <i class="ti ti-message-circle"></i> <%= node.comment %>
+                    </div>
+                    <% } %>
+
+                    <div class="mobile-node-stats">
+                        <div class="mobile-stat-item">
+                            <span class="mobile-stat-label"><%= t('common.online') %></span>
+                            <span class="mobile-stat-value"><%= node.onlineUsers || 0 %><% if (node.maxOnlineUsers) { %>/<%= node.maxOnlineUsers %><% } %></span>
+                        </div>
+                        <div class="mobile-stat-item">
+                            <span class="mobile-stat-label"><%= t('common.ports') %></span>
+                            <span class="mobile-stat-value"><%= node.type === 'virtual' ? ((node.virtual && node.virtual.strategy) || 'leastLoad') : (node.type === 'cdn' ? (node.cdn?.port || 443) : node.port) %></span>
+                        </div>
+                        <div class="mobile-stat-item mobile-stat-toggle">
+                            <span class="mobile-stat-label"><%= t('nodes.activeColumn') %></span>
+                            <label class="toggle-switch node-active-toggle" title="<%= node.active ? t('nodes.disableActiveTitle') : t('nodes.enableActiveTitle') %>">
+                                <input type="checkbox"
+                                       data-node-active-input
+                                       data-node-id="<%= node._id %>"
+                                       data-node-name="<%= node.name %>"
+                                       aria-label="<%= node.active ? t('nodes.disableActiveAria') : t('nodes.enableActiveAria') %>: <%= node.name %>"
+                                       <%= node.active ? 'checked' : '' %>
+                                       onchange="toggleNodeActive('<%= node._id %>', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mobile-node-actions">
+                        <% if (node.type !== 'virtual' && node.type !== 'cdn') { %>
+                        <a href="/panel/nodes/<%= node._id %>/terminal" class="btn btn-sm" title="<%= t('nodes.terminal') %>" aria-label="<%= t('nodes.terminal') %>" <%= !node.ssh?.password && !node.ssh?.privateKey ? 'style="pointer-events:none;opacity:0.5"' : '' %>><i class="ti ti-terminal-2"></i></a>
+                        <% } %>
+                        <a href="/panel/nodes/<%= node._id %>" class="btn btn-sm" title="<%= t('common.edit') %>" aria-label="<%= t('common.edit') %>"><i class="ti ti-pencil"></i></a>
+                        <%- include('partials/nodes/more-menu', { node: node, moreToggleClass: 'btn btn-sm' }) %>
+                        <button class="btn btn-sm btn-danger" onclick="deleteNode('<%= node._id %>')" title="<%= t('common.delete') %>" aria-label="<%= t('common.delete') %>"><i class="ti ti-trash"></i></button>
+                    </div>
+                </div>
+            <% }); %>
+        </div>
+    </div>
+</div>
+</div><!-- /viewList -->
+
+<!-- Network Map View (hidden by default, loaded on demand) -->
+<div id="viewNetwork" style="display:none">
+    <link rel="stylesheet" href="/css/network.min.css">
+    <div class="network-page">
+        <div class="network-container">
+            <div id="cy" class="cytoscape-canvas"></div>
+
+            <!-- Empty state -->
+            <div class="network-empty" id="networkEmpty" style="display:none">
+                <i class="ti ti-topology-star-3"></i>
+                <p><%= t('network.noNodesOrLinks') %></p>
+            </div>
+
+            <!-- Legend -->
+            <div class="network-legend" id="networkLegend">
+                <div class="legend-title"><%= t('network.legendTitle') %></div>
+                <div class="legend-section">
+                    <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span><%= t('network.legendOnline') %></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span><%= t('network.legendOffline') %></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span><%= t('network.legendDeployed') %></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#64748b"></span><%= t('network.legendPending') %></div>
+                </div>
+                <div class="legend-divider"></div>
+                <div class="legend-section">
+                    <div class="legend-item"><span class="legend-role legend-portal"></span><%= t('network.legendPortal') %></div>
+                    <div class="legend-item"><span class="legend-role legend-bridge"></span><%= t('network.legendBridge') %></div>
+                    <div class="legend-item"><span class="legend-role legend-relay"></span><%= t('network.legendRelay') %></div>
+                </div>
+                <div class="legend-divider"></div>
+                <div class="legend-section">
+                    <div class="legend-item"><span class="legend-line legend-line-forward"></span><%= t('network.legendForwardLine') %></div>
+                    <div class="legend-item"><span class="legend-line legend-line-reverse"></span><%= t('network.legendReverseLine') %></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Node/Edge info modal -->
+    <div class="modal-overlay" id="nodeInfoModal">
+        <div class="modal-card modal-card-sm">
+            <div class="modal-header">
+                <h3 id="nodeInfoTitle"><i class="ti ti-info-circle"></i> <span id="nodeInfoTitleText"></span></h3>
+                <button class="modal-close" id="nodeInfoClose"><i class="ti ti-x"></i></button>
+            </div>
+            <div class="modal-body" id="nodeInfoBody"></div>
+        </div>
+    </div>
+
+    <!-- Add Link Modal -->
+    <div class="modal-overlay" id="addLinkModal">
+        <div class="modal-card modal-card-lg">
+            <div class="modal-header">
+                <h3><i class="ti ti-link"></i> <span id="linkModalTitle"><%= t('network.addLink') %></span> <span class="beta-badge"><%= t('network.betaBadge') %></span></h3>
+                <button class="modal-close" id="modalClose"><i class="ti ti-x"></i></button>
+            </div>
+            <form id="addLinkForm" class="modal-body">
+                <input type="hidden" name="linkId" id="linkIdInput" value="">
+                <div class="form-warning" id="formBetaNotice">
+                    <strong><%= t('network.betaTitle') %></strong>
+                    <%= t('network.betaDescription') %>
+                </div>
+                <div class="form-group">
+                    <label><%= t('network.linkName') %></label>
+                    <input type="text" name="name" class="form-input" required placeholder="YandexCloud → France">
+                </div>
+
+                <!-- Mode Switcher -->
+                <div class="form-group">
+                    <label><%= t('network.linkMode') %></label>
+                    <div class="mode-switcher" id="modeSwitcher">
+                        <button type="button" class="mode-btn active" data-mode="reverse">
+                            <i class="ti ti-arrows-exchange"></i> <%= t('network.modeReverse') %>
+                        </button>
+                        <button type="button" class="mode-btn" data-mode="forward">
+                            <i class="ti ti-arrow-right"></i> <%= t('network.modeForward') %>
+                        </button>
+                    </div>
+                    <input type="hidden" name="mode" id="linkModeInput" value="reverse">
+                    <div class="form-hint" id="modeHint"><%= t('network.modeReverseHint') %></div>
+                    <div class="form-hint" id="modeFlowHint" style="margin-top:3px; color:#94a3b8"><%= t('network.modeReverseFlow') %></div>
+                    <div class="form-warning" id="modeWarnHint" style="margin-top:6px"><%= t('network.modeReverseWarning') %></div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><%= t('network.portalNode') %></label>
+                        <select name="portalNodeId" class="form-input" id="selectPortal" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('network.bridgeNode') %></label>
+                        <select name="bridgeNodeId" class="form-input" id="selectBridge" required></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><%= t('network.tunnelPort') %></label>
+                        <input type="number" name="tunnelPort" class="form-input" value="10086" min="1" max="65535">
+                        <div class="form-hint" id="tunnelPortHint" style="margin-top:3px"><%= t('network.tunnelPortReverseHint') %></div>
+                        <div class="form-warning" id="portConflictHint" style="display:none;margin-top:5px"></div>
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('network.tunnelProtocol') %></label>
+                        <select name="tunnelProtocol" class="form-input">
+                            <option value="vless">VLESS</option>
+                            <option value="vmess">VMess</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><%= t('network.tunnelTransport') %></label>
+                        <select name="tunnelTransport" class="form-input" id="selectTransport">
+                            <option value="tcp">TCP</option>
+                            <option value="ws">WebSocket</option>
+                            <option value="grpc">gRPC</option>
+                            <option value="xhttp">XHTTP (SplitHTTP)</option>
+                            <option value="kcp">mKCP (UDP)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('network.tunnelSecurity') %></label>
+                        <select name="tunnelSecurity" class="form-input" id="selectSecurity">
+                            <option value="none">None</option>
+                            <option value="tls">TLS</option>
+                            <option value="reality">REALITY</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- REALITY Settings (hidden by default) -->
+                <div class="form-section" id="realitySection" style="display:none">
+                    <div class="form-section-title"><i class="ti ti-shield-lock"></i> REALITY</div>
+                    <div class="form-hint" style="margin-bottom:8px"><%= t('network.realityTunnelHint') %></div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label><%= t('network.realityDest') %></label>
+                            <input type="text" name="realityDest" class="form-input" placeholder="www.google.com:443">
+                        </div>
+                        <div class="form-group">
+                            <label><%= t('network.realitySni') %></label>
+                            <input type="text" name="realitySni" class="form-input" placeholder="www.google.com">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label><%= t('network.realityPrivateKey') %></label>
+                            <input type="text" name="realityPrivateKey" class="form-input" placeholder="Server private key">
+                        </div>
+                        <div class="form-group">
+                            <label><%= t('network.realityPublicKey') %></label>
+                            <input type="text" name="realityPublicKey" class="form-input" placeholder="Client public key">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label><%= t('network.realityShortIds') %></label>
+                            <input type="text" name="realityShortIds" class="form-input" placeholder="Short ID (hex)">
+                        </div>
+                        <div class="form-group">
+                            <label><%= t('network.realityFingerprint') %></label>
+                            <select name="realityFingerprint" class="form-input">
+                                <option value="chrome">Chrome</option>
+                                <option value="firefox">Firefox</option>
+                                <option value="safari">Safari</option>
+                                <option value="random">Random</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- mKCP Settings (hidden by default) -->
+                <div class="form-section" id="kcpSection" style="display:none">
+                    <div class="form-section-title"><i class="ti ti-bolt"></i> mKCP (UDP)</div>
+                    <div class="form-hint" style="margin-bottom:8px"><%= t('network.kcpHint') %></div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label><%= t('network.kcpUplinkCapacity') %></label>
+                            <input type="number" name="kcpUplinkCapacity" class="form-input" value="100" min="1" max="1000">
+                        </div>
+                        <div class="form-group">
+                            <label><%= t('network.kcpDownlinkCapacity') %></label>
+                            <input type="number" name="kcpDownlinkCapacity" class="form-input" value="100" min="1" max="1000">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>MTU</label>
+                            <input type="number" name="kcpMtu" class="form-input" value="1350" min="576" max="1460">
+                        </div>
+                        <div class="form-group">
+                            <label>TTI (ms)</label>
+                            <input type="number" name="kcpTti" class="form-input" value="20" min="10" max="100">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('network.kcpHeader') %></label>
+                        <select name="kcpHeader" class="form-input">
+                            <option value="none"><%= t('network.kcpHeaderNone') %></option>
+                            <option value="wechat">WeChat Video</option>
+                            <option value="srtp">SRTP</option>
+                            <option value="dtls">DTLS 1.2</option>
+                            <option value="wireguard">WireGuard</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Advanced Options -->
+                <details class="form-details">
+                    <summary><%= t('network.advancedOptions') %></summary>
+
+                    <!-- MUX -->
+                    <div class="form-row" style="margin-top:10px">
+                        <div class="form-group">
+                            <label class="form-checkbox">
+                                <input type="checkbox" name="muxEnabled" id="muxEnabledCheck">
+                                <span><%= t('network.muxEnabled') %></span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label><%= t('network.muxConcurrency') %></label>
+                            <input type="number" name="muxConcurrency" class="form-input" value="8" min="1" max="64">
+                        </div>
+                    </div>
+
+                    <!-- Geo Routing -->
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="geoRoutingEnabled">
+                            <span><%= t('network.geoRoutingEnabled') %></span>
+                        </label>
+                    </div>
+                    <div id="geoRoutingFields" style="display:none">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label><%= t('network.geoRoutingDomains') %></label>
+                                <input type="text" id="geoRoutingDomains" class="form-input" placeholder="cn, google, category-ads">
+                            </div>
+                            <div class="form-group">
+                                <label><%= t('network.geoRoutingGeoip') %></label>
+                                <input type="text" id="geoRoutingGeoip" class="form-input" placeholder="cn, ru, us">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Priority -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label><%= t('network.priority') %></label>
+                            <input type="number" name="priority" class="form-input" value="100" min="1" max="999">
+                        </div>
+                        <div class="form-group">
+                            <!-- Tunnel domain (reverse only) -->
+                            <div id="tunnelDomainGroup">
+                                <label><%= t('network.tunnelDomain') %></label>
+                                <input type="text" name="tunnelDomain" class="form-input" value="reverse.tunnel.internal">
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="form-actions">
+                    <label class="form-checkbox" style="margin-right:auto">
+                        <input type="checkbox" name="autoDeploy" checked>
+                        <span><%= t('network.autoDeploy') %></span>
+                    </label>
+                    <button type="button" class="btn" id="modalCancel"><%= t('common.cancel') %></button>
+                    <button type="submit" class="btn btn-primary" id="linkModalSubmit"><i class="ti ti-plus"></i> <%= t('network.createLink') %></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quick Link Modal (opened by drag-to-create on map) -->
+    <div class="modal-overlay" id="quickLinkModal">
+        <div class="modal-card modal-card-sm">
+            <div class="modal-header">
+                <h3><i class="ti ti-link"></i> <span id="quickLinkTitle"><%= t('network.quickLinkTitle') %></span></h3>
+                <button class="modal-close" id="quickModalClose"><i class="ti ti-x"></i></button>
+            </div>
+            <form id="quickLinkForm" class="modal-body">
+                <input type="hidden" id="quickPortalId">
+                <input type="hidden" id="quickBridgeId">
+                <input type="hidden" id="quickLinkMode" value="reverse">
+                <div class="quick-link-nodes">
+                    <div class="quick-node portal">
+                        <div class="quick-node-label"><%= t('network.quickLinkPortal') %></div>
+                        <div class="quick-node-name" id="quickPortalName"></div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-icon" id="quickSwapBtn" title="<%= t('network.swapNodes') %>">
+                        <i class="ti ti-arrows-exchange"></i>
+                    </button>
+                    <div class="quick-node bridge">
+                        <div class="quick-node-label"><%= t('network.quickLinkBridge') %></div>
+                        <div class="quick-node-name" id="quickBridgeName"></div>
+                    </div>
+                </div>
+                <!-- Quick Mode Switcher -->
+                <div class="form-group" style="margin-top:10px">
+                    <div class="mode-switcher mode-switcher-sm" id="quickModeSwitcher">
+                        <button type="button" class="mode-btn active" data-mode="reverse">
+                            <i class="ti ti-arrows-exchange"></i> <%= t('network.modeReverse') %>
+                        </button>
+                        <button type="button" class="mode-btn" data-mode="forward">
+                            <i class="ti ti-arrow-right"></i> <%= t('network.modeForward') %>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><%= t('network.linkName') %></label>
+                    <input type="text" id="quickLinkName" class="form-input" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><%= t('network.tunnelPort') %></label>
+                        <input type="number" id="quickTunnelPort" class="form-input" value="10086" min="1" max="65535">
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('network.tunnelProtocol') %></label>
+                        <select id="quickTunnelProtocol" class="form-input">
+                            <option value="vless">VLESS</option>
+                            <option value="vmess">VMess</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <label class="form-checkbox" style="margin-right:auto">
+                        <input type="checkbox" id="quickAutoDeploy" checked>
+                        <span><%= t('network.autoDeploy') %></span>
+                    </label>
+                    <button type="button" class="btn" id="quickModalCancel"><%= t('common.cancel') %></button>
+                    <button type="submit" class="btn btn-primary" id="quickLinkSubmit">
+                        <i class="ti ti-plus"></i> <%= t('network.createLink') %>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Reconnect Modal (change bridge/portal of an existing link) -->
+    <div class="modal-overlay" id="reconnectModal">
+        <div class="modal-card modal-card-sm">
+            <div class="modal-header">
+                <h3><i class="ti ti-arrows-exchange"></i> <span id="reconnectModalTitle"></span></h3>
+                <button class="modal-close" id="reconnectModalClose"><i class="ti ti-x"></i></button>
+            </div>
+            <div class="modal-body" id="reconnectModalBody">
+                <input type="hidden" id="reconnectLinkId">
+                <input type="hidden" id="reconnectMode">
+                <div class="form-group">
+                    <label id="reconnectNodeLabel"></label>
+                    <select id="reconnectNodeSelect" class="form-input"></select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn" id="reconnectModalCancel"><%= t('common.cancel') %></button>
+                    <button type="button" class="btn btn-primary" id="reconnectModalSubmit">
+                        <i class="ti ti-device-floppy"></i> <%= t('common.save') %>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div><!-- /viewNetwork -->
+
+<div id="toast" class="toast"></div>
+
+<style>
+.node-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.node-flag {
+    font-size: 20px;
+}
+.node-comment {
+    display: inline-block;
+    max-width: 360px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+.node-comment .ti {
+    font-size: 12px;
+    opacity: 0.7;
+    vertical-align: -1px;
+}
+.node-comment-mobile {
+    display: block;
+    margin: 4px 0 6px;
+    max-width: 100%;
+    white-space: normal;
+    word-break: break-word;
+}
+.btn-icon-danger:hover {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+}
+.badge-xray {
+    display: inline-block;
+    background: #7c3aed20;
+    border: 1px solid #7c3aed;
+    color: #a78bfa;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.node-info-cell {
+    white-space: nowrap;
+}
+.node-active-col {
+    width: 84px;
+    text-align: center;
+}
+.node-active-toggle input:disabled + .toggle-slider {
+    opacity: 0.6;
+    cursor: wait;
+}
+.mobile-node-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.mobile-stat-toggle {
+    align-items: center;
+}
+.node-info-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 1px 2px 1px 0;
+}
+.badge-agent-online {
+    border-color: var(--success, #22c55e);
+    color: var(--success, #22c55e);
+    background: rgba(34,197,94,0.08);
+}
+.badge-agent-offline {
+    border-color: var(--danger, #ef4444);
+    color: var(--danger, #ef4444);
+    background: rgba(239,68,68,0.08);
+}
+.badge-agent-unknown {
+    border-color: var(--warning, #f59e0b);
+    color: var(--warning, #f59e0b);
+    background: rgba(245,158,11,0.08);
+}
+/* View tabs — matches .settings-tabs / .filters-bar glass pill */
+.view-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+}
+.view-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #94a3b8);
+    font-size: 13.5px;
+    font-weight: 500;
+    font-family: inherit;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color .2s ease, background .2s ease, transform .15s ease;
+    white-space: nowrap;
+}
+.view-tab:hover {
+    color: var(--text-primary, #e2e8f0);
+    background: rgba(255, 255, 255, 0.05);
+}
+.view-tab.active {
+    background: linear-gradient(135deg, var(--accent, #6366f1) 0%, var(--accent-gradient-end, #7c3aed) 100%);
+    color: #fff;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35),
+                0 1px 0 rgba(255, 255, 255, 0.18) inset,
+                0 -1px 0 rgba(0, 0, 0, 0.25) inset;
+}
+.tab-badge {
+    background: rgba(255,255,255,0.15);
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+}
+.view-tab.active .tab-badge {
+    background: rgba(255,255,255,0.25);
+}
+/* Cascade role badge in node table */
+.badge-cascade {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.badge-cascade.portal { background: #6366f120; border: 1px solid #6366f1; color: #818cf8; }
+.badge-cascade.bridge { background: #f59e0b20; border: 1px solid #f59e0b; color: #fbbf24; }
+.badge-cascade.relay  { background: #8b5cf620; border: 1px solid #8b5cf6; color: #a78bfa; }
+/* Drag-and-drop ghost row */
+.sortable-ghost { opacity: 0.4; background: var(--accent, #6366f1) !important; }
+.drag-handle { cursor: grab; user-select: none; white-space: nowrap; vertical-align: middle; }
+.drag-handle:active { cursor: grabbing; }
+.ranking-num { font-size: 11px; color: var(--text-muted); margin-right: 2px; }
+</style>
+
+<script>
+const i18n = {
+    confirmDelete: <%- JSON.stringify(t("nodes.confirmDelete")) %>,
+    deleteError: <%- JSON.stringify(t("nodes.deleteError")) %>,
+    restart: <%- JSON.stringify(t("nodes.restart")) %>,
+    restartSuccess: <%- JSON.stringify(t("nodes.restartSuccess")) %>,
+    restartFailed: <%- JSON.stringify(t("nodes.restartFailed")) %>,
+    total: <%- JSON.stringify(t("common.total")) %>,
+    reorderSaved: <%- JSON.stringify(t("nodes.reorderSaved")) %>,
+    reorderFailed: <%- JSON.stringify(t("nodes.reorderFailed")) %>,
+    lbHint: <%- JSON.stringify(t("nodes.lbDragHint")) %>,
+    nodeEnabled: <%- JSON.stringify(t("nodes.activeEnabled")) %>,
+    nodeDisabled: <%- JSON.stringify(t("nodes.activeDisabled")) %>,
+    nodeActiveError: <%- JSON.stringify(t("nodes.activeToggleError")) %>,
+    nodeActiveNetworkError: <%- JSON.stringify(t("nodes.activeToggleNetworkError")) %>,
+    nodeActiveWarning: <%- JSON.stringify(t("nodes.activeToggleWarning")) %>,
+    nodeEnableTitle: <%- JSON.stringify(t("nodes.enableActiveTitle")) %>,
+    nodeDisableTitle: <%- JSON.stringify(t("nodes.disableActiveTitle")) %>,
+    nodeEnableAria: <%- JSON.stringify(t("nodes.enableActiveAria")) %>,
+    nodeDisableAria: <%- JSON.stringify(t("nodes.disableActiveAria")) %>
+};
+
+function applyFilters() {
+    const status = document.getElementById('filterStatus').value;
+    const group = document.getElementById('filterGroup').value;
+    
+    let visibleCount = 0;
+    
+    // Filter desktop table rows
+    document.querySelectorAll('.node-row').forEach(row => {
+        const rowStatus = row.dataset.status;
+        const rowGroups = row.dataset.groups || '';
+        
+        let show = true;
+        if (status && rowStatus !== status) show = false;
+        if (group && !rowGroups.includes(group)) show = false;
+        
+        row.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+    });
+    
+    // Filter mobile cards
+    document.querySelectorAll('.node-row-mobile').forEach(card => {
+        const cardStatus = card.dataset.status;
+        const cardGroups = card.dataset.groups || '';
+        
+        let show = true;
+        if (status && cardStatus !== status) show = false;
+        if (group && !cardGroups.includes(group)) show = false;
+        
+        card.style.display = show ? '' : 'none';
+    });
+    
+    // Update counter
+    document.getElementById('resultsCount').textContent = i18n.total + ': ' + visibleCount;
+}
+
+// Map status strings to sort order (online first, then error, then offline)
+function statusSortOrder(s) {
+    return s === 'online' ? 0 : s === 'error' ? 1 : 2;
+}
+
+function statusBadgeVariant(status) {
+    return status === 'online' ? 'success' : (status === 'error' ? 'danger' : 'warning');
+}
+
+function sortNodesTable() {
+    const key = document.getElementById('sortNodes').value;
+
+    const comparators = {
+        ranking: (a, b) => (parseFloat(a.dataset.ranking) || 1) - (parseFloat(b.dataset.ranking) || 1),
+        name:    (a, b) => (a.dataset.name || '').localeCompare(b.dataset.name || ''),
+        online:  (a, b) => (parseInt(b.dataset.online) || 0) - (parseInt(a.dataset.online) || 0),
+        status:  (a, b) => statusSortOrder(a.dataset.status) - statusSortOrder(b.dataset.status),
+    };
+    const cmp = comparators[key] || comparators.ranking;
+
+    // Sort desktop table rows using a DocumentFragment for a single reflow
+    const tbody = document.querySelector('#nodesTable tbody');
+    if (tbody) {
+        const rows = Array.from(tbody.querySelectorAll('.node-row'));
+        rows.sort(cmp);
+        const frag = document.createDocumentFragment();
+        rows.forEach(r => frag.appendChild(r));
+        tbody.appendChild(frag);
+    }
+
+    // Mirror sort for mobile cards
+    const mobileList = document.querySelector('.mobile-nodes-list');
+    if (mobileList) {
+        const cards = Array.from(mobileList.querySelectorAll('.node-row-mobile'));
+        cards.sort(cmp);
+        const frag = document.createDocumentFragment();
+        cards.forEach(c => frag.appendChild(c));
+        mobileList.appendChild(frag);
+    }
+
+    // Disable drag-and-drop when not sorting by priority — positions would conflict
+    if (window._nodesSortable) {
+        window._nodesSortable.option('disabled', key !== 'ranking');
+        document.querySelectorAll('.drag-handle').forEach(h => {
+            h.style.opacity = key === 'ranking' ? '' : '0.3';
+            h.style.cursor = key === 'ranking' ? 'grab' : 'default';
+        });
+    }
+}
+
+function setNodeStatusUi(nodeId, status, nodeType) {
+    if (!status) return;
+
+    document.querySelectorAll(`[data-id="${nodeId}"]`).forEach(row => {
+        row.dataset.status = status;
+        if (nodeType) row.dataset.type = nodeType;
+    });
+
+    if (nodeType === 'virtual' || nodeType === 'cdn') return;
+
+    document.querySelectorAll(`[data-node-status-badge][data-node-id="${nodeId}"]`).forEach(badge => {
+        if (badge.dataset.nodeVirtualStatus === 'true') return;
+        badge.className = `badge badge-${statusBadgeVariant(status)}`;
+        badge.textContent = status;
+    });
+}
+
+function setNodeActiveUi(nodeId, active, status, nodeType) {
+    document.querySelectorAll(`[data-id="${nodeId}"]`).forEach(row => {
+        row.dataset.active = String(active);
+        if (nodeType) row.dataset.type = nodeType;
+    });
+
+    document.querySelectorAll(`[data-node-active-input][data-node-id="${nodeId}"]`).forEach(input => {
+        input.checked = active;
+        input.setAttribute('aria-label', `${active ? i18n.nodeDisableAria : i18n.nodeEnableAria}${input.dataset.nodeName ? ': ' + input.dataset.nodeName : ''}`);
+
+        const label = input.closest('.toggle-switch');
+        if (label) {
+            label.title = active ? i18n.nodeDisableTitle : i18n.nodeEnableTitle;
+        }
+    });
+
+    document.querySelectorAll(`[data-node-active-off-badge][data-node-id="${nodeId}"]`).forEach(badge => {
+        badge.style.display = active ? 'none' : '';
+    });
+
+    setNodeStatusUi(nodeId, status, nodeType);
+}
+
+function setNodeActiveInputsDisabled(nodeId, disabled) {
+    document.querySelectorAll(`[data-node-active-input][data-node-id="${nodeId}"]`).forEach(input => {
+        input.disabled = disabled;
+    });
+}
+
+async function toggleNodeActive(nodeId, active) {
+    const previousActive = !active;
+    let serverFailureApplied = false;
+
+    setNodeActiveUi(nodeId, active);
+    setNodeActiveInputsDisabled(nodeId, true);
+
+    try {
+        const res = await fetch(`/api/nodes/${nodeId}/${active ? 'enable' : 'disable'}`, {
+            method: 'POST',
+            credentials: 'include'
+        }).catch(() => { throw new Error(i18n.nodeActiveNetworkError); });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (data.node && typeof data.node.active === 'boolean') {
+                setNodeActiveUi(nodeId, data.node.active, data.node.status, data.node.type);
+                serverFailureApplied = true;
+            }
+            throw new Error(data.error || i18n.nodeActiveError);
+        }
+
+        const finalActive = data.node && typeof data.node.active === 'boolean' ? data.node.active : active;
+        setNodeActiveUi(nodeId, finalActive, data.node && data.node.status, data.node && data.node.type);
+        if (data.warning) {
+            showToast(i18n.nodeActiveWarning.replace('{error}', data.warning), 'warning', 8000);
+        } else {
+            showToast(finalActive ? i18n.nodeEnabled : i18n.nodeDisabled);
+        }
+    } catch (error) {
+        if (!serverFailureApplied) {
+            setNodeActiveUi(nodeId, previousActive);
+        }
+        showToast(error.message || i18n.nodeActiveError, 'error', 8000);
+    } finally {
+        setNodeActiveInputsDisabled(nodeId, false);
+    }
+}
+
+// The menu is moved to <body> while open: .card sets overflow:hidden and a
+// backdrop-filter, which both clips the popup and makes the card — not the
+// viewport — the containing block for position:fixed children.
+function closeAllNodeMore() {
+    document.querySelectorAll('.node-more-menu[data-node-more-open]').forEach((menu) => {
+        menu.removeAttribute('data-node-more-open');
+        menu.hidden = true;
+        menu.style.left = '';
+        menu.style.top = '';
+
+        const owner = menu.nodeMoreOwner;
+        if (!owner) return;
+        owner.classList.remove('is-open');
+        const toggle = owner.querySelector('[data-node-more-toggle]');
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        owner.appendChild(menu);
+    });
+}
+
+function placeNodeMoreMenu(toggle, menu) {
+    const rect = toggle.getBoundingClientRect();
+    const width = menu.offsetWidth || 240;
+    const height = menu.offsetHeight || 0;
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    menu.style.left = Math.min(Math.max(8, rect.right - width), maxLeft) + 'px';
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpwards = spaceBelow < height + 12 && rect.top > spaceBelow;
+    menu.style.top = (openUpwards ? Math.max(8, rect.top - height - 6) : rect.bottom + 6) + 'px';
+}
+
+function openNodeMore(toggle) {
+    const owner = toggle.closest('.node-more');
+    const menu = owner && owner.querySelector('.node-more-menu');
+    if (!menu) return;
+
+    menu.nodeMoreOwner = owner;
+    owner.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+
+    document.body.appendChild(menu);
+    menu.hidden = false;
+    menu.setAttribute('data-node-more-open', '');
+    placeNodeMoreMenu(toggle, menu);
+}
+
+document.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-node-more-toggle]');
+    if (toggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        const wasOpen = toggle.getAttribute('aria-expanded') === 'true';
+        closeAllNodeMore();
+        if (!wasOpen) openNodeMore(toggle);
+        return;
+    }
+    if (!event.target.closest('.node-more-menu')) closeAllNodeMore();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeAllNodeMore();
+});
+
+window.addEventListener('resize', closeAllNodeMore);
+window.addEventListener('scroll', closeAllNodeMore, true);
+
+async function restartNode(id, ev) {
+    const btn = ev && ev.currentTarget ? ev.currentTarget : null;
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<i class="ti ti-loader-2"></i><span>' + i18n.restart + '</span>';
+        btn.disabled = true;
+    }
+
+    try {
+        const res = await fetch(`/panel/nodes/${id}/restart`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            showToast(i18n.restartSuccess);
+            // The menu lives in <body> while open, so the row is resolved by
+            // node id rather than by walking up from the button.
+            setNodeStatusUi(id, 'online');
+            closeAllNodeMore();
+        } else {
+            showToast(i18n.restartFailed + ': ' + (data.error || ''), 'error');
+        }
+    } catch (e) {
+        showToast(i18n.restartFailed, 'error');
+    }
+
+    if (btn) {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    }
+}
+
+async function deleteNode(id) {
+    if (!confirm(i18n.confirmDelete)) return;
+    
+    const res = await fetch(`/api/nodes/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    
+    if (res.ok) {
+        location.reload();
+    } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || i18n.deleteError, 'error');
+    }
+}
+
+
+// ==================== View Tabs ====================
+
+// Auto-restore network tab if navigated from node-form (set by node-form.ejs)
+const _restoreNetworkView = sessionStorage.getItem('nodesView') === 'network';
+if (_restoreNetworkView) sessionStorage.removeItem('nodesView');
+
+let networkLoaded = false;
+
+function switchNodesView(view) {
+    const viewList = document.getElementById('viewList');
+    const viewNetwork = document.getElementById('viewNetwork');
+    const tabList = document.getElementById('tabList');
+    const tabNetwork = document.getElementById('tabNetwork');
+    const listFilters = document.getElementById('listFilters');
+    const networkToolbar = document.getElementById('networkToolbar');
+    const listActions = document.getElementById('listActions');
+    const networkActions = document.getElementById('networkActions');
+
+    if (view === 'network') {
+        viewList.style.display = 'none';
+        viewNetwork.style.display = '';
+        tabList.classList.remove('active');
+        tabNetwork.classList.add('active');
+        listFilters.style.display = 'none';
+        networkToolbar.style.display = '';
+        listActions.style.display = 'none';
+        networkActions.style.display = '';
+
+        if (!networkLoaded) {
+            loadNetworkScripts();
+            networkLoaded = true;
+        } else if (window._networkResize) {
+            // Small delay to let the display:'' take effect before resize
+            setTimeout(window._networkResize, 50);
+        }
+    } else {
+        viewList.style.display = '';
+        viewNetwork.style.display = 'none';
+        tabList.classList.add('active');
+        tabNetwork.classList.remove('active');
+        listFilters.style.display = '';
+        networkToolbar.style.display = 'none';
+        listActions.style.display = '';
+        networkActions.style.display = 'none';
+    }
+}
+
+window._networkI18n = {
+    selectPortal: <%- JSON.stringify(t('network.selectPortal')) %>,
+    selectBridge: <%- JSON.stringify(t('network.selectBridge')) %>,
+    errorLoadingNodes: <%- JSON.stringify(t('network.errorLoadingNodes')) %>,
+    fillRequired: <%- JSON.stringify(t('network.fillRequired')) %>,
+    loadingTopology: <%- JSON.stringify(t('network.loadingTopology')) %>,
+    noNodesOrLinks: <%- JSON.stringify(t('network.noNodesOrLinks')) %>,
+    drawerStatus: <%- JSON.stringify(t('network.drawerStatus')) %>,
+    drawerIP: <%- JSON.stringify(t('network.drawerIP')) %>,
+    drawerType: <%- JSON.stringify(t('network.drawerType')) %>,
+    drawerRole: <%- JSON.stringify(t('network.drawerRole')) %>,
+    drawerOnline: <%- JSON.stringify(t('network.drawerOnline')) %>,
+    drawerPort: <%- JSON.stringify(t('network.drawerPort')) %>,
+    openNode: <%- JSON.stringify(t('network.openNode')) %>,
+    drawerTunnelPort: <%- JSON.stringify(t('network.drawerTunnelPort')) %>,
+    drawerProtocolTransport: <%- JSON.stringify(t('network.drawerProtocolTransport')) %>,
+    drawerLatency: <%- JSON.stringify(t('network.drawerLatency')) %>,
+    confirmDeploy: <%- JSON.stringify(t('network.confirmDeploy')) %>,
+    confirmDeleteLink: <%- JSON.stringify(t('network.confirmDeleteLink')) %>,
+    deploying: <%- JSON.stringify(t('network.deploying')) %>,
+    deleting: <%- JSON.stringify(t('network.deleting')) %>,
+    reconnecting: <%- JSON.stringify(t('network.reconnecting')) %>,
+    deploySuccess: <%- JSON.stringify(t('network.deploySuccess')) %>,
+    deleteSuccess: <%- JSON.stringify(t('network.deleteSuccess')) %>,
+    reconnectSuccess: <%- JSON.stringify(t('network.reconnectSuccess')) %>,
+    reconnectFailed: <%- JSON.stringify(t('network.reconnectFailed')) %>,
+    deployFailed: <%- JSON.stringify(t('network.deployFailed')) %>,
+    networkError: <%- JSON.stringify(t('network.networkError')) %>,
+    deploy: <%- JSON.stringify(t('network.deploy')) %>,
+    delete: <%- JSON.stringify(t('common.delete')) %>,
+    changeBridge: <%- JSON.stringify(t('network.changeBridge')) %>,
+    changePortal: <%- JSON.stringify(t('network.changePortal')) %>,
+    reconnectModal: <%- JSON.stringify(t('network.reconnectModal')) %>,
+    newBridgeNode: <%- JSON.stringify(t('network.newBridgeNode')) %>,
+    newPortalNode: <%- JSON.stringify(t('network.newPortalNode')) %>,
+    quickLinkTitle: <%- JSON.stringify(t('network.quickLinkTitle')) %>,
+    quickLinkPortal: <%- JSON.stringify(t('network.quickLinkPortal')) %>,
+    quickLinkBridge: <%- JSON.stringify(t('network.quickLinkBridge')) %>,
+    swapNodes: <%- JSON.stringify(t('network.swapNodes')) %>,
+    rolePortal: <%- JSON.stringify(t('network.rolePortal')) %>,
+    roleBridge: <%- JSON.stringify(t('network.roleBridge')) %>,
+    roleRelay: <%- JSON.stringify(t('network.roleRelay')) %>,
+    addLink: <%- JSON.stringify(t('network.addLink')) %>,
+    createLink: <%- JSON.stringify(t('network.createLink')) %>,
+    linkMode: <%- JSON.stringify(t('network.linkMode')) %>,
+    modeReverse: <%- JSON.stringify(t('network.modeReverse')) %>,
+    modeForward: <%- JSON.stringify(t('network.modeForward')) %>,
+    modeReverseHint: <%- JSON.stringify(t('network.modeReverseHint')) %>,
+    modeForwardHint: <%- JSON.stringify(t('network.modeForwardHint')) %>,
+    modeReverseFlow: <%- JSON.stringify(t('network.modeReverseFlow')) %>,
+    modeForwardFlow: <%- JSON.stringify(t('network.modeForwardFlow')) %>,
+    modeReverseWarning: <%- JSON.stringify(t('network.modeReverseWarning')) %>,
+    modeForwardWarning: <%- JSON.stringify(t('network.modeForwardWarning')) %>,
+    betaBadge: <%- JSON.stringify(t('network.betaBadge')) %>,
+    betaTitle: <%- JSON.stringify(t('network.betaTitle')) %>,
+    betaDescription: <%- JSON.stringify(t('network.betaDescription')) %>,
+    tunnelPortReverseHint: <%- JSON.stringify(t('network.tunnelPortReverseHint')) %>,
+    tunnelPortForwardHint: <%- JSON.stringify(t('network.tunnelPortForwardHint')) %>,
+    realityTunnelHint: <%- JSON.stringify(t('network.realityTunnelHint')) %>,
+    portConflictClientHint: <%- JSON.stringify(t('network.portConflictClientHint')) %>,
+    routeEntry: <%- JSON.stringify(t('network.routeEntry')) %>,
+    routeExit: <%- JSON.stringify(t('network.routeExit')) %>,
+    routeEncryption: <%- JSON.stringify(t('network.routeEncryption')) %>,
+    routePath: <%- JSON.stringify(t('network.routePath')) %>,
+    undeployLink: <%- JSON.stringify(t('network.undeployLink')) %>,
+    confirmDeployChain: <%- JSON.stringify(t('network.confirmDeployChain')) %>,
+    syncingChain: <%- JSON.stringify(t('network.syncingChain')) %>,
+    chainDeploySuccess: <%- JSON.stringify(t('network.chainDeploySuccess')) %>,
+    chainDeployFailed: <%- JSON.stringify(t('network.chainDeployFailed')) %>,
+    syncChain: <%- JSON.stringify(t('network.syncChain')) %>,
+    confirmUndeploy: <%- JSON.stringify(t('network.confirmUndeploy')) %>,
+    undeploying: <%- JSON.stringify(t('network.undeploying')) %>,
+    undeploySuccess: <%- JSON.stringify(t('network.undeploySuccess')) %>,
+    edit: <%- JSON.stringify(t('common.edit')) %>,
+    save: <%- JSON.stringify(t('common.save')) %>,
+    terminal: <%- JSON.stringify(t('nodes.terminal')) %>,
+    sshNotConfigured: <%- JSON.stringify(t('nodes.sshNotConfigured')) %>,
+    nodes: <%- JSON.stringify(t('network.nodes')) %>,
+    internetDesc: <%- JSON.stringify(t('network.internetDesc')) %>,
+    internetExitDesc: <%- JSON.stringify(t('network.internetExitDesc')) %>,
+    internetExit: <%- JSON.stringify(t('network.internetExit')) %>
+};
+
+function loadNetworkScripts() {
+    const scripts = [
+        'https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js',
+        'https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js',
+        'https://cdn.jsdelivr.net/npm/cytoscape-edgehandles@4.0.1/cytoscape-edgehandles.min.js',
+        '/js/network.min.js'
+    ];
+
+    let idx = 0;
+    function next() {
+        if (idx >= scripts.length) return;
+        const s = document.createElement('script');
+        s.src = scripts[idx];
+        s.onload = function() { idx++; next(); };
+        s.onerror = function() { idx++; next(); };
+        document.body.appendChild(s);
+    }
+    next();
+}
+
+// Restore network view after page load
+if (_restoreNetworkView) {
+    switchNodesView('network');
+}
+
+// ==================== DRAG-AND-DROP REORDER ====================
+
+(function initDragAndDrop() {
+    const tbody = document.querySelector('#nodesTable tbody');
+    if (!tbody) return;
+
+    let sortableInstance = null;
+
+    // Load vendored SortableJS and initialise once ready
+    const script = document.createElement('script');
+    script.src = '/js/vendor/Sortable.min.js';
+    script.onload = function () {
+        sortableInstance = new Sortable(tbody, {
+            handle: '.drag-handle',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            // Skip filtered-out (hidden) rows — they must not participate in drag
+            filter: function (evt, el) {
+                return el.style.display === 'none';
+            },
+            onMove: function (evt) {
+                // Prevent dropping next to a hidden row
+                if (evt.related && evt.related.style.display === 'none') return false;
+            },
+            onEnd: async function () {
+                // Only send visible rows — hidden rows keep their old ranking
+                const rows = Array.from(tbody.querySelectorAll('.node-row'))
+                    .filter(r => r.style.display !== 'none');
+                const order = rows.map((r, i) => ({
+                    id: r.dataset.id,
+                    position: i + 1,
+                }));
+
+                try {
+                    const res = await fetch('/panel/nodes/reorder', {
+                        method: 'PATCH',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ order }),
+                    });
+                    const text = await res.text();
+                    let json;
+                    try { json = JSON.parse(text); } catch { throw new Error('Not JSON: ' + text.substring(0, 120)); }
+                    if (!res.ok || !json.success) throw new Error(json.error || 'Reorder failed');
+                    rows.forEach((r, i) => {
+                        r.dataset.ranking = i + 1;
+                        const num = r.querySelector('.ranking-num');
+                        if (num) num.textContent = i + 1;
+                    });
+                    showToast(i18n.reorderSaved || 'Order saved');
+                } catch (e) {
+                    console.error('[Nodes] Reorder error:', e);
+                    showToast(e.message || i18n.reorderFailed, 'error');
+                }
+            },
+        });
+
+        // Disable drag when sort is not by priority (positions would conflict)
+        window._nodesSortable = sortableInstance;
+    };
+    document.body.appendChild(script);
+
+    <% if (loadBalancingEnabled) { %>
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.style.cssText = 'padding:6px 16px 2px;font-size:12px;color:var(--text-muted)';
+    hint.innerHTML = '<i class="ti ti-info-circle"></i> ' + i18n.lbHint;
+    const tableWrapper = document.querySelector('#nodesTable')?.closest('.table-wrapper');
+    if (tableWrapper) tableWrapper.insertAdjacentElement('beforebegin', hint);
+    <% } %>
+})();
+</script>

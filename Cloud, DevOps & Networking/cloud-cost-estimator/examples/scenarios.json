@@ -1,0 +1,194 @@
+[
+  {
+    "name": "Small development",
+    "description": "One small instance for part-time development work.",
+    "workload": {
+      "version": 1,
+      "region": "us-east-1",
+      "budget": 10,
+      "services": {
+        "ec2": {
+          "enabled": true,
+          "instanceType": "t3.micro",
+          "quantity": 1,
+          "hours": 40,
+          "rate": 0.0104
+        },
+        "ebs": {
+          "enabled": true,
+          "volumeType": "gp3",
+          "volumes": 1,
+          "sizeGb": 20,
+          "rate": 0.08
+        },
+        "s3": {
+          "enabled": false,
+          "storageClass": "standard",
+          "storageGb": 100,
+          "rate": 0.023,
+          "requests": 1000000,
+          "requestRate": 0.0004
+        },
+        "rds": {
+          "enabled": false,
+          "engine": "postgres",
+          "instanceClass": "db.t3.micro",
+          "quantity": 1,
+          "hours": 730,
+          "instanceRate": 0.017,
+          "storageGb": 20,
+          "storageRate": 0.115
+        },
+        "dataTransfer": {
+          "enabled": false,
+          "outboundGb": 100,
+          "rate": 0.09
+        }
+      }
+    }
+  },
+  {
+    "name": "Portfolio web app",
+    "description": "An always-on small instance with storage, S3 hosting, and light egress.",
+    "workload": {
+      "version": 1,
+      "region": "us-east-1",
+      "budget": 25,
+      "services": {
+        "ec2": {
+          "enabled": true,
+          "instanceType": "t3.small",
+          "quantity": 1,
+          "hours": 730,
+          "rate": 0.0208
+        },
+        "ebs": {
+          "enabled": true,
+          "volumeType": "gp3",
+          "volumes": 1,
+          "sizeGb": 30,
+          "rate": 0.08
+        },
+        "s3": {
+          "enabled": true,
+          "storageClass": "standard",
+          "storageGb": 25,
+          "rate": 0.023,
+          "requests": 500000,
+          "requestRate": 0.0004
+        },
+        "rds": {
+          "enabled": false,
+          "engine": "postgres",
+          "instanceClass": "db.t3.micro",
+          "quantity": 1,
+          "hours": 730,
+          "instanceRate": 0.017,
+          "storageGb": 20,
+          "storageRate": 0.115
+        },
+        "dataTransfer": {
+          "enabled": true,
+          "outboundGb": 50,
+          "rate": 0.09
+        }
+      }
+    }
+  },
+  {
+    "name": "Small production app",
+    "description": "Redundant compute, a managed database, storage, and moderate egress.",
+    "workload": {
+      "version": 1,
+      "region": "us-east-1",
+      "budget": 120,
+      "services": {
+        "ec2": {
+          "enabled": true,
+          "instanceType": "t3.medium",
+          "quantity": 2,
+          "hours": 730,
+          "rate": 0.0416
+        },
+        "ebs": {
+          "enabled": true,
+          "volumeType": "gp3",
+          "volumes": 2,
+          "sizeGb": 50,
+          "rate": 0.08
+        },
+        "s3": {
+          "enabled": true,
+          "storageClass": "standard",
+          "storageGb": 100,
+          "rate": 0.023,
+          "requests": 2000000,
+          "requestRate": 0.0004
+        },
+        "rds": {
+          "enabled": true,
+          "engine": "postgres",
+          "instanceClass": "db.t3.small",
+          "quantity": 1,
+          "hours": 730,
+          "instanceRate": 0.034,
+          "storageGb": 50,
+          "storageRate": 0.115
+        },
+        "dataTransfer": {
+          "enabled": true,
+          "outboundGb": 200,
+          "rate": 0.09
+        }
+      }
+    }
+  },
+  {
+    "name": "Data-heavy app",
+    "description": "Large compute and database with heavy object storage and transfer.",
+    "workload": {
+      "version": 1,
+      "region": "us-east-1",
+      "budget": 600,
+      "services": {
+        "ec2": {
+          "enabled": true,
+          "instanceType": "t3.large",
+          "quantity": 3,
+          "hours": 730,
+          "rate": 0.0832
+        },
+        "ebs": {
+          "enabled": true,
+          "volumeType": "gp3",
+          "volumes": 4,
+          "sizeGb": 200,
+          "rate": 0.08
+        },
+        "s3": {
+          "enabled": true,
+          "storageClass": "standard",
+          "storageGb": 2000,
+          "rate": 0.023,
+          "requests": 20000000,
+          "requestRate": 0.0004
+        },
+        "rds": {
+          "enabled": true,
+          "engine": "postgres",
+          "instanceClass": "db.m5.large",
+          "quantity": 2,
+          "hours": 730,
+          "instanceRate": 0.171,
+          "storageGb": 500,
+          "storageRate": 0.115
+        },
+        "dataTransfer": {
+          "enabled": true,
+          "outboundGb": 2000,
+          "rate": 0.09
+        }
+      }
+    }
+  }
+]

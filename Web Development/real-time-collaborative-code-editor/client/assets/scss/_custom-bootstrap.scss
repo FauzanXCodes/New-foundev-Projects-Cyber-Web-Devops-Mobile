@@ -1,0 +1,425 @@
+$input-height: 30px;
+
+.loading-cover {
+  position: absolute;
+  background-color: rgba(19, 89, 132, 0.89);
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  img {
+    position: absolute;
+    top: 0; 
+    bottom: 0;
+    left: 0; 
+    right: 0; 
+    width: 55px; 
+    height: 55px; 
+    margin: auto;
+    // background: red; 
+  }
+}
+
+
+// Modal styling: input, submit button, and dropdown
+.modal-dialog {
+  position: relative;
+  top: 31px;
+}
+
+.modal-content {
+  background-color: $blue-grey;
+  color: white;
+  text-align: center;
+  font-weight: 100;
+  border-radius: 0;
+  ::-webkit-input-placeholder {
+    text-align: center;
+    color: white;
+  }
+  :-moz-placeholder {
+    text-align: center;
+  }
+  ::-moz-placeholder {
+    text-align: center;
+  }
+  :-ms-input-placeholder {
+    text-align: center;
+  }
+  .modal-header {
+    border-bottom: 0;
+    font-weight: 100;
+    margin: 0;
+    font-size: 1.25em;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    padding: 1.5em 0.8em 0.8em;
+  }
+  .modalDropDownButton {
+    font-family: "brandon-grotesque", sans-serif;
+    font-weight: 400;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    background-color: $dark-blue-grey;
+    text-align: center;
+    border: none;
+    display: block;
+    width: 100%;
+    height: $input-height;
+    border-radius: 3px;
+    .caret {
+      margin-left: 5px;
+    }
+  }
+  .dropdown-menu {
+    position: absolute;
+    top: inherit;
+    left: inherit;
+    background-color: $blue-grey;
+    padding: 0;
+    margin-top: 0;
+    width: 90%;
+    li {
+      padding: 7px 24px;
+      letter-spacing: 0.5px;
+      &:first-child {
+        padding-top: 10px;
+      }
+      &:last-child {
+        padding-bottom: 10px;
+      }
+      &:hover {
+        background-color: $darkened-blue-grey;
+      }
+    }
+  }
+  .modalTextInput {
+    background-color: $dark-blue-grey;
+    border: none;
+    outline: none;
+    height: $input-height + 4;
+    border-radius: 3px;
+    padding: 9px;
+    width: 100%;
+    text-align: center;
+    color: white;
+    @include placeholder-color(rgba(255, 255, 255, 0.7));
+    font-family: 'Source Code Pro', monaco, monospace;
+    font-size: 0.9em;
+  }
+  .addUserToProjectInput {
+    font-family: $Proxima-font-stack;
+    letter-spacing: 0.5px;
+    font-size: 1em;
+  }
+  .addFileForm, .moveFileForm {
+    margin-top: 5%;
+  }
+
+  //Add file or folder to project Modal
+  .add-to-project-button {
+    position: relative;
+    display: inline-block;
+    width: 43px;
+    height: 41px;
+    overflow: hidden;
+    margin: 0 auto;
+    margin-top: 7%;
+    padding: 6px 12px;
+    border-radius: 28px;
+    background-size: contain;
+    background-size: 25px;
+    background-position: 9px;
+    background-repeat: no-repeat;
+    background-color: $opaque-blue;
+    transition-property: width;
+    transition-duration: 375ms;
+    cursor: pointer;
+    color: white;
+    .glyphicon-plus {
+      float: left;
+      font-size: 1.60em;
+      margin-left: 2px;
+    }
+    .text {
+      font-family: $Brandon-font-stack;
+      text-transform: uppercase;
+      font-size: 1.3em;
+      display: inline-block;
+      width: 60px;
+      margin-top: 0;
+      letter-spacing: 0.05em;
+      position: absolute;
+      left: 41px;
+      margin-left: 2px;
+    }
+    &:hover, &.active {
+      width: 116px;
+      transition-property: width, background-color;
+      transition-duration: 250ms;
+      background-color: rgba($dark-hover-blue, 0.5);
+    }
+    &:focus {
+      outline: none;
+    }
+  }
+
+  // Create Project Modal
+  .create-project-button {
+    position: relative;
+    display: inline-block;
+    width: 43px;
+    height: 43px;
+    overflow: hidden;
+    margin-top: 8%;
+    margin-bottom: 4%;
+    padding: 6px 12px;
+    border-radius: 28px;
+    background-size: contain;
+    background-size: 25px;
+    background-position: 9px;
+    background-repeat: no-repeat;
+    background-color: $opaque-blue;
+    transition-property: width;
+    transition-duration: 375ms;
+    cursor: pointer;
+    color: white;
+    .glyphicon-plus {
+      float: left;
+      font-size: 1.60em;
+      margin-left: 2px;
+    }
+    .text {
+      font-family: $Brandon-font-stack;
+      text-transform: uppercase;
+      font-size: 1.3em;
+      display: inline-block;
+      width: 60px;
+      margin-top: 0;
+      letter-spacing: 0.05em;
+      position: absolute;
+      left: 41px;
+      margin-left: 2px;
+    }
+    &:hover, &.active {
+      width: 120px;
+      transition-property: width, background-color;
+      transition-duration: 250ms;
+      background-color: rgba($dark-hover-blue, 0.5);
+    }
+    &:focus {
+      outline: none;
+    }
+  }
+
+  //move file modal
+  .move-icon-button {
+    background-image: url($move-icon-path);
+    background-color: $opaque-blue;
+    border: none;
+    width: 40px;
+    border-radius: 28px;
+    height: 40px;
+    background-size: 25px;
+    background-position: 8px;
+    background-repeat: no-repeat;
+    display: block;
+    margin: 0 auto;
+    margin-top: 7%;
+    cursor: pointer;
+    transition-property: width;
+    transition-duration: 375ms;
+    overflow: hidden;
+    position: relative;
+    &:hover {
+      width: 127px;
+      transition-property: width, background-color;
+      transition-duration: 250ms;
+      background-color: rgba($dark-hover-blue, 0.5);
+    }
+    .text {
+      font-family: $Brandon-font-stack;
+      text-transform: uppercase;
+      font-size: 1em;
+      letter-spacing: 0.5px;
+      color: #fff;
+      display: inline-block;
+      height: 6px;
+      width: 90px;
+      margin-left: 20px;
+      float: left;
+      margin-top: -9px;
+    }
+    &:focus {
+      outline: none;
+    }
+  }
+}
+
+
+
+.modal {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+// Tabs
+.tab-content {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  label {
+    letter-spacing: 0.075em;
+    font-weight: 400;
+  }
+  input {
+    color: #222;
+    @include placeholder-color(#ccc);
+    &[type="file"] {
+      font-family: $Proxima-font-stack;
+      font-size: 0.9em;
+      width: 248px;
+      letter-spacing: 0.1em;
+      padding: 10px 37px;
+      background: rgba(30, 76, 97, 0.5);
+      border-radius: 5px;
+      color: white;
+      margin: 0 auto;
+    }
+  }
+  .form-group {
+    margin-right: 15px;
+    margin-left: 15px;
+    margin-bottom: 15px;
+  }
+  .active {
+    color: white;
+  }
+}
+// Tabs styling in modals
+.modal-dialog {
+  .nav-tabs > li > a {
+    font-family: $Brandon-font-stack;
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 0.75em;
+    letter-spacing: 0.05em;
+    padding: 9%;
+  }
+  .nav-tabs > li.active > a {
+    background-color: $dark-blue-grey;
+    color: white;
+    font-weight: 700;
+    &:hover {
+      font-weight: 700;
+      background-color: $dark-blue-grey;
+    }
+    &:focus {
+      background-color: $dark-blue-grey;
+      color: white;
+    }
+  }
+  .tab-content {
+    background-color: $dark-blue-grey;
+    .active {
+      height: 60px;
+    }
+  }
+  .nav-tabs {
+    margin-top: 10%;
+    border-bottom: 1px solid #466D80;
+    li {
+      width: 33%;
+      a {
+        font-weight: 300;
+        border: 0;
+        &:hover {
+          font-weight: 300;
+          background-color: $darkened-blue-grey;
+          border: 0;
+        }
+      }
+    }
+  }
+  // Active tab
+  .nav-tabs > li.active > a {
+    border: 1px solid #466D80;
+    border-bottom: 0;
+  }
+}
+
+
+//changes links in tabs
+body > div.modal.fade.ng-isolate-scope.in > div > div > div > div > form > div.ng-isolate-scope > ul > li > a {
+  font-weight: 700;
+}
+
+
+
+
+.createProjectModal {
+  text-align: center;
+  #gitRepoUrl {
+    background-color: $dark-hover-blue;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.8em;
+    text-align: center;
+    letter-spacing: 0.5px;
+    &:focus {
+      border: none;
+      outline: none;
+      box-shadow: none;
+    }
+  }
+  &.template {
+    .modalDropDownButton {
+      background-color: $dark-hover-blue;
+    }
+    .tab-content {
+      height: 150px;
+      transition-property: height;
+      transition-duration: 200ms;
+    }
+  }
+
+  .tab-content{
+    transition-property: height;
+    transition-duration: 200ms;
+    height: 95px; 
+    label {
+      font-weight: 400;
+      font-family: $Brandon-font-stack;
+      text-transform: uppercase;
+      font-size: 0.9em;
+    }
+  }
+  .upload-icon {
+    background-image: url($upload-icon-path);
+    background-size: contain;
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    background-size: 30px 30px;
+  }
+}
+
+#toolbar .dropdown-menu {
+  width: 100%;
+}
+
+.delete-project-glyphicon {
+  $dark-red: rgb(179, 25, 25);
+  float: right;
+  font-size: 1.2em;
+  padding: 10px 9px 8px;
+  border-radius: 20px;
+  background-color: rgba($dark-red, 0);
+  transition-property: background-color;
+  transition-duration: 150ms;
+  position: relative;
+  z-index: 5;
+  &:hover {
+    background-color: rgba($dark-red, 0.8);
+    transition-property: background-color;
+    transition-duration: 150ms;
+  }
+}

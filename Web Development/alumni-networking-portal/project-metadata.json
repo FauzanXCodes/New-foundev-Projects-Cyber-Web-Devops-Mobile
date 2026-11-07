@@ -1,0 +1,14 @@
+﻿{
+    "id":  "alumni-networking-portal",
+    "name":  "Alumni Networking Portal",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/atik65/Alumni-Portal",
+    "stack":  "MERN; JWT",
+    "goal":  "Alumni directory, mentorship requests, job referral posts and batch-wise filters.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "BACKEND/index.py",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  248
+}

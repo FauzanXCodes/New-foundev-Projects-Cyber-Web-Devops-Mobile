@@ -1,0 +1,14 @@
+﻿{
+    "id":  "bus-schedule-and-live-tracking",
+    "name":  "Bus Schedule \u0026 Live Tracking",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/KaioBorgesDev/EMTU-LIVE-CHECKER",
+    "stack":  "Flutter; Node; MQTT",
+    "goal":  "Driver app broadcasts location, student app shows ETA and stop list.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "docs/index.html",
+    "expectedFileCount":  8,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  21
+}

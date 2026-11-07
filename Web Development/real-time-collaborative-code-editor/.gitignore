@@ -1,0 +1,37 @@
+!*
+!*.*
+
+# Dependency directory
+node_modules
+client/lib
+client/dist
+client/dist/*
+client/dist/main.js
+client/dist/main.css
+
+# Ingore Config
+config/*
+!config/default.json
+!config/test.json
+
+### OSX ###
+.DS_Store
+
+# Ignore .nws and zips
+*.nw
+*.zip
+
+data/*
+data/**/*
+data/logs/*
+data/logs/**/*
+data/tmp/*
+data/tmp/**/*
+!data/logs/.gitkeep
+!data/tmp/.gitkeep
+!data/git-repositories/.gitkeep
+
+# Ignore Fabfile
+fabfile.py
+fabfile.pyc
+**/*.pyc

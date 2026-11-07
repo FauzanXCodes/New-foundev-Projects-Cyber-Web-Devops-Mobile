@@ -1,0 +1,14 @@
+﻿{
+    "id":  "mini-kubernetes-deployment",
+    "name":  "Mini Kubernetes Deployment",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/aryan-Patel-web/KuberneteS_K8S-Docker-CI-CD-flask-deployment-Mini_Project-",
+    "stack":  "K8s; Helm; kind/minikube",
+    "goal":  "Deployments, services, ingress, HPA on CPU and rolling-update demonstration.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "app.py",
+    "expectedFileCount":  3,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  9
+}

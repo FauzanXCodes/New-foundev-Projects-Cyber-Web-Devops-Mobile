@@ -1,0 +1,14 @@
+{
+  "name": "campus-bite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "College canteen pre-order and smart token management system",
+  "scripts": {
+    "predev": "node scripts/ensure-mongodb.mjs",
+    "dev": "concurrently -k \"npm run dev --prefix backend\" \"node scripts/wait-for-api.mjs && npm run dev --prefix frontend\"",
+    "build": "npm run build --prefix frontend",
+    "seed": "npm run seed --prefix backend",
+    "start": "npm run start --prefix backend"
+  },
+  "devDependencies": { "concurrently": "^9.1.2" }
+}

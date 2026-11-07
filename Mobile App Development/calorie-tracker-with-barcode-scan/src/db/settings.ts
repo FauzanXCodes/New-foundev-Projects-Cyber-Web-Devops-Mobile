@@ -1,0 +1,45 @@
+import type { AppSettings } from "@/types"
+import { getDatabase } from "./database"
+
+export async function getSettings(): Promise<AppSettings> {
+  const db = await getDatabase()
+  const row = await db.getFirstAsync<AppSettings>(
+    "SELECT calorie_goal, protein_goal, carbs_goal, fat_goal, units, yazio_sync_enabled, food_database_country, update_check_enabled, ai_enabled, ai_provider, ai_base_url, ai_model, ai_system_prompt, agent_bridge_rev, theme_preference, water_goal_ml, height_cm, target_weight_kg FROM settings WHERE id = 1",
+  )
+  return (
+    row ?? {
+      calorie_goal: 2000,
+      protein_goal: 150,
+      carbs_goal: 200,
+      fat_goal: 65,
+      units: "metric",
+      yazio_sync_enabled: 0,
+      food_database_country: "",
+      update_check_enabled: 1,
+      ai_enabled: 0,
+      ai_provider: "openai",
+      ai_base_url: "",
+      ai_model: "",
+      ai_system_prompt: "",
+      agent_bridge_rev: 0,
+      theme_preference: "system",
+      water_goal_ml: 2500,
+      height_cm: 0,
+      target_weight_kg: 0,
+    }
+  )
+}
+
+export async function updateSettings(partial: Partial<AppSettings>): Promise<void> {
+  const db = await getDatabase()
+  const keys = Object.keys(partial) as (keyof AppSettings)[]
+  if (keys.length === 0) return
+  // Column-per-update avoids read-modify-write races between concurrent callers.
+  await db.withTransactionAsync(async () => {
+    for (const key of keys) {
+      const value = partial[key]
+      if (value === undefined) continue
+      await db.runAsync(`UPDATE settings SET ${key} = ? WHERE id = 1`, value)
+    }
+  })
+}

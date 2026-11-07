@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= typeof t !== 'undefined' ? t('setup.title') : 'Initial Setup' %> | C³ CELERITY</title>
+    <%- include('partials/favicon') %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+</head>
+<body class="onboarding-page">
+    <div class="onboarding-shell">
+        <div class="onboarding-card">
+            <div class="onboarding-header">
+                <span class="logo-icon">⚡</span>
+                <h1>C³ CELERITY</h1>
+                <a class="onboarding-brand" href="https://t.me/First_VPN_Click_bot" target="_blank" rel="noopener noreferrer">by Click Connect</a>
+                <p class="onboarding-subtitle">
+                    <%= typeof t !== 'undefined' ? t('setup.header') : 'Create the first administrator account and prepare the panel for secure onboarding.' %>
+                </p>
+            </div>
+
+            <div style="text-align:center;">
+                <div class="onboarding-lang-switch">
+                    <% const langOptions = typeof languageOptions !== 'undefined' ? languageOptions : []; %>
+                    <% langOptions.forEach(function(option) { %>
+                    <a href="?lang=<%= encodeURIComponent(option.code) %>" class="<%= typeof lang !== 'undefined' && lang === option.code ? 'active' : '' %>"><%= option.label %></a>
+                    <% }); %>
+                </div>
+            </div>
+
+            <% if (error) { %>
+            <div class="alert alert-error" style="margin-bottom: 20px;">
+                <i class="ti ti-alert-circle"></i> <%= error %>
+            </div>
+            <% } %>
+
+            <div class="onboarding-feature-grid">
+                <div class="onboarding-feature-card">
+                    <strong><%= typeof t !== 'undefined' ? t('setup.featureSecurityTitle') : 'Secure access' %></strong>
+                    <span><%= typeof t !== 'undefined' ? t('setup.featureSecurityDesc') : 'Administrator credentials are protected, and TOTP can be enabled immediately during setup.' %></span>
+                </div>
+                <div class="onboarding-feature-card">
+                    <strong><%= typeof t !== 'undefined' ? t('setup.featureFlowTitle') : 'Guided launch' %></strong>
+                    <span><%= typeof t !== 'undefined' ? t('setup.featureFlowDesc') : 'After sign-in you will continue to the onboarding flow to prepare your first nodes and access group.' %></span>
+                </div>
+                <div class="onboarding-feature-card">
+                    <strong><%= typeof t !== 'undefined' ? t('setup.featureRecoveryTitle') : 'Save recovery data' %></strong>
+                    <span><%= typeof t !== 'undefined' ? t('setup.featureRecoveryDesc') : 'Store the administrator credentials and TOTP secret in a secure place before continuing.' %></span>
+                </div>
+            </div>
+
+            <div class="onboarding-section" style="margin-bottom: 20px;">
+                <div class="onboarding-section-title">
+                    <i class="ti ti-shield-lock"></i>
+                    <%= typeof t !== 'undefined' ? t('setup.createAdminTitle') : 'Administrator account' %>
+                </div>
+                <div class="onboarding-section-copy">
+                    <%= typeof t !== 'undefined' ? t('setup.createAdminCopy') : 'Create the first administrator account for this panel. You can enable two-factor authentication right away to protect the control plane from the first sign-in.' %>
+                </div>
+            </div>
+
+            <form method="POST" action="/panel/setup" class="login-form onboarding-stack">
+                <div class="form-group">
+                    <label for="username"><%= typeof t !== 'undefined' ? t('setup.adminLogin') : 'Administrator Login' %></label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        value="<%= (formData && formData.username) ? formData.username : '' %>"
+                        placeholder="<%= typeof t !== 'undefined' ? t('setup.minChars3') : 'Minimum 3 characters' %>"
+                        minlength="3"
+                        autocomplete="username"
+                        required
+                        autofocus
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password"><%= typeof t !== 'undefined' ? t('setup.password') : 'Password' %></label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="<%= typeof t !== 'undefined' ? t('setup.minChars6') : 'Minimum 6 characters' %>"
+                        minlength="6"
+                        autocomplete="new-password"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="passwordConfirm"><%= typeof t !== 'undefined' ? t('setup.confirmPassword') : 'Confirm Password' %></label>
+                    <input
+                        type="password"
+                        id="passwordConfirm"
+                        name="passwordConfirm"
+                        placeholder="<%= typeof t !== 'undefined' ? t('setup.repeatPassword') : 'Repeat password' %>"
+                        minlength="6"
+                        autocomplete="new-password"
+                        required
+                    >
+                </div>
+
+                <div class="onboarding-section">
+                    <div class="onboarding-section-title">
+                        <i class="ti ti-shield-check"></i>
+                        <%= typeof t !== 'undefined' ? t('setup.securityOptionsTitle') : 'Security options' %>
+                    </div>
+                    <label class="checkbox-label" style="margin-bottom: 12px;">
+                        <input type="checkbox" name="enableTotp" <%= enableTotp ? 'checked' : '' %>>
+                        <span><%= typeof t !== 'undefined' ? t('setup.enableTotpLabel') : 'Enable two-factor authentication (TOTP)' %></span>
+                    </label>
+                    <div class="onboarding-section-copy">
+                        <%= typeof t !== 'undefined' ? t('setup.enableTotpHint') : 'After account creation you will need to confirm setup in an authenticator app.' %>
+                    </div>
+                </div>
+
+                <div class="alert alert-info" style="margin-top: 18px;">
+                    <i class="ti ti-alert-triangle"></i> <%= typeof t !== 'undefined' ? t('setup.noRecoveryWarning') : 'Automatic access recovery is unavailable. Store the secret in a safe place.' %>
+                </div>
+
+                <div class="onboarding-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ti ti-user-plus"></i>
+                        <%= typeof t !== 'undefined' ? t('setup.createAccount') : 'Create Account' %>
+                    </button>
+                </div>
+            </form>
+
+            <div class="wizard-skip" style="margin-top: 18px;">
+                <%= typeof t !== 'undefined' ? t('setup.rememberWarning') : 'Remember credentials — recovery is impossible!' %>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const confirmInput = document.getElementById('passwordConfirm');
+        const messages = {
+            usernameTooShort: <%- JSON.stringify(typeof t !== "undefined" ? t("setup.usernameTooShort") : "Administrator username must be at least 3 characters long.") %>,
+            passwordTooShort: <%- JSON.stringify(typeof t !== "undefined" ? t("setup.passwordTooShort") : "Password must be at least 6 characters long.") %>,
+            passwordsMismatch: <%- JSON.stringify(typeof t !== "undefined" ? t("setup.passwordsMismatch") : "Passwords don't match!") %>
+        };
+
+        function messageForInput(input) {
+            return input === usernameInput ? messages.usernameTooShort : messages.passwordTooShort;
+        }
+
+        function validateField(input) {
+            if (!input) return;
+            const minlength = parseInt(input.getAttribute('minlength') || '0', 10);
+            if (input.value.length > 0 && minlength > 0 && input.value.length < minlength) {
+                input.setCustomValidity(messageForInput(input));
+                return;
+            }
+            if (input === confirmInput && input.value.length > 0 && passwordInput.value !== input.value) {
+                input.setCustomValidity(messages.passwordsMismatch);
+                return;
+            }
+            input.setCustomValidity('');
+        }
+
+        [usernameInput, passwordInput, confirmInput].forEach(function (input) {
+            if (!input) return;
+            input.addEventListener('input', function () {
+                validateField(input);
+                if (input === passwordInput) validateField(confirmInput);
+            });
+        });
+    })();
+    </script>
+</body>
+</html>

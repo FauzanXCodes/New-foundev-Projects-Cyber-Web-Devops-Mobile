@@ -1,0 +1,14 @@
+﻿{
+    "id":  "mini-web-application-firewall",
+    "name":  "Mini Web Application Firewall",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/Krish9800/mini-waf",
+    "stack":  "Python; Flask; Redis",
+    "goal":  "Rule-based request inspection, rate limiting, IP blocklist and blocked-request dashboard.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "src/miniwaf/api/app.py",
+    "expectedFileCount":  49,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  61
+}

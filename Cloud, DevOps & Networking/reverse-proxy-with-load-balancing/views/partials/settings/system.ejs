@@ -1,0 +1,209 @@
+<!-- ==================== TAB: SYSTEM ==================== -->
+<div class="tab-content active" id="tab-system">
+    <!-- Quick stat-pills: at-a-glance system info -->
+    <div class="settings-stat-row">
+        <div class="settings-stat" title="<%= config.BASE_URL %>">
+            <div class="settings-stat-icon"><i class="ti ti-world"></i></div>
+            <div class="settings-stat-content">
+                <div class="settings-stat-label"><%= t('settings.baseUrl') %></div>
+                <div class="settings-stat-value"><code><%= config.BASE_URL %></code></div>
+            </div>
+        </div>
+        <div class="settings-stat">
+            <div class="settings-stat-icon info"><i class="ti ti-database"></i></div>
+            <div class="settings-stat-content">
+                <div class="settings-stat-label"><%= t('settings.mongodb') %></div>
+                <div class="settings-stat-value"><code><%= config.MONGO_URI.replace(/\/\/.*@/, '//***@').substring(0, 30) %>…</code></div>
+            </div>
+        </div>
+        <div class="settings-stat">
+            <div class="settings-stat-icon"><i class="ti ti-clock"></i></div>
+            <div class="settings-stat-content">
+                <div class="settings-stat-label">Uptime</div>
+                <div class="settings-stat-value"><%= Math.floor(process.uptime() / 3600) %>h <%= Math.floor((process.uptime() % 3600) / 60) %>m</div>
+            </div>
+        </div>
+        <div class="settings-stat">
+            <div class="settings-stat-icon"><i class="ti ti-cpu"></i></div>
+            <div class="settings-stat-content">
+                <div class="settings-stat-label">Memory · Node.js</div>
+                <div class="settings-stat-value"><%= Math.round(process.memoryUsage().heapUsed / 1024 / 1024) %> MB · <%= process.version %></div>
+            </div>
+        </div>
+        <% if (ssl.enabled) { %>
+        <div class="settings-stat">
+            <div class="settings-stat-icon success"><i class="ti ti-shield-check"></i></div>
+            <div class="settings-stat-content">
+                <div class="settings-stat-label">HTTPS</div>
+                <div class="settings-stat-value" style="color: var(--success);"><%= ssl.domain %></div>
+            </div>
+        </div>
+        <% } else { %>
+        <div class="settings-stat">
+            <div class="settings-stat-icon warning"><i class="ti ti-alert-triangle"></i></div>
+            <div class="settings-stat-content">
+                <div class="settings-stat-label">HTTP</div>
+                <div class="settings-stat-value" style="color: var(--warning);"><%= t('settings.sslNotConfigured') || 'SSL не настроен' %></div>
+            </div>
+        </div>
+        <% } %>
+    </div>
+
+    <!-- System Settings Form -->
+    <form method="POST" action="/panel/settings">
+        <div class="row" style="margin-bottom: 16px;">
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="ti ti-scale"></i> <%= t('settings.loadBalancing') %></h2>
+                    </div>
+                    <div class="card-body">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="loadBalancing.enabled"
+                                   <%= settings?.loadBalancing?.enabled ? 'checked' : '' %>>
+                            <span><%= t('settings.loadBalancingEnabled') %></span>
+                        </label>
+                        <small class="hint" style="display: block; margin-top: 6px;">
+                            <%= t('settings.loadBalancingHint') %>
+                        </small>
+
+                        <hr class="settings-divider">
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="loadBalancing.hideOverloaded"
+                                   <%= settings?.loadBalancing?.hideOverloaded ? 'checked' : '' %>>
+                            <span><%= t('settings.hideOverloaded') %></span>
+                        </label>
+                        <small class="hint" style="display: block; margin-top: 6px;">
+                            <%= t('settings.hideOverloadedHint') %>
+                        </small>
+
+                        <hr class="settings-divider">
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="loadBalancing.hideOffline"
+                                   <%= (settings?.loadBalancing?.hideOffline !== false) ? 'checked' : '' %>>
+                            <span><%= t('settings.hideOffline') %></span>
+                        </label>
+                        <small class="hint" style="display: block; margin-top: 6px;">
+                            <%= t('settings.hideOfflineHint') %>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="ti ti-shield"></i> <%= t('settings.rateLimiting') %></h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="rateLimit.subscriptionPerMinute"><%= t('settings.subscriptionsPerMinute') %></label>
+                            <input type="number" name="rateLimit.subscriptionPerMinute" id="rateLimit.subscriptionPerMinute"
+                                   value="<%= settings?.rateLimit?.subscriptionPerMinute || 100 %>" min="10" max="1000"
+                                   style="max-width: 200px;">
+                            <small class="hint"><%= t('settings.subscriptionsPerMinuteHint') %></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" style="margin-bottom: 16px;">
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="ti ti-database"></i> <%= t('settings.caching') %></h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label for="cache.subscriptionTTL"><%= t('settings.subscriptionsTTL') %></label>
+                                <input type="number" name="cache.subscriptionTTL" id="cache.subscriptionTTL"
+                                       value="<%= settings?.cache?.subscriptionTTL || 3600 %>" min="60" max="86400">
+                                <small class="hint"><%= t('settings.subscriptionsTTLHint') %></small>
+                            </div>
+                            <div class="form-group">
+                                <label for="cache.userTTL"><%= t('settings.usersTTL') %></label>
+                                <input type="number" name="cache.userTTL" id="cache.userTTL"
+                                       value="<%= settings?.cache?.userTTL || 900 %>" min="60" max="3600">
+                                <small class="hint"><%= t('settings.usersTTLHint') %></small>
+                            </div>
+                            <div class="form-group">
+                                <label for="cache.onlineSessionsTTL"><%= t('settings.onlineSessionsTTL') %></label>
+                                <input type="number" name="cache.onlineSessionsTTL" id="cache.onlineSessionsTTL"
+                                       value="<%= settings?.cache?.onlineSessionsTTL || 10 %>" min="5" max="60">
+                                <small class="hint"><%= t('settings.onlineSessionsTTLHint') %></small>
+                            </div>
+                            <div class="form-group">
+                                <label for="cache.activeNodesTTL"><%= t('settings.activeNodesTTL') %></label>
+                                <input type="number" name="cache.activeNodesTTL" id="cache.activeNodesTTL"
+                                       value="<%= settings?.cache?.activeNodesTTL || 30 %>" min="10" max="300">
+                                <small class="hint"><%= t('settings.activeNodesTTLHint') %></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="ti ti-plug-connected"></i> <%= t('settings.sshPool') %></h2>
+                    </div>
+                    <div class="card-body">
+                        <label class="checkbox-label" style="margin-bottom: 12px;">
+                            <input type="checkbox" name="sshPool.enabled" id="sshPoolEnabledToggle"
+                                   <%= settings?.sshPool?.enabled !== false ? 'checked' : '' %>>
+                            <span><%= t('settings.sshPoolEnabled') %></span>
+                        </label>
+                        <div class="alert alert-warning" id="sshPoolDisableWarning"
+                             style="margin-bottom: 14px; padding: 10px 12px; font-size: 12.5px; <%= settings?.sshPool?.enabled === false ? '' : 'display: none;' %>">
+                            <i class="ti ti-alert-triangle"></i>
+                            <%= t('settings.sshPoolDisableWarning') %>
+                        </div>
+                        <script>
+                            (function () {
+                                var toggle = document.getElementById('sshPoolEnabledToggle');
+                                var warn = document.getElementById('sshPoolDisableWarning');
+                                if (!toggle || !warn) return;
+                                toggle.addEventListener('change', function () {
+                                    warn.style.display = toggle.checked ? 'none' : '';
+                                });
+                            })();
+                        </script>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label for="sshPool.maxIdleTime"><%= t('settings.sshPoolIdleTime') %></label>
+                                <input type="number" name="sshPool.maxIdleTime" id="sshPool.maxIdleTime"
+                                       value="<%= settings?.sshPool?.maxIdleTime || 120 %>" min="30" max="600">
+                            </div>
+                            <div class="form-group">
+                                <label for="sshPool.connectTimeout"><%= t('settings.sshPoolTimeout') %></label>
+                                <input type="number" name="sshPool.connectTimeout" id="sshPool.connectTimeout"
+                                       value="<%= settings?.sshPool?.connectTimeout || 15 %>" min="5" max="60">
+                            </div>
+                            <div class="form-group">
+                                <label for="sshPool.keepAliveInterval"><%= t('settings.sshPoolKeepalive') %></label>
+                                <input type="number" name="sshPool.keepAliveInterval" id="sshPool.keepAliveInterval"
+                                       value="<%= settings?.sshPool?.keepAliveInterval || 30 %>" min="10" max="120">
+                            </div>
+                            <div class="form-group">
+                                <label for="sshPool.maxRetries"><%= t('settings.sshPoolRetries') %></label>
+                                <input type="number" name="sshPool.maxRetries" id="sshPool.maxRetries"
+                                       value="<%= settings?.sshPool?.maxRetries || 2 %>" min="0" max="5">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-save-bar">
+            <button type="submit" class="btn btn-primary">
+                <i class="ti ti-device-floppy"></i> <%= t('settings.saveAllSettings') %>
+            </button>
+        </div>
+    </form>
+</div>

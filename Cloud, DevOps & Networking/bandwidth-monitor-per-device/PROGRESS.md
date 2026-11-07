@@ -1,0 +1,146 @@
+# PROGRESS — OpenWrt HA Integration
+
+Entwicklungsprotokoll · Letzte Session: 2026-09-09 · Aktuell: **v1.28.0**
+
+> Detaillierte Session-Protokolle bis v1.13.0 liegen in der Git-Historie dieser Datei;
+> vollständige Release-Details in [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## Status: v1.28.0 — LLDP-Topologie (2026-09-09)
+
+Der zwei Monate alte Feature-Branch `feature/lldp-topology` (PR #14) wurde auf
+`main` nachgezogen und gemergt. Router-zu-Router-Verkabelung kommt jetzt
+bevorzugt aus **LLDP** (echte Nachbarn + physische Ports) statt aus
+DHCP/ARP/FDB-Heuristik; ohne `lldpd` bleibt alles wie bisher, nur mit
+geringerer Confidence.
+
+Beim Merge-Review gefundene und behobene Punkte:
+
+- LLDP-Kanten leiten ihr Medium aus den LLDP-Interface-Namen ab
+  (`link_type: lan|wifi`). Vorher stand dort `"lldp"`, wodurch der
+  Repeater-Override (`lan_uplink`/`mesh_member`) LLDP-Kanten übersprang — ein
+  Repeater mit `lldpd` wurde als „Kabel“ gerendert. Umgekehrt schlägt eine
+  LLDP-verifizierte Kupferstrecke jetzt die STA-Heuristik, wie ein WAN-Carrier.
+- Die Switch-Inferenz gruppierte nur `lan_uplink`; LLDP unterdrückt genau die.
+  Zwei APs hinter einem unmanaged Switch verloren dadurch ihren Switch-Knoten,
+  sobald `lldpd` lief. Gruppierung läuft jetzt über `_is_wired_uplink_edge()`.
+- `topology_diagnostic.py` verwarf `vendor`/`connection_type`/`confidence`/
+  `source`/`web_url`/`last_seen` aus seiner Attribut-Whitelist — das Frontend
+  fiel still auf seine eigene OUI-Tabelle zurück, `oui.py` war toter Code.
+- `missing_before`/`missing_after` im Config-Flow zählten die optionale
+  `lldp_neighbors`-Capability mit → erfolgreicher ACL-Deploy meldete
+  „keine Änderung“.
+- LLDP hängte an jedem Poll an einem SSH-Connect und cachte ein
+  „unavailable“ für die ganze Session. Jetzt Refresh alle 600 s, Retry alle
+  1800 s und nach jedem `reset_acl_blocked()` — ein nachträglich installiertes
+  `lldpd` wirkt ohne Entry-Reload.
+
+Nebenbei: die CI zieht `ruff` unpinned und ist bei 0.16.6 angekommen, das I001
+und PERF102 im Default-Regelsatz hat. Die betroffenen Import-Blöcke wurden
+sortiert.
+
+---
+
+## Status: v1.26.4 — Log-Hygiene Multi-Router (2026-08-23)
+
+Drei Prod-Dauerbrenner behoben:
+
+- root-rpcd-Warnung feuerte ~66×/h: `reset_ssh_fallback_flag()` (läuft jeden
+  Poll) resettete das Warn-Latch. Jetzt einmal pro Router und Start, mit Host
+  in der Meldung.
+- `does not generate unique IDs`-ERROR pro Mesh-Client: Neuer HA-Core erzwingt
+  bei `ScannerEntity` unique_id = MAC (entry-scoped `_attr_unique_id` wird
+  ignoriert). Fix: AP-übergreifende Dedup via Claim-Register in hass.data —
+  eine Entity pro Client, die alle geladenen Router durchsucht (Roaming bleibt
+  `home`, neues Attribut `connected_ap`).
+- Ewiger SSH-Fallback auf 10.10.30.50 („OpenWrt"-Entry): `ensure_acl` ließ
+  eine existierende, aber unlesbare (= prä-v5) ACL „as-is" → jetzt Redeploy
+  bei permission-blockiertem file/read (Timeouts weiterhin nicht).
+- **v1.26.5** (parallele Session): SSL-Kontext nicht mehr synchron im
+  Event-Loop — HA-Kontexte via `ssl_util.py` injiziert.
+- **v1.26.6 (Nachzügler)**: ACL-Redeploy allein reichte auf .50 nicht — der
+  `_acl_blocked`-Cache keyte uci nur auf `("uci","get")`; der verweigerte
+  ddns-Probe vergiftete den uci-wireless-Pfad → SSH-Fallback jeden Poll.
+  Cache-Key für uci jetzt per Config (wie file per Pfad seit 1.26.3).
+  Debug-Erkenntnis: .50 ist ein Mieter-Repeater (SSID Tenant-Klee, STA-Uplink)
+  ohne LuCI-superuser-ACL; network.wireless/iwinfo-info dort teils nicht verfügbar.
+
+Offen/Beobachtung: HA (Prod) startete am 22./23.08. mehrfach neu
+(home-assistant.log.fault 05:03), Ursache unklar.
+
+---
+
+## Status: v1.20.0 — HA-Kompatibilitäts-Modernisierung (Branch `fix/ha-2026-8-modernization`)
+
+Review der Integration gegen HA-Core-Standards Stand Juli 2026 (aktuell: HA 2026.7):
+
+- **Kritisch behoben:** `DataUpdateCoordinator` bekommt `config_entry=` explizit —
+  die implizite ContextVar-Übergabe entfällt in HA 2026.8.
+- Toter Sync-Fallback `register_static_path` im Panel entfernt (seit HA 2024.6 obsolet).
+- `manifest.json`: `integration_type: hub`; HACS-Floor ehrlich auf **2026.2.0**
+  (Code brauchte real schon ≥2024.11).
+- **de.json** neu; strings.json/en.json jetzt durchgängig englisch (waren gemischt).
+- Blueprint auf Plural-Syntax (`triggers:`/`actions:`/`action:`) + `source_url` + `min_version`.
+- CI: Release-Workflow gegated (test + hassfest), Test-Matrix 3.13/3.14
+  (Py 3.12 löste nur HA 2024.x auf; HA 2026.3+ braucht Py ≥3.14),
+  ha-compat testet jetzt wirklich die gemeldete Latest-HA (Version gepinnt).
+- CHANGELOG-Lücke [1.19.0] nachgetragen; README-Badges dynamisch.
+
+Nicht betroffen (verifiziert): Device-Tracker-Deprecations 2026.6
+(battery_level/location_name), `show_advanced_options`, Update-Listener+Reload-Pattern.
+
+---
+
+## Meilensteine
+
+| Version | Zeitraum | Inhalt |
+|---------|----------|--------|
+| **v1.28.0** | 2026-09 | LLDP-Topologie (Router-zu-Router + Ports), reicheres Client-Modell |
+| **v1.27.0** | 2026-09 | Reboot-Button pro Router (ubus mit SSH-Fallback) |
+| **v1.26.x** | 2026-08 | Log-Hygiene Multi-Router, ScannerEntity-Dedup, ACL v5, SSL-Kontext |
+| **v1.20.0** | 2026-07 | HA-Kompatibilität 2026.8, de.json, CI-Modernisierung |
+| **v1.19.0** | 2026-05 | rpcd-Session-Leak-Fix (Ursache des Router-OOM), ACL-Re-Validierung |
+| **v1.18.0** | 2026-04 | Subprocess- + Panel-Lifecycle-Hardening, 24h-Prod-Sampler |
+| **v1.17.x** | 2026-04 | Error-Sensor, Outage-Notifications, sshpass-Security-Fix, dynamische Sensoren default-off |
+| **v1.16.0** | 2026-04 | HTTPS-Support (http / https / https-insecure) |
+| **v1.15.x** | 2026-04 | rpcd-Memory-Leak-Fix (file/exec raus), Capability-Checklist im Config Flow, SSH-Fallback-Erkennung, adaptives Polling |
+| **v1.14.x** | 2026-04 | Wiring-View, Traffic-View, Mobile-View |
+| **v1.10–1.13** | 2026-04 | Topology-Panel-Ausbau: 5 Views, Minimap, Kontextmenü, Event-Timeline, VLAN-Badges (+Stale-Cache), CPU-History |
+| **v1.0.x** | 2026-03 | Erstrelease: Sensoren, Switches, Buttons, Device Tracker, Update-Management |
+
+---
+
+## Architektur-Kurzreferenz
+
+- `api.py` — alle HTTP/SSH-Calls (ubus JSON-RPC, `_safe_subprocess_exec` für SSH-Fallback)
+  · LLDP via `lldpcli` über `_run_ssh` (kippt bewusst **nicht** den Degraded-Status),
+  zeitbasiert gecacht (`LLDP_REFRESH_INTERVAL` / `LLDP_UNAVAILABLE_RETRY_INTERVAL`)
+- `coordinator.py` — 60s-Poll (adaptiv: 120s bei CPU >100%, 300s bei SSH-Fallback),
+  Event-/DSL-/CPU-History, Feature-Detection beim ersten Refresh
+- `topology_mesh.py` / `topology_panel.py` — Multi-Router-Aggregation + Sidebar-Panel
+  · Kanten-Prioritaet: Method 0 LLDP → DHCP → ARP/Trunk → WiFi → Subnet-Fallback,
+  danach Repeater-Override und Switch-Inferenz
+- Entities lesen ausschließlich aus `coordinator.data`; runtime_data (typisiert) am Entry
+
+## Bekannte Einschränkungen
+
+| Einschränkung | Ursache | Impact |
+|---|---|---|
+| Event-History überlebt HA-Restart nicht | `deque` in-memory | Ereignisse gehen beim Neustart verloren |
+| `signal=null` für manche Clients | `iw station dump` bracket-format | Signal-Wert fehlt, kein Fehler |
+| Ghost-Mode akkumuliert nicht über Restarts | keine Persistenz | frisch gestartete Instanz zeigt keine Ghost-Devices |
+| Panel-Static-Path bleibt bis HA-Restart gebunden | aiohttp-Router ist append-only | toter Endpoint nach letztem Unload (View antwortet 410) |
+
+---
+
+## Deployment
+
+```bash
+git pull   # main
+git push
+```
+
+Panel-URL: `http://10.10.10.165:8123/openwrt-topology`
+Router-ACL: `/usr/share/rpcd/acl.d/ha-openwrt-router.json` auf Gateway + APs
+Offene Arbeiten: siehe [TODO.md](TODO.md)

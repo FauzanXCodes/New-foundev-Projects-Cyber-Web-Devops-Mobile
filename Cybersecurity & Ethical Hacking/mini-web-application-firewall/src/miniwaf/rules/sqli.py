@@ -1,0 +1,67 @@
+"""SQL Injection detection rules inspired by OWASP CRS."""
+
+from miniwaf.models.enums import AttackType, LocationTarget, RuleSeverity
+from miniwaf.models.rules import WAFRule
+
+SQLI_RULES: list[WAFRule] = [
+    WAFRule(
+        rule_id="RULE-SQLI-001",
+        name="Union-Based SQL Injection",
+        category=AttackType.SQLI,
+        severity=RuleSeverity.CRITICAL,
+        paranoia_level=1,
+        pattern=r"\bunion\b\s+(?:all\s+)?\bselect\b",
+        target=LocationTarget.ANY,
+        cwe_id="CWE-89",
+        description="Detects UNION SELECT query concatenation payloads.",
+        remediation="Enforce parameterized SQL prepared statements.",
+    ),
+    WAFRule(
+        rule_id="RULE-SQLI-002",
+        name="SQL Tautology / Boolean Bypass",
+        category=AttackType.SQLI,
+        severity=RuleSeverity.HIGH,
+        paranoia_level=1,
+        pattern=r"(?:'|\")\s*or\s+[\w'\"]+\s*=\s*[\w'\"]+|(?:\bor\b|\band\b)\s+\d+\s*=\s*\d+",
+        target=LocationTarget.ANY,
+        cwe_id="CWE-89",
+        description="Detects classic boolean tautology auth bypass (e.g. ' OR '1'='1).",
+        remediation="Validate input types and reject unquoted SQL meta-expressions.",
+    ),
+    WAFRule(
+        rule_id="RULE-SQLI-003",
+        name="SQL Time-Based Blind / System Functions",
+        category=AttackType.SQLI,
+        severity=RuleSeverity.HIGH,
+        paranoia_level=1,
+        pattern=r"\b(?:sleep|benchmark|waitfor\s+delay|pg_sleep)\s*\(",
+        target=LocationTarget.ANY,
+        cwe_id="CWE-89",
+        description="Detects blind SQL injection time-delay probes.",
+        remediation="Disable multi-query execution and parameterize user input.",
+    ),
+    WAFRule(
+        rule_id="RULE-SQLI-004",
+        name="Stacked SQL Queries",
+        category=AttackType.SQLI,
+        severity=RuleSeverity.HIGH,
+        paranoia_level=2,
+        pattern=r";\s*(?:drop\s+table|delete\s+from|insert\s+into|update\s+\w+\s+set)\b",
+        target=LocationTarget.ANY,
+        cwe_id="CWE-89",
+        description="Detects destructive stacked database queries separated by semicolon.",
+        remediation="Use least privilege database users and restrict multiple statements.",
+    ),
+    WAFRule(
+        rule_id="RULE-SQLI-005",
+        name="SQL Comment Obfuscation",
+        category=AttackType.SQLI,
+        severity=RuleSeverity.MEDIUM,
+        paranoia_level=1,
+        pattern=r"(?:--|#|/\*.*?\*/)",
+        target=LocationTarget.ANY,
+        cwe_id="CWE-89",
+        description="Detects SQL comment markers used to truncate legitimate queries.",
+        remediation="Validate characters in identifiers and parameters.",
+    ),
+]

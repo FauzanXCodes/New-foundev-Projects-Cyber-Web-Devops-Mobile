@@ -1,0 +1,869 @@
+/**
+ * DetailPanel — Slide-in right panel showing details for a selected node.
+ *
+ * Handles three entity types: Gateway, AccessPoint, Client.
+ * All data is passed in via props; the panel has no data-fetching logic.
+ */
+
+import React from 'react';
+import { Gateway, AccessPoint, Client, NodeStatus, DdnsService, SsidInfo, PortStat, PortDevice, VlanInfo, RouterEvent, CpuHistoryPoint, LldpUplink, UplinkType, ConnectionType } from '../types';
+import { IconX } from './Icons';
+import { StatusDot, statusLabel } from './StatusDot';
+import { SignalBar } from './SignalBar';
+import { SpeedChart } from './SpeedChart';
+import { signalQuality } from '../layout';
+import { formatConnectedSince, formatLeaseExpiry, safeHttpUrl } from '../api';
+import { shortName, deviceLabel, CONFIDENCE_LABEL, isWanPort } from './PortStrip';
+
+type SelectedEntity =
+  | { type: 'gateway'; data: Gateway }
+  | { type: 'ap';      data: AccessPoint; clients: Client[] }
+  | { type: 'client';  data: Client;      apName: string }
+  | { type: 'port';    data: PortStat;    routerName: string }
+  | null;
+
+export interface DetailPanelActions {
+  onFocusNode: (nodeId: string) => void;
+  onShowClients: () => void;
+  onShowAlerts: () => void;
+  onToggleVlan: () => void;
+}
+
+interface Props {
+  entity: SelectedEntity;
+  onClose: () => void;
+  actions?: DetailPanelActions;
+  accessPoints?: AccessPoint[];
+}
+
+export function DetailPanel({ entity, onClose, actions, accessPoints = [] }: Props) {
+  return (
+    <div className={`detail-panel ${entity ? 'open' : ''}`}>
+      <div className="detail-panel__handle" aria-hidden="true" />
+      <div className="detail-panel__header">
+        <span className="detail-panel__title">
+          {entity?.type === 'gateway' && 'Gateway'}
+          {entity?.type === 'ap'      && 'Access Point'}
+          {entity?.type === 'client'  && 'Client'}
+          {entity?.type === 'port'    && `Port ${shortName(entity.data.name)}`}
+          {!entity && 'Details'}
+        </span>
+        <button className="detail-panel__close" onClick={onClose}>
+          <IconX size={13} />
+        </button>
+      </div>
+
+      <div className="detail-panel__body">
+        {entity?.type === 'gateway' && <GatewayDetail data={entity.data} actions={actions} accessPoints={accessPoints} />}
+        {entity?.type === 'ap'      && <APDetail data={entity.data} clients={entity.clients} actions={actions} />}
+        {entity?.type === 'client'  && <ClientDetail data={entity.data} apName={entity.apName} actions={actions} />}
+        {entity?.type === 'port'    && <PortDetail data={entity.data} routerName={entity.routerName} actions={actions} />}
+      </div>
+    </div>
+  );
+}
+
+// ── Action bar ────────────────────────────────────────────────────────────
+
+function ActionBtn({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <button className="inspector-action" onClick={onClick}>
+      <span className="inspector-action__icon">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// ── Gateway detail ────────────────────────────────────────────────────────
+
+function GatewayDetail({ data, actions, accessPoints }: { data: Gateway; actions?: DetailPanelActions; accessPoints?: AccessPoint[] }) {
+  const cpuHistory = data.cpuHistoryBackend ?? [];
+  const hasCpuHistory = cpuHistory.length >= 2;
+  const hasPing = data.pingMs != null;
+
+  return (
+    <>
+      <div className="detail-section">
+        <div className="detail-section__heading">Allgemein</div>
+        <Row label="Name"   value={data.name} />
+        <Row label="Modell" value={data.model} />
+        <Row label="Status" value={<StatusBadge status={data.status} />} />
+        {data.firmwareVersion && <Row label="Firmware" value={data.firmwareVersion} />}
+      </div>
+      <div className="detail-section">
+        <div className="detail-section__heading">Netzwerk</div>
+        <Row label="LAN IP"  value={data.ip} />
+        <Row label="WAN IP"  value={data.wanIp} />
+        <Row label="Uptime"  value={data.uptime} />
+        {hasPing && <Row label="Ping (8.8.8.8)" value={`${data.pingMs} ms`} />}
+      </div>
+
+      {data.wanTraffic && (data.wanTraffic.downstream_bps != null || data.wanTraffic.upstream_bps != null) && (
+        <div className="detail-section">
+          <div className="detail-section__heading">WAN Aktivität</div>
+          <WanTrafficBars
+            down={data.wanTraffic.downstream_bps ?? 0}
+            up={data.wanTraffic.upstream_bps ?? 0}
+          />
+        </div>
+      )}
+
+      {hasCpuHistory && (
+        <div className="detail-section">
+          <div className="detail-section__heading">CPU Verlauf (1h)</div>
+          <SpeedChart
+            history={cpuHistory}
+            width={310}
+            height={110}
+          />
+        </div>
+      )}
+
+      {(data.cpuLoad != null || data.memUsage != null) && (
+        <div className="detail-section">
+          <div className="detail-section__heading">System</div>
+          <ResourceBars cpu={data.cpuLoad} mem={data.memUsage} />
+        </div>
+      )}
+
+      {(data.ssids ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">WLAN-Netze</div>
+          <SsidList ssids={data.ssids!} />
+        </div>
+      )}
+
+      {(data.portStats ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">Ports</div>
+          <PortList ports={data.portStats!} accessPoints={accessPoints ?? []} />
+        </div>
+      )}
+
+      {(data.vlans ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">VLANs</div>
+          <VlanList vlans={data.vlans!} />
+        </div>
+      )}
+
+      {(data.ddnsServices ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">DuckDNS / DDNS</div>
+          {(data.ddnsServices ?? []).map(svc => (
+            <DdnsRow key={svc.section} svc={svc} />
+          ))}
+        </div>
+      )}
+
+      {(data.events ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">Ereignisse</div>
+          <EventTimeline events={data.events!} />
+        </div>
+      )}
+
+      {actions && (
+        <div className="inspector-actions">
+          <ActionBtn icon="◎" label="Fokus"   onClick={() => actions.onFocusNode(data.id)} />
+          <ActionBtn icon="👥" label="Clients" onClick={actions.onShowClients} />
+          <ActionBtn icon="⚠" label="Alarme"  onClick={actions.onShowAlerts} />
+          <ActionBtn icon="▦" label="VLANs"   onClick={actions.onToggleVlan} />
+        </div>
+      )}
+    </>
+  );
+}
+
+
+function DdnsRow({ svc }: { svc: DdnsService }) {
+  const statusColor = svc.status === 'ok'
+    ? '#4ade80'
+    : svc.status === 'error'
+    ? '#f87171'
+    : '#fb923c';
+
+  const lastUpdateStr = svc.last_update
+    ? new Date(svc.last_update * 1000).toLocaleString('de-DE', {
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+      })
+    : null;
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary, #e0eaf8)' }}>
+          {svc.domain || svc.section}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, display: 'inline-block' }} />
+          <span style={{ color: statusColor }}>
+            {svc.status === 'ok' ? 'Aktiv' : svc.status === 'error' ? 'Fehler' : 'Unbekannt'}
+          </span>
+        </span>
+      </div>
+      {svc.ip && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary, #8899aa)' }}>
+          IP: {svc.ip}
+        </div>
+      )}
+      {lastUpdateStr && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary, #8899aa)' }}>
+          Zuletzt: {lastUpdateStr}
+        </div>
+      )}
+      {svc.service_name && (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
+          {svc.service_name}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Event timeline ────────────────────────────────────────────────────────
+
+function EventTimeline({ events }: { events: RouterEvent[] }) {
+  const typeIcon: Record<string, string> = { info: 'ℹ', warn: '⚠', error: '✕' };
+  const typeClass: Record<string, string> = { info: 'event-info', warn: 'event-warn', error: 'event-error' };
+
+  function relTime(ts: number): string {
+    const diff = Math.floor(Date.now() / 1000) - ts;
+    if (diff < 60)   return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
+  }
+
+  return (
+    <div className="event-timeline">
+      {events.slice(0, 10).map((ev, i) => (
+        <div key={i} className={`event-timeline__item ${typeClass[ev.type] ?? ''}`}>
+          <span className="event-timeline__icon">{typeIcon[ev.type] ?? '·'}</span>
+          <div className="event-timeline__body">
+            <span className="event-timeline__msg">{ev.message}</span>
+            {ev.detail && <span className="event-timeline__detail">{ev.detail}</span>}
+          </div>
+          <span className="event-timeline__age">{relTime(ev.ts)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── AP detail ─────────────────────────────────────────────────────────────
+
+function uplinkTypeLabel(t: UplinkType): string {
+  switch (t) {
+    case 'wired':         return 'Kabelgebunden';
+    case 'repeater':      return 'WLAN Repeater';
+    case 'router_uplink': return 'Router-Uplink (LLDP)';
+    default:              return 'Mesh';
+  }
+}
+
+function APDetail({ data, clients, actions }: { data: AccessPoint; clients: Client[]; actions?: DetailPanelActions }) {
+  const q = signalQuality(data.backhaulSignal);
+  const isWirelessUplink = data.uplinkType === 'mesh' || data.uplinkType === 'repeater';
+  return (
+    <>
+      <div className="detail-section">
+        <div className="detail-section__heading">Allgemein</div>
+        <Row label="Name"    value={data.name} />
+        <Row label="Modell"  value={data.model} />
+        <Row label="IP"      value={data.ip} />
+        <Row label="Status"  value={<StatusDot status={data.status} />} />
+        {data.firmwareVersion && <Row label="Firmware" value={data.firmwareVersion} />}
+      </div>
+      <div className="detail-section">
+        <div className="detail-section__heading">Uplink</div>
+        <Row label="Typ"     value={uplinkTypeLabel(data.uplinkType)} />
+        {isWirelessUplink && (
+          <>
+            <Row label="Signal"  value={<><SignalBar dbm={data.backhaulSignal} /> {data.backhaulSignal} dBm</>} />
+            <Row label="Qualität" value={q} />
+          </>
+        )}
+        {data.uplinkType === 'router_uplink' && (data.gatewayPort || data.apPort) && (
+          <Row
+            label="Port"
+            value={`${(data.gatewayPort ?? data.lldpUplink?.fromPort ?? '?').toUpperCase()} ↔ ${(data.apPort ?? data.lldpUplink?.toPort ?? '?').toUpperCase()}`}
+          />
+        )}
+      </div>
+
+      {data.lldpUplink && (
+        <LldpSection lldp={data.lldpUplink} />
+      )}
+      {(data.ssids ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">WLAN-Netze</div>
+          <SsidList ssids={data.ssids!} />
+        </div>
+      )}
+
+      {(data.cpuLoad != null || data.memUsage != null) && (
+        <div className="detail-section">
+          <div className="detail-section__heading">System</div>
+          <ResourceBars cpu={data.cpuLoad} mem={data.memUsage} />
+        </div>
+      )}
+
+      {(data.cpuHistoryBackend?.length ?? 0) >= 2 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">CPU Verlauf (1h)</div>
+          <SpeedChart
+            history={data.cpuHistoryBackend!}
+            width={290}
+            height={80}
+          />
+        </div>
+      )}
+
+      <div className="detail-section">
+        <div className="detail-section__heading">Clients ({clients.length})</div>
+        <div className="detail-client-list">
+          {clients.map(c => (
+            <div className="detail-client-item" key={c.id}>
+              <StatusDot status={c.status} />
+              <span className="detail-client-item__name">{c.name}</span>
+              <span className="detail-client-item__meta">{c.band}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(data.events ?? []).length > 0 && (
+        <div className="detail-section">
+          <div className="detail-section__heading">Ereignisse</div>
+          <EventTimeline events={data.events!} />
+        </div>
+      )}
+
+      {actions && (
+        <div className="inspector-actions">
+          <ActionBtn icon="◎" label="Fokus"   onClick={() => actions.onFocusNode(data.id)} />
+          <ActionBtn icon="👥" label="Clients" onClick={actions.onShowClients} />
+          <ActionBtn icon="⚠" label="Alarme"  onClick={actions.onShowAlerts} />
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── LLDP router-uplink detail block ───────────────────────────────────────
+
+function LldpSection({ lldp }: { lldp: LldpUplink }) {
+  const mgmtUrl = safeHttpUrl(lldp.managementIp);
+  const vlans = lldp.vlanTags ?? [];
+  const hasConflict = (lldp.conflicts?.length ?? 0) > 0;
+  return (
+    <div className="detail-section">
+      <div className="detail-section__heading">
+        Router-Uplink
+        <span className="lldp-badge" style={{ marginLeft: 6 }}>LLDP</span>
+      </div>
+      {lldp.neighborName && <Row label="Nachbar" value={lldp.neighborName} />}
+      {lldp.managementIp && (
+        <Row
+          label="Management-IP"
+          value={
+            mgmtUrl ? (
+              <a
+                href={mgmtUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="port-device-row__link"
+                title="Weboberfläche des Nachbarn öffnen"
+              >
+                {lldp.managementIp} ↗
+              </a>
+            ) : (
+              lldp.managementIp
+            )
+          }
+        />
+      )}
+      {(lldp.fromPort || lldp.toPort) && (
+        <Row
+          label="Port (lokal ↔ remote)"
+          value={`${(lldp.fromPort ?? '?').toUpperCase()} ↔ ${(lldp.toPort ?? '?').toUpperCase()}`}
+        />
+      )}
+      {lldp.neighborMac && <Row label="Nachbar-MAC" value={<span className="port-device-row__mac">{lldp.neighborMac}</span>} />}
+      {lldp.neighborChassisId && lldp.neighborChassisId !== lldp.neighborMac && (
+        <Row label="Chassis-ID" value={<span className="port-device-row__mac">{lldp.neighborChassisId}</span>} />
+      )}
+      {lldp.neighborPortId && <Row label="Remote Port-ID" value={lldp.neighborPortId} />}
+      {vlans.length > 0 && (
+        <Row label="VLANs" value={vlans.length > 1 ? `Trunk ${vlans.join(', ')}` : `${vlans[0]}`} />
+      )}
+      <Row label="Verbindung" value={(lldp.linkType ?? 'lldp').toUpperCase()} />
+      {lldp.confidence && <Row label="Vertrauen" value={lldp.confidence} />}
+      {lldp.direction && (
+        <Row label="Richtung" value={lldp.direction === 'one_way' ? 'einseitig (nur eine Seite)' : 'beidseitig'} />
+      )}
+      {lldp.capabilities && lldp.capabilities.length > 0 && (
+        <Row label="Rolle" value={lldp.capabilities.join(', ')} />
+      )}
+      {hasConflict && (
+        <div className="lldp-conflict-note">
+          ⚠ LLDP-Port weicht von Bridge-FDB ab
+          {lldp.conflicts!.map((c, i) => (
+            <div key={i} className="lldp-conflict-note__detail">
+              {c.source}: FDB {c.fdb_port ?? '?'} ≠ LLDP {c.lldp_port ?? '?'}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Client detail ─────────────────────────────────────────────────────────
+
+/** Construct the HA entity_id for this client's device_tracker entity.
+ *  HA slugifies the entity name (hostname or MAC) by lowercasing and
+ *  replacing non-alphanumeric characters with underscores.
+ */
+function haEntityId(mac: string, hostname: string): string {
+  const name = hostname && hostname !== mac ? hostname : mac;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  return `device_tracker.${slug}`;
+}
+
+const CONNECTION_TYPE_LABEL: Record<ConnectionType, string> = {
+  wired:         'Kabel (LAN)',
+  wireless:      'WLAN',
+  router_uplink: 'Router-Uplink',
+  unknown:       'Unbekannt',
+};
+
+function formatLastSeenIso(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function ClientDetail({ data, apName, actions }: { data: Client; apName: string; actions?: DetailPanelActions }) {
+  const q = signalQuality(data.signal);
+  const entityId = haEntityId(data.mac, data.hostname);
+  const connectedStr = data.connectedSince ? formatConnectedSince(data.connectedSince) : '';
+  const leaseStr = data.dhcpExpires ? formatLeaseExpiry(data.dhcpExpires) : '';
+  const webUrl = data.webUrl;
+  const isWireless = data.connectionType === 'wireless' || (data.connectionType == null && data.isWifiClient);
+
+  const nameNode = webUrl ? (
+    <a href={webUrl} target="_blank" rel="noopener noreferrer" className="port-device-row__link" title="Weboberfläche öffnen">
+      {data.name || data.mac} ↗
+    </a>
+  ) : (data.name || data.mac);
+
+  const ipNode = data.ip
+    ? (webUrl
+        ? <a href={webUrl} target="_blank" rel="noopener noreferrer" className="port-device-row__link" title="Weboberfläche öffnen">{data.ip} ↗</a>
+        : data.ip)
+    : '—';
+
+  return (
+    <>
+      <div className="detail-section">
+        <div className="detail-section__heading">Gerät</div>
+        <Row label="Name"       value={nameNode} />
+        <Row label="IP"         value={ipNode} />
+        <Row label="Hostname"   value={data.hostname !== data.mac ? data.hostname : '—'} />
+        <Row label="Hersteller" value={data.manufacturer ?? data.vendor ?? '—'} />
+        <Row label="Status"     value={<StatusBadge status={data.status} />} />
+      </div>
+      <div className="detail-section">
+        <div className="detail-section__heading">Netzwerk</div>
+        <Row label="MAC"    value={data.mac} />
+        {data.connectionType && (
+          <Row label="Verbindungstyp" value={CONNECTION_TYPE_LABEL[data.connectionType]} />
+        )}
+        <Row label="Band"   value={data.band || '—'} />
+        <Row label="AP"     value={apName} />
+        {data.iface     && <Row label="Port/Interface" value={data.iface} />}
+        {data.vlanId != null && <Row label="VLAN" value={`VLAN ${data.vlanId}`} />}
+        {data.linkSpeed != null && <Row label="Link-Speed" value={data.linkSpeed >= 1000 ? `${data.linkSpeed / 1000} Gbit/s` : `${data.linkSpeed} Mbit/s`} />}
+        {data.source     && <Row label="Quelle" value={data.source} />}
+        {data.confidence && <Row label="Vertrauen" value={<ConfidenceBadge confidence={data.confidence} />} />}
+        {connectedStr && <Row label="Verbunden seit" value={connectedStr} />}
+        {leaseStr     && <Row label="Lease bis"      value={leaseStr} />}
+        {data.lastSeen && <Row label="Zuletzt gesehen" value={formatLastSeenIso(data.lastSeen)} />}
+      </div>
+      {isWireless && (
+        <div className="detail-section">
+          <div className="detail-section__heading">Signal</div>
+          <Row label="Signal"   value={<><SignalBar dbm={data.signal} /> {data.signal} dBm</>} />
+          <Row label="Qualität" value={q} />
+        </div>
+      )}
+
+      {(data.rxBytes != null || data.txBytes != null) && (
+        <div className="detail-section">
+          <div className="detail-section__heading">Daten (Session)</div>
+          <BytesBars rx={data.rxBytes ?? 0} tx={data.txBytes ?? 0} />
+        </div>
+      )}
+
+      {actions && (
+        <div className="inspector-actions">
+          <ActionBtn icon="◎" label="AP Fokus" onClick={() => actions.onFocusNode(data.apId)} />
+          <ActionBtn icon="⚠" label="Alarme"   onClick={actions.onShowAlerts} />
+        </div>
+      )}
+
+      {/* ── HA entity link ── */}
+      <a
+        className="detail-ha-link"
+        href={`/config/entities/edit/${entityId}`}
+        title={`Entity: ${entityId}`}
+      >
+        In HA anzeigen →
+      </a>
+    </>
+  );
+}
+
+// ── Mini traffic / resource bars ─────────────────────────────────────────
+
+function formatBps(bps: number): string {
+  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} Mbps`;
+  if (bps >= 1_000)     return `${(bps / 1_000).toFixed(0)} kbps`;
+  return `${bps} bps`;
+}
+
+function formatBytes(b: number): string {
+  if (b >= 1_073_741_824) return `${(b / 1_073_741_824).toFixed(2)} GB`;
+  if (b >= 1_048_576)     return `${(b / 1_048_576).toFixed(1)} MB`;
+  if (b >= 1_024)         return `${(b / 1_024).toFixed(0)} KB`;
+  return `${b} B`;
+}
+
+function MiniBar({ label, pct, color, value }: {
+  label: string; pct: number; color: string; value: string;
+}) {
+  return (
+    <div className="mini-bar">
+      <span className="mini-bar__label">{label}</span>
+      <div className="mini-bar__track">
+        <div className="mini-bar__fill" style={{ width: `${Math.min(100, pct)}%`, background: color }} />
+      </div>
+      <span className="mini-bar__value">{value}</span>
+    </div>
+  );
+}
+
+function WanTrafficBars({ down, up }: { down: number; up: number }) {
+  const max = Math.max(down, up, 1);
+  return (
+    <div className="mini-bar-group">
+      <MiniBar label="↓" pct={down / max * 100} color="var(--accent)"  value={formatBps(down)} />
+      <MiniBar label="↑" pct={up   / max * 100} color="var(--success)" value={formatBps(up)} />
+    </div>
+  );
+}
+
+function BytesBars({ rx, tx }: { rx: number; tx: number }) {
+  const max = Math.max(rx, tx, 1);
+  return (
+    <div className="mini-bar-group">
+      <MiniBar label="RX" pct={rx / max * 100} color="var(--accent)"  value={formatBytes(rx)} />
+      <MiniBar label="TX" pct={tx / max * 100} color="var(--success)" value={formatBytes(tx)} />
+    </div>
+  );
+}
+
+function ResourceBars({ cpu, mem }: { cpu?: number; mem?: number }) {
+  return (
+    <div className="mini-bar-group">
+      {cpu != null && (
+        <MiniBar
+          label="CPU" pct={cpu}
+          color={cpu > 80 ? 'var(--danger)' : cpu > 60 ? 'var(--warning)' : 'var(--success)'}
+          value={`${cpu.toFixed(0)}%`}
+        />
+      )}
+      {mem != null && (
+        <MiniBar
+          label="RAM" pct={mem}
+          color={mem > 85 ? 'var(--danger)' : mem > 70 ? 'var(--warning)' : 'var(--accent)'}
+          value={`${mem.toFixed(0)}%`}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function SsidList({ ssids }: { ssids: SsidInfo[] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {ssids.map((s, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {s.ssid}
+          </span>
+          <span style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+            {s.band && (
+              <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.15)', color: '#93c5fd' }}>
+                {s.band}
+              </span>
+            )}
+            {s.channel && (
+              <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
+                ch{s.channel}
+              </span>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const VLAN_COLORS_PANEL = [
+  '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6',
+  '#ef4444', '#eab308', '#14b8a6',
+];
+
+function PortList({ ports, accessPoints }: { ports: PortStat[]; accessPoints: AccessPoint[] }) {
+  // Build port → AP name map using connectedDevice MAC → AP MAC matching
+  const apByMac = new Map<string, string>();
+  for (const ap of accessPoints) {
+    // ap.id is used as MAC in some versions — use name as display
+    apByMac.set(ap.ip, ap.name);
+  }
+  const apByPort = new Map<string, string>();
+  for (const p of ports) {
+    if (p.connectedDevice) {
+      // connectedDevice may be hostname or MAC — try to match AP by hostname
+      const matchedAp = accessPoints.find(ap =>
+        ap.name.toLowerCase() === (p.connectedDevice ?? '').toLowerCase() ||
+        ap.ip === p.connectedDevice
+      );
+      if (matchedAp) apByPort.set(p.name, matchedAp.name);
+    }
+  }
+
+  const sortedPorts = [...ports]
+    .filter(p => /^(wan\d*|lan\d+)$/i.test(p.name))
+    .sort((a, b) => {
+      const key = (n: string) => /^wan/i.test(n) ? 0 : (parseInt(n.match(/(\d+)$/)?.[1] ?? '99') + 1);
+      return key(a.name) - key(b.name);
+    });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      {sortedPorts.map(p => {
+        const apName = apByPort.get(p.name);
+        // Show AP name if known, otherwise fall back to connectedDevice (hostname/MAC)
+        const deviceLabel = apName ?? p.connectedDevice ?? null;
+        // If it looks like a raw MAC (xx:xx:xx format), skip it — not useful
+        const isMac = deviceLabel ? /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(deviceLabel) : false;
+        const showDevice = deviceLabel && !isMac;
+
+        return (
+        <div key={p.name} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+              background: p.up ? 'var(--green)' : 'var(--text-muted)',
+              boxShadow: p.up ? '0 0 5px rgba(34,197,94,0.6)' : 'none',
+            }} />
+            <span style={{ fontSize: 11.5, color: p.up ? 'var(--text-primary)' : 'var(--text-muted)', flex: 1 }}>
+              {p.name.toUpperCase()}
+            </span>
+            {p.up && p.speed_mbps != null && (
+              <span style={{ fontSize: 10.5, color: 'var(--green)', fontWeight: 500 }}>
+                {p.speed_mbps >= 1000 ? `${p.speed_mbps / 1000}G` : `${p.speed_mbps}M`}
+              </span>
+            )}
+            {!p.up && (
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>no link</span>
+            )}
+          </div>
+          {(p.vlanIds ?? []).length > 0 && (
+            <div style={{ display: 'flex', gap: 4, paddingLeft: 16 }}>
+              {p.vlanIds!.map(id => (
+                <span key={id} style={{
+                  fontSize: 10, padding: '0 5px', borderRadius: 3,
+                  background: `${VLAN_COLORS_PANEL[id % VLAN_COLORS_PANEL.length]}22`,
+                  color: VLAN_COLORS_PANEL[id % VLAN_COLORS_PANEL.length],
+                  border: `1px solid ${VLAN_COLORS_PANEL[id % VLAN_COLORS_PANEL.length]}55`,
+                }}>
+                  VLAN {id}
+                </span>
+              ))}
+            </div>
+          )}
+          {showDevice && (
+            <div style={{ fontSize: 10, color: '#93c5fd', paddingLeft: 16 }}>
+              → {deviceLabel}
+            </div>
+          )}
+        </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function VlanList({ vlans }: { vlans: VlanInfo[] }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {vlans.map(v => (
+        <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+            background: v.status === 'up' ? 'var(--green)' : v.status === 'down' ? 'var(--red)' : 'var(--text-muted)',
+          }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent, #60a5fa)', minWidth: 52 }}>
+            VLAN {v.id}
+          </span>
+          <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', flex: 1 }}>
+            {v.interface}
+          </span>
+          <span style={{ fontSize: 10, color: v.status === 'up' ? 'var(--green)' : 'var(--text-muted)' }}>
+            {v.status}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Port detail (click on a port chip / port device dot) ─────────────────
+
+function ConfidenceBadge({ confidence }: { confidence: string }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span className={`confidence-dot confidence-dot--${confidence}`} />
+      {CONFIDENCE_LABEL[confidence] ?? confidence}
+    </span>
+  );
+}
+
+function PortDetail({ data: p, routerName, actions }: { data: PortStat; routerName: string; actions?: DetailPanelActions }) {
+  const devices = p.connectedDevices ?? [];
+  const total = p.deviceCount ?? devices.length;
+  const wan = isWanPort(p);
+  const legacyOnly = p.connectedDevices === undefined;
+
+  return (
+    <>
+      <div className="detail-section">
+        <div className="detail-section__heading">Allgemein</div>
+        <Row label="Port"   value={`${shortName(p.name)} (${p.name})`} />
+        <Row label="Router" value={routerName} />
+        <Row label="Status" value={p.up ? 'Link up' : 'Kein Link'} />
+        {p.up && p.speed_mbps != null && (
+          <Row label="Speed" value={`${p.speed_mbps} Mbps${p.duplex ? ` ${p.duplex}` : ''}`} />
+        )}
+        {(p.vlanIds ?? []).length > 0 && (
+          <Row label="VLANs" value={p.vlanIds!.join(', ')} />
+        )}
+        {!wan && !legacyOnly && (
+          <Row label="Zuordnung" value={<ConfidenceBadge confidence={p.mappingConfidence ?? 'none'} />} />
+        )}
+      </div>
+
+      {wan ? (
+        <div className="detail-section">
+          <div className="detail-section__heading">Verbindung</div>
+          <div className="port-detail__note">
+            Uplink zum Internet — auf der WAN-Seite ist keine Client-Zuordnung möglich.
+          </div>
+        </div>
+      ) : (
+        <div className="detail-section">
+          <div className="detail-section__heading">
+            Verbundene Geräte{!legacyOnly && ` (${total})`}
+          </div>
+          {legacyOnly && (
+            <div className="port-detail__note">
+              {p.connectedDevice
+                ? `→ ${p.connectedDevice}`
+                : 'Keine Gerätedaten in diesem Snapshot.'}
+            </div>
+          )}
+          {!legacyOnly && devices.length === 0 && (
+            <div className="port-detail__note">
+              {p.up
+                ? 'Kein Gerät sicher zugeordnet — FDB leer oder Gerät derzeit still.'
+                : 'Kein Link.'}
+            </div>
+          )}
+          {devices.map((d) => (
+            <PortDeviceRow key={d.mac || deviceLabel(d)} device={d} actions={actions} />
+          ))}
+          {total > devices.length && (
+            <div className="port-detail__note">… +{total - devices.length} weitere (Liste gekürzt)</div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function PortDeviceRow({ device: d, actions }: { device: PortDevice; actions?: DetailPanelActions }) {
+  const url = safeHttpUrl(d.ip);
+  return (
+    <div className="port-device-row">
+      <div className="port-device-row__head">
+        <span className={`confidence-dot confidence-dot--${d.confidence}`} />
+        <span className="port-device-row__name">{d.name ?? d.ip ?? 'Unbekannt'}</span>
+        {d.isRouter && <span className="port-device-row__tag">AP</span>}
+      </div>
+      {d.ip && (
+        <Row
+          label="IP"
+          value={
+            url ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="port-device-row__link"
+                title="Weboberfläche im Browser öffnen"
+              >
+                {d.ip} ↗
+              </a>
+            ) : (
+              d.ip
+            )
+          }
+        />
+      )}
+      {d.mac && <Row label="MAC" value={<span className="port-device-row__mac">{d.mac}</span>} />}
+      {d.source && <Row label="Quelle" value={d.source} />}
+      <Row label="Zuordnung" value={<ConfidenceBadge confidence={d.confidence} />} />
+      {d.isRouter && d.routerNodeId && actions && (
+        <ActionBtn icon="→" label="Zum Access Point" onClick={() => actions.onFocusNode(d.routerNodeId!)} />
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="detail-row">
+      <span>{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+/** Dot + text label — more readable than a bare 7px dot in a detail row. */
+function StatusBadge({ status }: { status: NodeStatus }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <StatusDot status={status} />
+      {statusLabel(status)}
+    </span>
+  );
+}

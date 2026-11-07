@@ -1,0 +1,14 @@
+﻿{
+    "id":  "calorie-tracker-with-barcode-scan",
+    "name":  "Calorie Tracker with Barcode Scan",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/kadato/Dietinator",
+    "stack":  "Flutter; OpenFoodFacts API",
+    "goal":  "Scan barcode to log food, macro breakdown and daily goal progress.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "app/_layout.tsx",
+    "expectedFileCount":  55,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  312
+}

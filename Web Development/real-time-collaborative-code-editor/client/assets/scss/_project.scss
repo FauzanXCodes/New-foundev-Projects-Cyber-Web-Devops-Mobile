@@ -1,0 +1,18 @@
+// Project view
+.project-view-container {
+  height: 100vh;
+  overflow: hidden;
+  color: rgb(36, 46, 50);
+  background-color: $silver-blue;
+  width: 100%;
+}
+
+.project-container {
+  height: calc(100% - #{$toolbar-height});
+}
+
+// Editor
+.padContainer {
+  font-size: 1.3em;
+  height: 100%;
+}

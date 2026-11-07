@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title">
+  <title id="title">Cloud Cost Calculator</title>
+  <rect width="192" height="192" rx="32" fill="#0b1119"/>
+  <path d="M52 128h88c16.6 0 30-13.4 30-30s-13.4-30-30-30c-2.5 0-4.9.3-7.2.9C125.6 53 110.5 42 93 42c-20.9 0-38.1 15.7-40.4 36C38.8 79.8 28 91.8 28 106c0 12.2 10.1 22 24 22Z" fill="#182534" stroke="#4c9dff" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M62 112h16l8-22 14 42 12-30h18" fill="none" stroke="#34d399" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

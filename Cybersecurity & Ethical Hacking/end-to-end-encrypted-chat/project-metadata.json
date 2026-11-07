@@ -1,0 +1,14 @@
+﻿{
+    "id":  "end-to-end-encrypted-chat",
+    "name":  "End-to-End Encrypted Chat",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/segfltt/cmd-chat",
+    "stack":  "Python; X25519; WebSocket",
+    "goal":  "Key exchange, forward secrecy, verify-your-contact safety numbers.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "cmd_chat.py",
+    "expectedFileCount":  13,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  19
+}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "plant-disease-identifier",
+    "name":  "Plant Disease Identifier",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/johri-lab/Automatic-leaf-infection-identifier",
+    "stack":  "Flutter; TFLite; FastAPI",
+    "goal":  "Camera capture → on-device model → disease name, confidence and remedy text.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "main.py",
+    "expectedFileCount":  7,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  35
+}

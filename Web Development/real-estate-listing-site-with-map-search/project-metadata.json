@@ -1,0 +1,14 @@
+﻿{
+    "id":  "real-estate-listing-site-with-map-search",
+    "name":  "Real Estate Listing Site with Map Search",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/UtkarshPal45/Real-Estate",
+    "stack":  "Next.js; Mapbox; Postgres",
+    "goal":  "Radius/draw-on-map search, filters, image galleries and enquiry leads.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "api/app.js",
+    "expectedFileCount":  64,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  678
+}

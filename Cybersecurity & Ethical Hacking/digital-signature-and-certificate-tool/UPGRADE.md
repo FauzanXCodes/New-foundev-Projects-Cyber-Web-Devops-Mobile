@@ -1,0 +1,967 @@
+# Upgrading
+
+## From 3.1.0 to 3.2.0
+
+**One behaviour changes without an edit: the agent tools refuse a document
+over 50 MB.** The model chooses the file and the engine holds it in memory, so
+there is now a limit. To keep 3.1.0's behaviour:
+
+```php
+'agents' => [
+    'max_bytes' => null,
+],
+```
+
+This holds whether or not you published the config. A file published under
+3.1.0 has an `agents` block without `max_bytes`, and a missing key means the
+default: only an explicit `null` removes the limit.
+
+Authorising per document is opt-in: define `a1-pdf-sign.agents.read` or
+`a1-pdf-sign.agents.sign` on your gate
+([0041](docs/decisions/0041-agents-are-authorised-per-document.md)). Until you
+do, nothing else changes.
+
+## From 3.0.0 to 3.1.0
+
+**Nothing to change.** The AI agent tools are new and optional, and nothing
+existing moved
+([0040](docs/decisions/0040-agents-read-through-mcp-and-sign-through-the-ai-sdk.md)).
+
+Two things worth knowing if you install either SDK:
+
+- **Only `^1.0` of `laravel/ai` and `laravel/mcp` installs beside this
+  package.** It declares a `conflict` with anything else, so a mismatch fails
+  at `composer require` rather than on the first tool call.
+- **A published config file keeps working without the new `agents` keys**,
+  and without them no disk is open to agents, which is the default anyway.
+  Republish, or copy the `agents` block, when you want to open one.
+
+## From 2.7.0 to 3.0.0
+
+**The engine is a separate package now.** Everything that signs, validates,
+reads a certificate or renders a seal lives in
+[`lsnepomuceno/signet-pdf`](https://github.com/lsnepomuceno/signet-pdf), which
+is the same code extracted and made framework free. This package is the Laravel
+adapter over it: the container wiring, the config file, four adapters putting
+Laravel's own infrastructure behind signet's contracts, the entry points that
+take framework types, six artisan commands and the fake
+([0039](docs/decisions/0039-the-core-lives-in-signet-pdf.md)).
+
+**Every import changes. Nothing else has to.** The facade, its methods, their
+arguments and the config keys are what they were.
+
+### Before you start
+
+Two things fail at `composer install` rather than at runtime:
+
+- **PHP 8.4.1** is the floor, up from 8.4.
+- **Intervention Image 4**, up from 3.11, arrives as a dependency of
+  signet-pdf. An application pinned to `^3` cannot install this release. The
+  seal renders identically; the API that moved is Intervention's, not this
+  package's.
+
+`tecnickcom/tc-lib-pdf-sign`, `symfony/http-foundation` and four extensions
+leave `require`. If your application was relying on any of them arriving
+through this package, declare them yourself.
+
+### The rename, class by class
+
+Mechanical, and `sed` does most of it:
+
+```bash
+grep -rl 'LSNepomuceno\\LaravelA1PdfSign' app/ | xargs sed -i \
+    -e 's#LaravelA1PdfSign\\\(Data\|Enums\|Exceptions\|Validation\|Signing\|Certificates\|Seal\|Support\)\\#Signet\\\1\\#g'
+```
+
+| 2.x | 3.0 |
+|---|---|
+| `LSNepomuceno\LaravelA1PdfSign\Data\*` | `LSNepomuceno\Signet\Data\*` |
+| `…\Enums\SignatureProfile`, `CertificationLevel`, `FontSize`, … | `LSNepomuceno\Signet\Enums\*` |
+| `…\Exceptions\*` | `LSNepomuceno\Signet\Exceptions\*` |
+| `…\Exceptions\A1PdfSignException` | `LSNepomuceno\Signet\Exceptions\SignetException` |
+| `…\Validation\TrustStore` | `LSNepomuceno\Signet\Validation\TrustStore` |
+| `…\Signing\PendingSignature` | `LSNepomuceno\Signet\Signing\PendingSignature` |
+| `…\Certificates\CertificateVault` | `LSNepomuceno\Signet\Certificates\CertificateVault` |
+| `…\Testing\DebugCertificate` | `LSNepomuceno\Signet\Testing\DebugCertificate` |
+| `…\Support\Files`, `Pem`, `Bytes`, … | `LSNepomuceno\Signet\Support\*` |
+
+Four moved further than a namespace, because the regional layer became one of
+its own:
+
+| 2.x | 3.0 |
+|---|---|
+| `…\Data\IcpBrasilReport` | `LSNepomuceno\Signet\IcpBrasil\Data\Report` |
+| `…\Data\IcpBrasilIdentity` | `LSNepomuceno\Signet\IcpBrasil\Data\Identity` |
+| `…\Enums\IcpBrasilCertificateType` | `LSNepomuceno\Signet\IcpBrasil\Enums\CertificateType` |
+| `…\Enums\IcpBrasilFinding` | `LSNepomuceno\Signet\IcpBrasil\Enums\Finding` |
+
+**The five engine contracts are signet's**, and the local copies are deleted:
+`PdfSigner`, `SealRenderer`, `SignatureValidator`, `CertificateReader` and
+`SignatureTransport` all live under `LSNepomuceno\Signet\Contracts\`. An
+application binding its own implementation binds against those instead.
+
+`Contracts\A1PdfSign` stays where it is. It is this package's own surface.
+
+### What stays exactly as it was
+
+- `A1PdfSign::signFromFile()`, `signFromPem()`, `signFromUpload()`,
+  `encryptCertificate()`, `decryptCertificate()`, `validate()`,
+  `signatureFields()`, `extendArchive()`, `icpBrasil()`, `newSignature()`,
+  `tempPath()`
+- every key in `config/a1-pdf-sign.php`, and every env variable
+- `A1PdfSign::fake()` and its assertions
+- `php artisan pdf:sign`, `pdf:validate-signature`, `a1-pdf-sign:check`
+- **encrypted certificates.** The vault still seals with Laravel's encrypter
+  under a 16-byte per-certificate key, so material stored by 2.x opens
+  unchanged and nothing has to be re-encrypted
+
+### One renamed property
+
+`EncryptedCertificate::$hashKey` is `$hash`. It is the same value, and it is
+still what `decryptCertificate()` takes first.
+
+### `pdfFromDisk()` is `from()` plus a source
+
+The builder is signet's now, and it takes a `PdfSource` rather than knowing
+what a Laravel disk is:
+
+```php
+// 2.x
+->pdfFromDisk('s3', 'contracts/deal.pdf')
+
+// 3.0
+->from(A1PdfSign::fromDisk('s3', 'contracts/deal.pdf'))
+```
+
+The trade is worth stating: the signed document can now go **back** to a disk
+without touching the local filesystem, which 2.x could not do.
+
+```php
+->sign()->writeTo(A1PdfSign::toDisk('s3', 'contracts/deal-signed.pdf'));
+```
+
+### What you gain by upgrading
+
+Everything signet-pdf 3.0 carries, reachable from the facade:
+
+- **Two-phase signing**: `prepare()` and `complete()`, where the private key
+  never enters the process. The prepared signature carries no secret, so it
+  survives a queue.
+- **`addSignatureField()`**: place an empty field, rather than only filling one
+  somebody else placed.
+- **A receipt**: `$signed->receipt()` says what was signed, what was embedded
+  and what was not, without reparsing the document.
+- **ICP-Brasil signature policies**: `signature.policy` in the config file
+  declares AD-RB, AD-RT, AD-RC or AD-RA, and the country's own Verificador
+  accepts what the engine writes.
+- **Documents larger than memory**, through a stream source.
+- **`php artisan pdf:fields`, `pdf:add-field`, `pdf:extend`.**
+
+### Where to look when something is wrong
+
+A defect in signing, validation, the seal or certificate reading belongs to
+[signet-pdf](https://github.com/lsnepomuceno/signet-pdf/issues). A defect in
+the container wiring, the config file, an artisan command, a disk source or the
+fake belongs here.
+
+## From 2.6.0 to 2.7.0
+
+**A certificate sealed by `lsnepomuceno/signet-pdf` opens here now.** One
+required extension is new and one return type widened. Nothing this package
+writes has changed, so material already stored stays exactly as it is.
+
+### Material sealed by signet-pdf opens here
+
+`Certificates\CertificateVault` seals a certificate with Laravel's envelope,
+AES-128-CBC under a 16-byte key, and `lsnepomuceno/signet-pdf` reproduced that
+format byte for byte so an application could move between the two without
+re-encrypting a certificate whose plaintext it no longer holds.
+
+**Its 2.0 moved new material onto XChaCha20-Poly1305**, under a 32-byte key and
+a `signet.v2.` envelope. The guarantee then held in one direction only: what
+this package writes still opened there, and what that package writes did not
+open here at all. `withKey()` refused the key outright, since a 32-byte string
+is not a valid AES-128-CBC key.
+
+`withKey()` now picks the reader from the key's length: 16 bytes is this
+package's own envelope, 32 is signet-pdf's. Those are the only two lengths
+either package has ever issued, so the mapping is total
+([0038](docs/decisions/0038-the-envelope-is-versioned.md)).
+
+**`seal()` is unchanged** and still writes Laravel's envelope. This is a
+compatibility fix rather than a migration: nothing has to be re-encrypted,
+re-sized or re-stored.
+
+### `ext-sodium` is now required
+
+It ships with PHP and has since 7.2, so on most systems this changes nothing. A
+build compiled without it now fails at `composer install` rather than at
+runtime.
+
+### `CertificateVault::encrypter()` returns a contract
+
+It returns `Illuminate\Contracts\Encryption\StringEncrypter` where it returned
+`Illuminate\Encryption\Encrypter`. **This breaks a call site that type-hints the
+concrete class**, and it is the only contract change in the release. Nothing
+inside this package calls it.
+
+The fuller `Encrypter` contract was deliberately not implemented: satisfying it
+means offering `decrypt($payload, $unserialize = true)`, and an `unserialize()`
+path over supplied bytes is not a trade worth making to solve a compatibility
+problem.
+
+### A key of any other length is refused
+
+`withKey()` raises `InvalidCertificateContentException` for a key that is
+neither 16 nor 32 bytes, where it previously left the refusal to Laravel's
+encrypter. A key is never padded or truncated into one of the two lengths.
+
+### Worth knowing, and not breaking
+
+- **The nightly mutation run was measuring nothing.** `--parallel` and
+  `--mutate` do not compose in this version of Pest: the suite runs, every test
+  passes, and no score is produced at all. Reproduced in a container at sixteen
+  processes and on a runner at four, so it is the flag rather than the
+  environment. It is gone from `composer test:mutate` and from the workflow.
+- **The mutation workflow installed none of the verification tools** that
+  `main_action.yml` installs. A test that cannot run cannot kill a mutation, so
+  an absent tool does not merely skip: every mutation that test would have
+  caught was reported as surviving, and the floors were measured against a suite
+  quietly smaller than the one a pull request runs. The four installs are now
+  `main_action.yml`'s, byte for byte, so a diff between the files shows drift.
+- **The floors are provenance rather than numbers** until a serial run with the
+  full toolchain replaces them. The rule is unchanged in the direction that
+  matters: raise a floor after measuring, never lower one to make a run pass.
+- The `$isBase64` parameter on `CertificateVault::open()` is covered for the
+  first time, including the caller who says a stored bundle is base64 and is
+  wrong: the strict decode fails and the raw value is kept rather than the
+  certificate lost.
+
+## From 2.5.0 to 2.6.0
+
+**Three defects produced wrong output or a wrong answer in shipped code**, and
+one change to a published contract needs a call site updated. Everything else is
+additive.
+
+### A wrong answer, and it was silent
+
+**A missing `openssl` binary made every signature report as invalid.** Not an
+error: a verdict. Validation shells out, and `Validation\SignatureVerifier`
+caught every throwable and returned false, so `openssl: not found`, `proc_open`
+in `disable_functions` and an unwritable temporary directory all arrived as
+"this signature does not verify".
+
+Measured on `samples/pades-b-b.pdf`, changing nothing but the environment: with
+the binary present, valid; with it removed, invalid.
+
+It now raises `MissingBinaryException` or `ProcessUnavailableException`. **If
+your application catches nothing around validation, it will now see an
+exception where it previously saw a false negative**, which is the point:
+`ext-openssl` being loaded says nothing about the command-line tool being
+installed, and a minimal container commonly has the first without the second.
+
+`php artisan a1-pdf-sign:check` answers the same question before anything is
+signed.
+
+### Signature metadata was written as raw UTF-8
+
+`/Name`, `/Reason`, `/Location` and `/ContactInfo` are text strings
+(ISO 32000-1 §7.9.2.2), which must be PDFDocEncoding or UTF-16BE with a byte
+order mark. Raw UTF-8 is neither, so a conforming reader decoded `João` as
+`JoÃ£o` in a document that verified perfectly.
+
+Anything outside ASCII is now written as a hex string with the mark. **ASCII
+output is byte-identical to 2.5**, so a document signed with an unaccented name
+does not move.
+
+### The seal ignored page rotation
+
+`/Rotate` was read nowhere in the package, so on a page carrying `/Rotate 90`,
+which is how most scanners express landscape, the seal landed somewhere else
+and read sideways. It can now fall where the caller asked, confirmed by
+rendering with poppler rather than by arithmetic alone.
+
+### `Contracts\PdfSigner::sign()` takes the document by reference
+
+**The only breaking change**, and only for a caller using the contract
+directly. PHP cannot pass an expression by reference:
+
+```php
+$signer->sign(Files::read($path), $certificate, $info);   // fatal
+$contents = Files::read($path);
+$signer->sign($contents, $certificate, $info);            // fine
+```
+
+`A1PdfSign::newSignature()` and the one-shot helpers are unaffected: they pass a
+property.
+
+It buys memory. Signing peaked at roughly 20 MB plus **four** times the
+document and now peaks at 20 MB plus **two**: a 200 MB architectural plan needs
+about 420 MB rather than 620.
+
+### Worth knowing, and not breaking
+
+- **Every exception implements `Exceptions\A1PdfSignException`**, so they can be
+  caught as a group. `InvalidCertificatePasswordException` is new and extends
+  the class a wrong password used to arrive as, so existing catches still match.
+- **`A1PdfSign::fake()`** for testing an application that signs, with no
+  certificate and no CMS.
+- **`->pdfFromDisk('s3', 'contracts/deal.pdf')`**, and `SealRenderer` is
+  documented as swappable, which it always was.
+- **An optional PSR-3 audit trail**, off by default, whose context is an
+  allowlist: no password, key, document or file path can appear in a line.
+- **`psr/log` is a new runtime dependency.**
+- **Signed documents declare the ETSI_PAdES extension** their sub-filter needs
+  below PDF 2.0, so the bytes of every signed document change again.
+
+### Measured, not claimed
+
+An invisible signature now keeps a **PDF/UA** document conformant; a visible
+seal costs it two clauses. Certification is verified by pyHanko, which enforces
+`/DocMDP` rather than reporting it, and what this package writes is checked
+against the Arlington PDF Model, the specification's own machine-readable
+grammar.
+
+## From 2.4.0 to 2.5.0
+
+Held back deliberately: releases were coming out faster than the features in
+them justified, so this one waited until it carried something worth the version.
+
+**A visible seal stops costing PDF/A conformance**, which means the bytes of
+every sealed document change. No API moves.
+
+### The seal carries its own colour space
+
+The seal was embedded as `/DeviceRGB`, which PDF/A allows only where the file
+declares an OutputIntent, so a conformant document came back non-conformant. It
+is now drawn in an `/ICCBased` space carrying an sRGB profile built from
+IEC 61966-2-1, so it asks the document for nothing
+([0028](docs/decisions/0028-the-seal-carries-its-own-colour-space.md)).
+
+| | 2.4 | 2.5 |
+|---|---|---|
+| PDF/A-1b, opaque seal | FAIL | **PASS** |
+| PDF/A-1b, transparent seal | FAIL | FAIL, and always will: §6.4 forbids `/SMask` |
+| PDF/A-2b, opaque seal | FAIL | **PASS** |
+| PDF/A-2b, transparent seal | FAIL | **PASS** |
+
+**A sealed document grows by about 2.4 KB**, the deflated profile. An invisible
+signature embeds nothing and is unchanged.
+
+A page carrying a transparent seal also gets a `/Group` naming the blending
+colour space, which ISO 19005-2 §6.2.10 requires. A page that already declares
+one is left alone.
+
+Nothing here is configurable, and that is deliberate: the previous behaviour was
+a conformant document going in and a non-conformant one coming out.
+`seal.transparent => false` is still the lever for PDF/A-1.
+
+### Extending an archive refreshes the evidence it archives
+
+`A1PdfSign::extendArchive()` used to append the timestamp and nothing else, so a
+document could gain a fifth archive timestamp over revocation material gathered
+on the day it was signed. That is the one thing long-term validation exists to
+prevent.
+
+It now gathers fresh material for every chain the document carries and writes
+the store **before** the timestamp, which is the order ETSI EN 319 142-1 fixes:
+the evidence goes inside the file while it is still verifiable, and the
+timestamp then covers it.
+
+The timestamp authorities' own chains are included, deliberately. Their
+certificates are what the *next* archive timestamp has to be able to check, and
+they expire like any other.
+
+Extending now appends two revisions where it appended one, so the file grows
+more. Nothing about the earlier bytes changes
+([0022](docs/decisions/0022-the-archive-timestamp-is-a-chain.md)).
+
+### Who signed, in the number Brazil knows them by
+
+A validated document now answers the first question anyone asks of one:
+
+```php
+$signer = A1PdfSign::validate($path)->signers()[0];
+
+$signer->icpBrasil?->cpf;                 // '11144477735'
+$signer->icpBrasil?->cnpj;                // the company, for an e-CNPJ
+$signer->icpBrasil?->formattedRegistry(); // '11.222.333/0001-81'
+$signer->name();                          // 'JOAO DA SILVA', without the number
+```
+
+Before this, the CPF was only available glued to the end of `commonName`, so
+every consumer wrote the same `explode(':')`, which is wrong for an e-CNPJ:
+its common name carries the company while the CPF in the extension belongs to
+whoever answers for it.
+
+`A1PdfSign::icpBrasil($pfxPath, $password)` checks the certificate against the
+rules its own specification states, and says which field is wrong before
+anything is signed.
+
+**`conforms()` is not `isTrusted()`.** Every rule checked is decidable from the
+certificate alone, so a self-signed certificate built to satisfy them will
+conform. Whether the chain reaches an ICP-Brasil root is `TrustStore`'s
+question ([0029](docs/decisions/0029-the-identity-a-brazilian-signer-is-known-by.md)).
+
+`Contracts\A1PdfSign` gained `icpBrasil()`, which matters only to someone
+implementing the interface. `Data\Signer` gained `$icpBrasil` and `name()`,
+appended with defaults.
+
+## From 2.3.1 to 2.4.0
+
+No public class was removed and no signature was narrowed, so an application
+that calls the facade upgrades without changes. **Two things do change what you
+get**: seals now keep their transparency, and the four contracts gained members.
+
+### The seal keeps its alpha channel now
+
+`a1-pdf-sign.seal.transparent` defaults to `true`, so a seal with transparency
+is embedded as raw samples with an `/SMask` instead of being flattened onto
+white.
+
+| | Before | Now |
+|---|---|---|
+| A PNG with an alpha channel | flattened to an opaque rectangle | drawn transparent |
+| Bytes added to the document | JPEG | deflated samples plus the mask, which is larger |
+| PDF/A-1 conformance | possible | **impossible**: §6.4 forbids `/SMask` |
+
+Set `'transparent' => false` to get the old rectangle back. That is the whole
+reason the setting exists rather than the behaviour being unconditional
+([0023](docs/decisions/0023-a-seal-that-can-be-transparent.md), and
+[0025](docs/decisions/0025-what-signing-does-to-pdf-a.md) for the PDF/A
+measurement).
+
+### `sealFrom()` now uses the image you gave it
+
+`SealPlacement::$imagePath` was written and read by nothing, so the artwork was
+silently replaced by a render of the certificate. **If you were calling
+`sealFrom()`, your documents were not carrying your image and now they will.**
+
+### The contracts gained members
+
+Only for someone who *implements* one of them. Injecting or calling them is
+unaffected.
+
+| Contract | Added |
+|---|---|
+| `Contracts\A1PdfSign` | `extendArchive()` |
+| `Contracts\SealRenderer` | `fromImage()`, and a `?SealLayout $layout` argument on `render()` |
+| `Contracts\PdfSigner` | a `?FieldLock $lock` argument on `sign()` |
+| `Contracts\SignatureTransport` | the whole interface, new |
+
+`Signing\Cades\HttpTransport` keeps its name and behaviour, but
+`CadesBuilder`, `Incremental\DssWriter` and `Incremental\DocTimeStampWriter` now
+take `Contracts\SignatureTransport` rather than the concrete class. That is a
+break only for code that constructs them by hand rather than resolving them
+([0027](docs/decisions/0027-the-transport-is-a-seam.md)).
+
+### `Data\SignatureDetails` carries five more properties
+
+`$timestampVerified`, `$stampedAt`, `$subFilter`, `$profile` and `$revocation`,
+all appended with defaults, so existing construction and property reads are
+unaffected. `attestedAt()` is the one to reach for: it returns the authority's
+time when a token verifies and null otherwise, rather than falling back to
+`$signedAt`, which is the signer's own clock and answers a different question.
+
+`isRevoked()` is deliberately separate from `verified`. A revoked certificate
+still produces a signature that matches the bytes perfectly; what it stops being
+is one anyone should accept.
+
+### What is new, and optional
+
+- `->lock()` on the builder writes `/Lock` and `/FieldMDP`, and a later `sign()`
+  into a locked field is now refused
+  ([0021](docs/decisions/0021-locking-fields-and-honouring-locks.md)).
+- `A1PdfSign::extendArchive()` adds a fresh archive timestamp with no key
+  material involved, since a DocTimeStamp is signed by the authority
+  ([0022](docs/decisions/0022-the-archive-timestamp-is-a-chain.md)).
+- `SealLayout` says what the seal reads and where, overriding both the
+  certificate-derived lines and the configured geometry.
+- Validation now decodes the filters documents actually use, evaluates the
+  revocation material instead of counting it, and reports the profile a
+  signature really satisfies rather than the one it claims.
+
+### Fixed
+
+- The appended revision carries the trailer `/ID`. Without it a reader can treat
+  the revision as a different document.
+- An invisible signature gets an appearance dictionary, which is what turns
+  PDF/A-1b from FAIL to PASS for a signed document.
+- An OCSP response signed by a delegated responder is now verified against the
+  issuer before being read, so a response can no longer vouch for itself
+  ([0024](docs/decisions/0024-revocation-is-evaluated-not-counted.md)).
+
+## From 2.3.0 to 2.3.1
+
+Two fixes. One of them **moves where an existing seal is drawn**, so read this
+before upgrading a multi-page document pipeline.
+
+### The seal now goes on the page the placement names
+
+`Data\SealPlacement` has carried `$page` and `$onEveryPage` since 2.0 and
+nothing read either of them: every seal landed on the first page, whatever was
+asked for.
+
+| | Before | Now |
+|---|---|---|
+| `new SealPlacement(...)`, no page given | first page | **last page**, which `$page`'s default, `LAST_PAGE`, has always named |
+| `page: 2` | first page | page 2 |
+| `onEveryPage: true` | first page | every page |
+| A page the document does not have | first page | `SealPlacementException` |
+
+Single-page documents are unaffected in every case.
+
+**If your seals were landing on page 1 of a multi-page document and you want
+them to stay there, pass `page: 1` explicitly.** The value was previously
+ignored, so no existing call site can be relying on it having meant anything
+else.
+
+`onEveryPage` still produces one signature: the widget goes on the first page it
+applies to, and every further page gets a stamp annotation drawing the same
+appearance ([0017](docs/decisions/0017-the-seal-goes-where-it-was-asked-for.md)).
+
+### `TrustStore::fromDirectory()` works on Alpine
+
+It globbed with `GLOB_BRACE`, a constant PHP leaves undefined on musl, so the
+call was a fatal error on `php:8.4-alpine`. No API change; if you were not on
+musl, nothing about it changes for you.
+
+## From 2.2 to 2.3
+
+Additive for applications. Nothing was removed, no behaviour changed for code
+that already worked, and the PHP and Laravel requirements do not move.
+
+### The contracts gained trailing optional parameters
+
+| | 2.2 | 2.3 |
+|---|---|---|
+| `Contracts\A1PdfSign::validate()` | `$pdfPath` | gains `?TrustStore $trust = null` |
+| `Contracts\SignatureValidator::validateFile()` | `$pdfPath` | gains `?TrustStore $trust = null` |
+| `Contracts\SignatureValidator::validate()` | `$pdfContents, $label` | gains `?TrustStore $trust = null` |
+| `Data\SignatureDetails::toArray()` | 10 keys | gains `isTrusted` |
+
+Calling them is unaffected. Implementing them is not, so a test double or a
+custom validator bound in the container has to be updated.
+
+### New: verifying against a trust store
+
+```php
+$store = TrustStore::fromFile(storage_path('icp-brasil.pem'));
+
+$report = A1PdfSign::validate($path, $store);
+
+$report->isTrusted();          // ?bool
+$report->latest()?->isTrusted; // ?bool
+```
+
+**Null is not false.** A document validated without a store reports trust as
+null, because nobody was asked. An empty store, `TrustStore::empty()`, is the
+different answer: it trusts nothing, so every signature reports false.
+
+The package ships no trust store and will not.
+
+### New: documents whose objects are packed
+
+No API change. Word, "print to PDF" in Chrome and LaTeX with compression pack
+the catalog and pages into an object stream (ISO 32000-1 §7.5.7). 2.2 read the
+cross-reference stream that indexes them and still refused the documents,
+because signing rewrites the catalog. 2.3 signs them.
+
+## From 2.1 to 2.2
+
+2.2 is additive for applications. Nothing was removed, no behaviour changed for
+code that already worked, and the PHP and Laravel requirements do not move. An
+application that signs and validates upgrades without editing anything.
+
+Two changes reach code that **extends** the package rather than calls it, and
+one reaches anyone who compares a report's array form byte for byte.
+
+### The contracts gained methods and parameters
+
+| | 2.1 | 2.2 |
+|---|---|---|
+| `Contracts\A1PdfSign` | n/a | gains `signatureFields()` |
+| `Contracts\PdfSigner::sign()` | 7 parameters | gains `?string $intoField` and `?CertificationLevel $certification`, both trailing and optional |
+
+Injecting or calling them is unaffected: the new parameters are optional and
+positional callers are untouched. Implementing them is not, so a test double or
+a custom signer bound in the container has to be updated:
+
+```php
+public function signatureFields(string $pdfPath): array;   // list<SignatureField>
+
+public function sign(
+    string $pdfContents,
+    Certificate $certificate,
+    SignatureInfo $info,
+    string $fieldName = 'Signature',
+    ?SealImage $seal = null,
+    ?SealPlacement $placement = null,
+    ?SignatureProfile $profile = null,
+    ?string $intoField = null,              // new
+    ?CertificationLevel $certification = null,   // new
+): SignedPdf;
+```
+
+### `InvalidPdfFileException` takes a message
+
+The constructor took the offending filename and built the sentence itself. It
+now takes the message, and the one case the old wording described moved to a
+named constructor:
+
+```php
+new InvalidPdfFileException('/tmp/contract.docx');        // 2.1
+InvalidPdfFileException::extension('/tmp/contract.docx'); // 2.2, same string
+```
+
+The wording is preserved byte for byte, so a test asserting on it still passes.
+Fifteen of the sixteen places that raised this were reporting structural faults,
+and every one of them said "Invalid file extension"
+([0008](docs/decisions/0008-exceptions-name-the-real-fault.md)).
+
+Positional callers of `new InvalidPdfFileException(...)` outside the package are
+unaffected in behaviour, since the first argument is still a string that becomes
+the message. Only a named argument breaks:
+
+```php
+new InvalidPdfFileException(currentFile: $path);  // 2.1
+new InvalidPdfFileException(message: $text);      // 2.2
+```
+
+### `SignatureReport` gained a property
+
+`Data\SignatureReport` is a public return type, so a new property changes what
+`toArray()` returns:
+
+```php
+// 2.1
+['signatures' => [...], 'securityStore' => ...]
+
+// 2.2
+['signatures' => [...], 'securityStore' => ..., 'certification' => null]
+```
+
+Reading properties and calling methods is unaffected. Only code asserting on the
+whole array, a snapshot test or a strict equality check, has to be updated.
+
+### A document may now refuse to be signed
+
+`sign()` can raise two exceptions it never raised before, both of them
+deliberate refusals rather than failures:
+
+| | |
+|---|---|
+| `SignatureFieldException` | only when `intoField()` was used |
+| `CertificationException` | when the document is certified at `no-changes`, which forbids the further revision a signature would append |
+
+The second can reach code that does not use certification at all, if it signs a
+document someone else certified. That is the certification working: at
+`no-changes` a further signature would silently invalidate the one already
+there, so it is refused instead.
+
+### New: signing into a template's own fields
+
+```php
+foreach (A1PdfSign::signatureFields($template) as $field) {
+    $field->name;        // 'SignatureManager'
+    $field->isSigned;    // false
+    $field->rectangle;   // [30.0, 200.0, 200.0, 250.0]
+}
+
+A1PdfSign::newSignature()
+    ->certificate($pfx, $password)
+    ->pdf($template)
+    ->intoField('SignatureManager')
+    ->seal()              // drawn into the field's own rectangle
+    ->sign();
+```
+
+Previously the package appended a new field beside the empty one, so a template
+ended up with a signature in the wrong place and its own field still unfilled.
+
+### New: certification signatures
+
+```php
+A1PdfSign::newSignature()
+    ->certificate($pfx, $password)
+    ->pdf($path)
+    ->certify('form-filling')   // no-changes | form-filling | annotations
+    ->sign();
+```
+
+### New: documents with cross-reference streams
+
+No API change. Documents produced by Word, by "print to PDF" in Chrome and by
+most modern generators use the cross-reference stream of ISO 32000-1 §7.5.8
+rather than the classic table, and 2.1 refused them. 2.2 signs them, appending a
+revision in whichever form the document already uses.
+
+## From 2.0 to 2.1
+
+2.1 adds PEM as a second accepted certificate encoding. PKCS#12 behaviour is
+unchanged, and the PHP and Laravel requirements do not move, so an application
+that signs with `.pfx` and does not implement the package's contracts upgrades
+without editing anything.
+
+Two changes reach code that extends the package rather than calls it.
+
+### The contracts gained a method and renamed a parameter
+
+| | 2.0 | 2.1 |
+|---|---|---|
+| `Contracts\A1PdfSign` | n/a | gains `signFromPem()` |
+| `Contracts\CertificateReader::read()` | `$pfxContents` | `$contents` |
+
+Injecting the contracts, or calling them, is unaffected. Implementing them is
+not: a test double or a custom reader bound in the container has to be updated.
+
+```php
+public function signFromPem(
+    string $pemPath,
+    string $password,
+    string $pdfPath,
+    ?string $privateKeyPath = null,
+): SignedPdf;
+```
+
+`read()` is called positionally everywhere in the package, so the rename only
+reaches you through a named argument:
+
+```php
+$reader->read(pfxContents: $bytes, password: $password);   // 2.0
+$reader->read(contents: $bytes, password: $password);      // 2.1
+```
+
+The parameter was named after PKCS#12 when that was the only encoding a reader
+could ingest. It no longer is: `PemCertificateReader` implements the same
+contract as the degenerate case, the reader whose conversion step is empty.
+
+### `pdf:sign` renamed its second argument
+
+```bash
+php artisan pdf:sign contract.pdf certificate.pfx secret signed.pdf
+```
+
+The invocation above still works: `pfxPath` became `certificatePath`, and
+console arguments are matched by position. Only `Artisan::call()` with named
+keys breaks.
+
+```php
+Artisan::call('pdf:sign', ['pfxPath' => $path, ...]);          // 2.0
+Artisan::call('pdf:sign', ['certificatePath' => $path, ...]);  // 2.1
+```
+
+The command also takes `--key` for a PEM key in its own file. Passing it with a
+PKCS#12 bundle is rejected rather than ignored: the bundle already carries its
+key, so the combination means the caller is mistaken about what they hold.
+
+### New: PEM certificates
+
+The encoding is decided by content, not by extension: PEM ships as `.pem`,
+`.crt`, `.cer`, `.key` and `.txt`, and gating on the suffix would reject valid
+files. The certificate and its private key may sit in one file or in two.
+
+```php
+A1PdfSign::signFromPem($pemPath, $password, $pdfPath);                 // one-shot
+A1PdfSign::signFromPem($certPath, $password, $pdfPath, $keyPath);      // key in its own file
+
+A1PdfSign::newSignature()
+    ->certificatePem($certificatePath, $keyPath, $password)            // $keyPath null when combined
+    ->pdf($pdfPath)
+    ->sign();
+
+A1PdfSign::newSignature()
+    ->certificateFromPem($bytes, $keyBytes);                           // from an upload or a secret store
+```
+
+`$password` defaults to empty, because **a PEM private key is frequently
+unencrypted, legal for PEM and impossible for PKCS#12**. OpenSSL ignores a
+passphrase given for a key that does not need one, so the argument is safe to
+pass either way. Prefer an encrypted key where you have the choice: an
+unprotected one is readable by anything that can read the file.
+
+`encryptCertificate()` gained no sibling. It takes "a certificate" generically
+and detects the encoding, where signing keeps explicit entry points so the
+caller states what it holds.
+
+Content that is neither valid PEM nor routable, whether binary DER or PKCS#12 bytes
+handed to the PEM entry point, raises the new
+`Exceptions\InvalidPemContentException`, naming the offending half rather than
+reporting a generic parse failure. A certificate and key that are both valid
+but unrelated keep raising `InvalidX509PrivateKeyException`.
+
+## From 1.x to 2.0
+
+Version 2.0 is a clean break: the deprecated API is removed rather than carried
+behind a shim. Upgrading requires editing your code.
+
+That was a deliberate reversal: the original plan kept a deprecation layer
+until 3.0. A 3.0 is far enough out that a shim living "until then" is a shim
+maintained indefinitely, and every one of them constrains the design it wraps:
+`Entities\*` could not be `final`, the enums would carry legacy backing values,
+and the global helpers would keep the global namespace occupied. Since the PHP
+8.4 and Laravel 13 floor already forces a deliberate upgrade, the marginal cost
+of also renaming call sites is small.
+
+If you cannot move yet, stay on `^1`, which remains maintained on the
+`v1.x-dev` branch.
+
+### Requirements
+
+| | 1.x | 2.0 |
+|---|---|---|
+| PHP | 8.1 – 8.4 | **8.4 – 8.5** |
+| Laravel | 9 – 12 | **13** |
+
+Laravel 10 and 11 are past their security-support windows, and neither supports
+PHP 8.5. Laravel 12 does support PHP 8.5, but it requires `symfony/process
+^7.2` while Pest 5 requires `^8.1`: the two cannot be installed in the same
+tree, so the cell could never be tested.
+
+### Global helpers are removed
+
+All six now live on the `A1PdfSign` facade, or on the
+`LSNepomuceno\LaravelA1PdfSign\Contracts\A1PdfSign` contract you can inject.
+
+| 1.x | 2.0 |
+|---|---|
+| `signPdfFromFile($pfx, $pass, $pdf, $mode, $usePathEnv)` | `A1PdfSign::signFromFile($pfx, $pass, $pdf, $usePathEnv)` |
+| `signPdfFromUpload($upload, $pass, $pdf, $mode, $usePathEnv)` | `A1PdfSign::signFromUpload($upload, $pass, $pdf, $usePathEnv)` |
+| `encryptCertData($pfx, $pass, $usePathEnv)` | `A1PdfSign::encryptCertificate($pfx, $pass, $usePathEnv)` |
+| `decryptCertData($hash, $cert, $pass, $isBase64, $usePathEnv)` | `A1PdfSign::decryptCertificate($hash, $cert, $pass, $isBase64, $usePathEnv)` |
+| `validatePdfSignature($pdf)` | `A1PdfSign::validate($pdf)` |
+| `a1TempDir($tempFile, $ext)` | `A1PdfSign::tempPath($tempFile, $ext)` |
+
+The trailing arguments are now optional and fall back to
+`config('a1-pdf-sign')`, so `usePathEnv` no longer has to be repeated at every
+call site.
+
+Prefer injecting the contract where you can: it is what makes the package
+mockable in your own tests:
+
+```php
+use LSNepomuceno\LaravelA1PdfSign\Contracts\A1PdfSign;
+
+public function __construct(private readonly A1PdfSign $signer) {}
+```
+
+### Entities became Data
+
+| 1.x | 2.0 |
+|---|---|
+| `Entities\CertificateProcessed` | `Data\Certificate` |
+| `Entities\EncryptedCertificate` | `Data\EncryptedCertificate` |
+| `Entities\ValidatedSignedPDF` | `Data\SignatureReport` |
+| `Entities\BaseEntity` | `Data\BaseData` |
+
+Property names are unchanged, so only the imports move. The classes are now
+`final readonly`; if you were extending or mutating them, that no longer works.
+
+`Data\Certificate` also gained `expiresAt()`, `isExpired()` and `commonName()`,
+which read the parsed x509 data you previously had to dig out of the `data`
+array yourself.
+
+### String constants became enums
+
+| 1.x | 2.0 |
+|---|---|
+| `SealImage::FONT_SIZE_SMALL` | `Enums\FontSize::Small` |
+| `SealImage::FONT_SIZE_MEDIUM` | `Enums\FontSize::Medium` |
+| `SealImage::FONT_SIZE_LARGE` | `Enums\FontSize::Large` |
+| `SealImage::IMAGE_DRIVER_GD` | `Enums\ImageDriver::Gd` |
+| `SealImage::IMAGE_DRIVER_IMAGICK` | `Enums\ImageDriver::Imagick` |
+| `SignaturePdf::MODE_RESOURCE` | removed, see below |
+| `SignaturePdf::MODE_DOWNLOAD` | removed, see below |
+
+Every entry point accepts either the enum case or its backing value
+(`'large'`, `'gd'`), so configuration can stay as plain strings.
+
+**The signing mode has no replacement, by design.** `sign()` returns a
+`SignedPdf` and no longer decides how the result is delivered: the same result
+answers `contents()`, `save()`, `download()` and `toResponse()`. Drop the mode
+argument and call the method you want.
+
+### The signing classes are gone
+
+`Sign\SignaturePdf` and `Sign\SealImage` are removed. Signing now goes through
+the fluent builder, and the seal is rendered by the `SealRenderer` contract:
+
+```php
+$signed = A1PdfSign::newSignature()
+    ->certificate($pfxPath, $password)
+    ->pdf($pdfPath)
+    ->info(name: 'Lucas', reason: 'Contract')
+    ->seal()                 // omit for an invisible signature
+    ->sign();                // → SignedPdf
+
+$signed->contents();         // string
+$signed->save($path);        // path
+$signed->download();         // BinaryFileResponse
+$signed->toResponse();       // inline
+```
+
+`setasign/fpdi` and `tecnickcom/tcpdf` are no longer dependencies.
+
+**Signing no longer rebuilds the document.** v1 imported every page into a new
+file, which silently discarded annotations, form fields and any signature
+already present. v2 appends a revision instead, so the original bytes survive
+and a document can carry more than one signature, the request in
+[TCPDF#430](https://github.com/tecnickcom/TCPDF/issues/430).
+
+The practical consequence is that output is no longer byte-comparable with 1.x.
+
+### New: PAdES signature profiles
+
+Signatures are now PAdES baseline by default, carrying the ESS
+`signing-certificate-v2` attribute that `openssl_pkcs7_sign()` cannot emit.
+
+| Profile | Adds |
+|---|---|
+| `legacy` | ISO 32000-1 detached CMS, the 1.x behaviour |
+| `pades-b-b` | CAdES signed attributes. **The new default** |
+| `pades-b-t` | B-B plus an RFC 3161 timestamp |
+| `pades-b-lt` | B-T plus a Document Security Store, so the signature still verifies after the certificate expires |
+| `pades-b-lta` | B-LT plus an archive timestamp over the whole file |
+
+```php
+A1PdfSign::newSignature()
+    ->certificate($pfx, $password)
+    ->pdf($path)
+    ->timestamp()                       // shorthand for pades-b-t
+    ->sign();
+```
+
+Set the default in `config/a1-pdf-sign.php`, and the timestamp authority in
+`A1_TSA_URL`. Choosing `legacy` reproduces the 1.x `/SubFilter`.
+
+### New: publishable configuration
+
+```bash
+php artisan vendor:publish --tag=a1-pdf-sign-config
+```
+
+It controls the temporary path, the `openssl` PATH and legacy flags, and the
+seal defaults. Nothing is required: the defaults match 1.x behaviour, except
+that temporary files no longer need `vendor/` to be writable.
+
+### Validation now verifies the signature
+
+In 1.x, `validatePdfSignature()` returned `isValidated = true` when the
+embedded certificate happened to carry a `CN` or `OU` field. It never checked
+whether the signature matched the document, so a tampered file still reported
+as validated.
+
+`SignatureReport` is therefore reshaped:
+
+| 1.x | 2.0 |
+|---|---|
+| `$report->isValidated` | `$report->isValid()`, every signature verifies |
+| `$report->data` | `$report->signers()`, or `$report->signatures` for detail |
+| n/a | `$report->count()`, `isSigned()`, `latest()` |
+
+Each entry carries the signer as structured data, whether it verified, and
+whether it covers the whole file. Documents with more than one signature are
+reported in full; 1.x read only the first.
+
+`isValid()` answers "does this signature match these bytes". It does not check
+the issuer against a trust store: that decision stays with your application.

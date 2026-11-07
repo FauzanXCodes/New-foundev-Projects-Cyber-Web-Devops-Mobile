@@ -1,0 +1,14 @@
+﻿{
+    "id":  "campus-carpool-app",
+    "name":  "Campus Carpool App",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/lizaferns/campus-carpool-app-MAD",
+    "stack":  "Flutter; Google Maps; Firebase",
+    "goal":  "Post rides, seat availability, route match and in-app chat.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "lib/main.dart",
+    "expectedFileCount":  38,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  141
+}

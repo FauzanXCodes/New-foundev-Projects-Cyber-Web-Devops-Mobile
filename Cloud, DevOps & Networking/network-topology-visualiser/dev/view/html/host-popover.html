@@ -1,0 +1,63 @@
+{{#errors.length}}
+    <span class='node-error'>
+        {{#errors}}{{.}}<br>{{/errors}}
+    </span><br>
+{{/errors.length}}
+
+{{#multiplicity.show}}
+    Repeated {{multiplicity.value}} times<br>
+{{/multiplicity.show}}
+
+{{#ip}}
+    IP: {{ip}}<br>
+{{/ip}}
+
+{{#rtt}}
+RTT: {{rtt.min}}ms (min) {{rtt.max}}ms (max)<br>
+{{/rtt}}
+
+Located in:
+{{#location}}{{#location.city}}{{location.city}},{{/location.city}} {{location.countryCode}}{{/location}}
+{{^location}}Not available{{/location}}
+{{^isGuess}}<button type="button" class="action-button btn btn-primary btn-xs" data-target="{{id}}" data-name="update-location">Update</button>{{/isGuess}}
+<br>
+
+
+{{#ixp}}
+    <br>
+    <b>PeeringDB:</b><br>
+    IXP: {{ixp.name}}, {{ixp.city}}, {{ixp.country}}<br>
+    Lan: {{ixp.prefix}}<br>
+    <button type="button" class="action-button btn btn-primary btn-xs" onclick="window.open('{{links.peeringDb}}')">Update PeeringDB</button><br>
+{{/ixp}}
+
+{{#as}}
+    <br>
+    <b>{{#isGuess}}Best Guess{{/isGuess}} {{^isGuess}}Routing Info{{/isGuess}}:</b>
+    <br>
+    {{as.id}} - {{as.owner}}
+    <br>
+    Announced: {{#as.announced}}Yes{{/as.announced}}{{^as.announced}}No{{/as.announced}}
+    <br><br>
+    <b>Registry info:</b>
+
+    {{#asExtras.length}}
+    <br>
+    {{#asExtras}}{{.}}<br>{{/asExtras}}
+    {{/asExtras.length}}
+    {{/as}}
+
+{{^as}}
+    <br> No AS information available for this node
+{{/as}}
+
+<br>
+<div class="footer-popover-buttons">
+    {{#as}}
+        <!--<button type="button" class="action-button btn btn-primary btn-sm" data-target="{{id}}" data-name="show-contacts">Contact holder</button>-->
+        <button type="button" class="action-button btn btn-primary btn-sm" data-target="{{id}}" onclick="window.open('{{links.whois}}')">Whois</button>
+    {{/as}}
+    {{#ip}}
+    <button type="button" class="action-button btn btn-primary btn-sm" data-target="{{id}}" onclick="window.open('{{links.bgplay}}')">See BGP events</button>
+    {{/ip}}
+</div>

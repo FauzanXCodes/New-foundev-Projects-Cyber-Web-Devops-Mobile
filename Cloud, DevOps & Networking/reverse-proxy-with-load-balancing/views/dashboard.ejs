@@ -1,0 +1,898 @@
+<div class="stats-grid">
+    <div class="stat-card stat-users">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-users"></i></span>
+            <span class="stat-trend"><%= t('dashboard.activeUsers') %></span>
+        </div>
+        <div class="stat-value"><%= stats.users.enabled %></div>
+        <div class="stat-label"><%= t('common.of') %> <%= stats.users.total %> <%= t('nav.users').toLowerCase() %></div>
+    </div>
+    
+    <div class="stat-card stat-nodes">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-server"></i></span>
+            <span class="stat-trend"><%= t('dashboard.onlineNodes') %></span>
+        </div>
+        <div class="stat-value"><%= stats.nodes.online %></div>
+        <div class="stat-label"><%= t('common.of') %> <%= stats.nodes.total %> <%= t('nav.nodes').toLowerCase() %></div>
+    </div>
+    
+    <div class="stat-card stat-online">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-world"></i></span>
+            <span class="stat-trend"><%= t('common.now') %></span>
+        </div>
+        <div class="stat-value" id="onlineCount"><%= stats.onlineUsers %></div>
+        <div class="stat-label"><%= t('common.connections') %></div>
+    </div>
+    
+    <div class="stat-card stat-traffic">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-chart-bar"></i></span>
+            <span class="stat-trend"><%= t('dashboard.total') %></span>
+        </div>
+        <div class="stat-value"><%= formatTraffic(stats.traffic?.total || 0) %></div>
+        <div class="stat-label" title="<%= t('common.upload') || 'Upload' %> <%= formatTraffic(stats.traffic?.tx || 0) %> / <%= t('common.download') || 'Download' %> <%= formatTraffic(stats.traffic?.rx || 0) %>">
+            <i class="ti ti-arrow-up" style="color:var(--success)"></i> <%= formatTraffic(stats.traffic?.tx || 0) %> / <i class="ti ti-arrow-down" style="color:var(--info)"></i> <%= formatTraffic(stats.traffic?.rx || 0) %>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-grid">
+    <div class="dashboard-main">
+        <!-- Nodes Status -->
+        <div class="card">
+    <div class="card-header">
+        <h2><i class="ti ti-server"></i> <%= t('dashboard.nodesStatus') %></h2>
+                <div class="header-actions">
+                    <button class="btn btn-sm" onclick="refreshStats()" title="<%= t('common.refresh') %>"><i class="ti ti-refresh"></i></button>
+                </div>
+    </div>
+            <div class="card-body no-padding">
+                <!-- Desktop Table -->
+                <div class="table-wrapper">
+                <table class="table nodes-table">
+            <thead>
+                <tr>
+                            <th><%= t('dashboard.node') %></th>
+                    <th><%= t('common.status') %></th>
+                    <th><%= t('common.online') %></th>
+                            <th><%= t('dashboard.load') %></th>
+                            <th><%= t('dashboard.speed') %></th>
+                            <th><%= t('common.actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (nodes.length === 0) { %>
+                <tr>
+                            <td colspan="6" class="text-center text-muted">
+                                <a href="/panel/nodes/add" class="btn btn-primary btn-sm mt-2"><%= t('dashboard.addNode') %></a>
+                            </td>
+                </tr>
+                <% } %>
+                <% nodes.forEach(function(node, idx) { %>
+                        <tr class="node-row<%= idx >= 20 ? ' node-collapsed' : '' %>" data-nodeid="<%= node._id %>">
+                            <td>
+                                <div class="node-cell">
+                                    <span class="node-name-row">
+                                        <% if (node.flag) { %><span class="node-flag"><%= node.flag %></span><% } %>
+                                        <strong><%= node.name %></strong>
+                                        <img src="/img/<%= node.type === 'xray' ? 'xray' : 'hysteria' %>.svg"
+                                             alt="<%= node.type === 'xray' ? 'Xray' : 'Hysteria' %>"
+                                             style="width:14px;height:14px;vertical-align:middle;opacity:0.7;">
+                                    </span>
+                                    <code class="node-ip"><%= node.ip %></code>
+                                    <% if (node.comment) { %>
+                                    <span class="node-comment" title="<%= node.comment %>"><i class="ti ti-message-circle"></i> <%= node.comment %></span>
+                                    <% } %>
+                                </div>
+                            </td>
+                    <td>
+                                <span class="status-indicator status-<%= node.status %>">
+                                    <span class="status-dot"></span>
+                            <%= node.status %>
+                        </span>
+                    </td>
+                            <td class="online-count"><%= node.onlineUsers || 0 %><% if (node.maxOnlineUsers) { %><span class="online-limit">/<%= node.maxOnlineUsers %></span><% } %></td>
+                            <td class="node-load" data-nodeid="<%= node._id %>">
+                                <span class="load-placeholder">—</span>
+                            </td>
+                            <td class="node-speed" data-nodeid="<%= node._id %>">
+                                <span class="load-placeholder">—</span>
+                            </td>
+                            <td>
+                                <div class="node-actions">
+                                    <button class="btn-icon" onclick="restartNode('<%= node._id %>')" title="<%= t('nodes.restart') %>"><i class="ti ti-refresh"></i></button>
+                                    <a href="/panel/nodes/<%= node._id %>" class="btn-icon" title="<%= t('common.settings') %>"><i class="ti ti-settings"></i></a>
+                                    <a href="/panel/nodes/<%= node._id %>/terminal" class="btn-icon" title="<%= t('nodes.terminal') %>"><i class="ti ti-terminal-2"></i></a>
+                                </div>
+                            </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+                </div>
+                <% if (nodes.length > 20) { %>
+                <div id="showAllNodesWrapper" style="text-align:center;padding:10px 0 6px;">
+                    <button class="btn btn-sm" id="showAllNodesBtn" onclick="showAllDashboardNodes()">
+                        <i class="ti ti-chevrons-down"></i> <%= t('dashboard.showAll') %> (<%= nodes.length %>)
+                    </button>
+                </div>
+                <% } %>
+                
+                <!-- Mobile Cards -->
+                <div class="mobile-nodes-list">
+                    <% if (nodes.length === 0) { %>
+                        <div style="text-align: center; padding: 40px 20px;">
+                            <p style="color: var(--text-muted); margin-bottom: 16px;"><%= t('dashboard.noNodes') %></p>
+                            <a href="/panel/nodes/add" class="btn btn-primary btn-sm"><%= t('dashboard.addNode') %></a>
+                        </div>
+                    <% } %>
+                    <% nodes.forEach(function(node, idx) { %>
+                        <div class="mobile-node-card<%= idx >= 20 ? ' node-collapsed' : '' %>" data-nodeid="<%= node._id %>">
+                        <div class="mobile-node-header">
+                            <div class="mobile-node-title">
+                                <span class="node-name-row">
+                                    <% if (node.flag) { %><span class="node-flag"><%= node.flag %></span><% } %>
+                                    <strong><%= node.name %></strong>
+                                    <img src="/img/<%= node.type === 'xray' ? 'xray' : 'hysteria' %>.svg"
+                                         alt="<%= node.type === 'xray' ? 'Xray' : 'Hysteria' %>"
+                                         style="width:13px;height:13px;vertical-align:middle;opacity:0.7;">
+                                </span>
+                                <code><%= node.ip %></code>
+                                <% if (node.comment) { %>
+                                <div class="node-comment node-comment-mobile" title="<%= node.comment %>">
+                                    <i class="ti ti-message-circle"></i> <%= node.comment %>
+                                </div>
+                                <% } %>
+                            </div>
+                                <span class="status-indicator status-<%= node.status %>">
+                                    <span class="status-dot"></span>
+                                </span>
+                            </div>
+                            
+                            <div class="mobile-node-stats">
+                                <div class="mobile-stat-item">
+                                    <span class="mobile-stat-label"><%= t('common.online') %></span>
+                                    <span class="mobile-stat-value online-count"><%= node.onlineUsers || 0 %><% if (node.maxOnlineUsers) { %><span class="online-limit">/<%= node.maxOnlineUsers %></span><% } %></span>
+                                </div>
+                                <div class="mobile-stat-item">
+                                    <span class="mobile-stat-label"><%= t('common.status') %></span>
+                                    <span class="mobile-stat-value"><%= node.status %></span>
+                                </div>
+                                <div class="mobile-stat-item node-load-mobile" data-nodeid="<%= node._id %>">
+                                    <span class="mobile-stat-label"><%= t('dashboard.load') %></span>
+                                    <span class="mobile-stat-value load-placeholder">—</span>
+                                </div>
+                                <div class="mobile-stat-item node-speed-mobile" data-nodeid="<%= node._id %>">
+                                    <span class="mobile-stat-label"><%= t('dashboard.speed') %></span>
+                                    <span class="mobile-stat-value load-placeholder">—</span>
+                                </div>
+                            </div>
+                            
+                            <div class="mobile-node-actions">
+                                <button class="btn btn-sm" onclick="restartNode('<%= node._id %>')" style="flex: 1;"><i class="ti ti-refresh"></i> Restart</button>
+                                <a href="/panel/nodes/<%= node._id %>" class="btn btn-sm" style="flex: 1;"><i class="ti ti-settings"></i> <%= t('common.settings') %></a>
+                                <a href="/panel/nodes/<%= node._id %>/terminal" class="btn-icon"><i class="ti ti-terminal-2"></i></a>
+                            </div>
+                        </div>
+                    <% }); %>
+                    <% if (nodes.length > 20) { %>
+                    <div id="showAllNodesMobileWrapper" style="text-align:center;padding:10px 0 6px;">
+                        <button class="btn btn-sm" onclick="showAllDashboardNodes()">
+                            <i class="ti ti-chevrons-down"></i> <%= t('dashboard.showAll') %> (<%= nodes.length %>)
+                        </button>
+                    </div>
+                    <% } %>
+                </div>
+    </div>
+</div>
+
+        <!-- Logs -->
+        <div class="card mt-2">
+            <div class="card-header">
+                <h2>
+                    <span class="logs-status-dot" id="logsStatusDot"></span>
+                    <i class="ti ti-file-text"></i> <%= t('dashboard.recentLogs') %>
+                </h2>
+                <div class="logs-controls">
+                    <div class="logs-search-wrap" id="logsSearchWrap">
+                        <input type="text" class="logs-search-input" id="logsSearch" placeholder="<%= t('common.search') %>..." oninput="onLogsSearchInput(this.value)">
+                        <span class="logs-search-count" id="logsSearchCount"></span>
+                        <button class="logs-search-clear" id="logsSearchClear" onclick="clearLogsSearch()" title="<%= t('common.clear') %>"><i class="ti ti-x"></i></button>
+                    </div>
+                    <button class="btn btn-sm" id="logsToggleBtn" onclick="toggleLogs()" title="<%= t('dashboard.pauseLogs') %>"><i class="ti ti-player-pause"></i></button>
+                    <button class="btn btn-sm" onclick="clearLogs()" title="<%= t('common.clear') %>"><i class="ti ti-trash"></i></button>
+                </div>
+            </div>
+            <div class="card-body no-padding">
+                <div class="logs-container" id="logsContainer">
+                    <div class="logs-loading"><%= t('common.loading') %></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-sidebar">
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h2><i class="ti ti-bolt"></i> <%= t('dashboard.quickActions') %></h2>
+            </div>
+            <div class="card-body">
+                <div class="quick-actions">
+                    <a href="/panel/nodes/add" class="quick-action">
+                        <span class="qa-icon"><i class="ti ti-server-2"></i></span>
+                        <span class="qa-text"><%= t('dashboard.addNode') %></span>
+                    </a>
+                    <a href="/panel/users/add" class="quick-action">
+                        <span class="qa-icon"><i class="ti ti-user-plus"></i></span>
+                        <span class="qa-text"><%= t('dashboard.addUser') %></span>
+                    </a>
+                    <a href="/panel/stats" class="quick-action">
+                        <span class="qa-icon"><i class="ti ti-chart-bar"></i></span>
+                        <span class="qa-text"><%= t('nav.stats') %></span>
+                    </a>
+                    <button class="quick-action" onclick="createBackup()">
+                        <span class="qa-icon"><i class="ti ti-device-floppy"></i></span>
+                        <span class="qa-text"><%= t('dashboard.backupDb') %></span>
+                    </button>
+                    <button class="quick-action" onclick="document.getElementById('restoreInput').click()">
+                        <span class="qa-icon"><i class="ti ti-download"></i></span>
+                        <span class="qa-text"><%= t('dashboard.restoreDb') %></span>
+                    </button>
+                    <input type="file" id="restoreInput" accept=".tar.gz,.tgz" style="display:none" onchange="restoreBackup(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="card mt-2">
+            <div class="card-header">
+                <h2><i class="ti ti-device-desktop"></i> <%= t('dashboard.panel') %></h2>
+                <button class="btn btn-sm" onclick="loadSystemStats()" title="<%= t('common.refresh') %>"><i class="ti ti-refresh"></i></button>
+            </div>
+            <div class="card-body">
+                <div class="system-info" id="systemStats">
+                    <div class="sys-item">
+                        <span class="sys-label">CPU</span>
+                        <div class="progress-bar-wrap">
+                            <div class="progress-bar" id="cpuBar" style="width: 0%"></div>
+                        </div>
+                        <span class="sys-value" id="cpuValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">RAM</span>
+                        <div class="progress-bar-wrap">
+                            <div class="progress-bar" id="ramBar" style="width: 0%"></div>
+                        </div>
+                        <span class="sys-value" id="ramValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label"><%= t('stats.serverDisk') || 'Disk' %></span>
+                        <div class="progress-bar-wrap">
+                            <div class="progress-bar" id="diskBar" style="width: 0%"></div>
+                        </div>
+                        <span class="sys-value" id="diskValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">RPS</span>
+                        <span class="sys-value" id="rpsValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Connections</span>
+                        <span class="sys-value" id="connectionsValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Redis Keys</span>
+                        <span class="sys-value" id="cacheValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Process</span>
+                        <span class="sys-value" id="processValue">—</span>
+                    </div>
+                    <div class="sys-item">
+                        <span class="sys-label">Uptime</span>
+                        <span class="sys-value" id="uptime">—</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<style>
+/* Hidden overflow rows -- revealed by showAllDashboardNodes() */
+.node-collapsed { display: none !important; }
+
+/* Real-time logs status indicator */
+.logs-status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    background: var(--text-muted);
+}
+.logs-status-dot.connecting {
+    background: var(--warning);
+    animation: pulse 1s infinite;
+}
+.logs-status-dot.connected {
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+}
+.logs-status-dot.disconnected,
+.logs-status-dot.error {
+    background: var(--danger);
+}
+.logs-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.logs-hit {
+    background: rgba(99, 102, 241, 0.25);
+    color: inherit;
+    border-radius: 3px;
+    padding: 1px 3px;
+    margin: 0 1px;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.progress-bar-wrap {
+    width: 60px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin: 4px 0;
+}
+.progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+.progress-bar.high { background: var(--danger); }
+.progress-bar.medium { background: var(--warning); }
+.node-load {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.node-load .cpu, .node-load .mem, .node-load .disk {
+    display: block;
+}
+.node-speed {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.node-speed .speed-up, .node-speed .speed-down {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.node-speed .speed-up {
+    color: var(--success);
+}
+.node-speed .speed-down {
+    color: var(--info);
+}
+.load-placeholder {
+    color: var(--text-muted);
+}
+.online-limit {
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+.node-comment {
+    display: inline-block;
+    max-width: 280px;
+    margin-left: 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+.node-comment .ti {
+    font-size: 12px;
+    opacity: 0.7;
+    vertical-align: -1px;
+}
+.node-comment-mobile {
+    display: block;
+    margin: 4px 0 0;
+    max-width: 100%;
+    white-space: normal;
+    word-break: break-word;
+}
+</style>
+
+<script defer src="/js/backup-actions.js"></script>
+<script>
+const i18n = {
+    noLogs: <%- JSON.stringify(t("dashboard.noLogs")) %>,
+    loading: <%- JSON.stringify(t("common.loading")) %>,
+    loadError: <%- JSON.stringify(t("dashboard.loadError")) %>,
+    error: <%- JSON.stringify(t("common.error")) %>,
+    nodeRestarted: <%- JSON.stringify(t("dashboard.nodeRestarted")) %>,
+    restartError: <%- JSON.stringify(t("dashboard.restartError")) %>,
+    creatingBackup: <%- JSON.stringify(t("dashboard.creatingBackup")) %>,
+    backupDownloaded: <%- JSON.stringify(t("dashboard.backupDownloaded")) %>,
+    backupError: <%- JSON.stringify(t("dashboard.backupError")) %>,
+    s3UploadFailed: <%- JSON.stringify(t("settings.s3UploadFailed") || "S3 upload failed: {error}") %>,
+    restoringDb: <%- JSON.stringify(t("dashboard.restoringDb")) %>,
+    dbRestored: <%- JSON.stringify(t("dashboard.dbRestored")) %>,
+    restoreConfirm: <%- JSON.stringify(t("dashboard.restoreConfirm")) %>
+};
+
+// Logs WebSocket
+let logsWs = null;
+let logsPaused = false;
+let logsAutoScroll = true;
+let logsSearchDebounce = null;
+let logsSearchMode = false;
+let logsSearchRequestId = 0;
+
+// Load on page load
+document.addEventListener('DOMContentLoaded', () => {
+    connectLogsWebSocket();
+    loadSystemStats();
+    loadNodesStats();
+    loadNodesSpeed();
+});
+
+function connectLogsWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/logs`;
+    
+    updateLogsStatus('connecting');
+    
+    logsWs = new WebSocket(wsUrl);
+    
+    logsWs.onopen = () => {
+        updateLogsStatus('connected');
+    };
+    
+    logsWs.onmessage = (event) => {
+        if (logsPaused || logsSearchMode) return;
+        
+        const msg = JSON.parse(event.data);
+        
+        if (msg.type === 'history') {
+            const container = document.getElementById('logsContainer');
+            if (msg.logs && msg.logs.length > 0) {
+                container.innerHTML = msg.logs.map(log => formatLogLine(log)).join('');
+                scrollLogsToBottom();
+            } else {
+                container.innerHTML = '<div class="logs-empty">' + i18n.noLogs + '</div>';
+            }
+        } else if (msg.type === 'log') {
+            appendLog(msg);
+        }
+    };
+    
+    logsWs.onclose = () => {
+        updateLogsStatus('disconnected');
+        setTimeout(connectLogsWebSocket, 3000);
+    };
+    
+    logsWs.onerror = () => {
+        updateLogsStatus('error');
+    };
+}
+
+function formatLogLine(log) {
+    const level = log.level || 'info';
+    const message = `${log.timestamp} [${level.toUpperCase()}]: ${log.message}`;
+    let cls = 'log-line';
+    if (level === 'error') cls += ' log-error';
+    else if (level === 'warn') cls += ' log-warn';
+    else if (message.includes('✅') || message.includes('✓')) cls += ' log-success';
+    return `<div class="${cls}">${escapeHtml(message)}</div>`;
+}
+
+function formatRawLine(line, query = '') {
+    let cls = 'log-line';
+    if (line.includes('"level":"error"') || line.includes('[ERROR]')) cls += ' log-error';
+    else if (line.includes('"level":"warn"') || line.includes('[WARN]')) cls += ' log-warn';
+    else if (line.includes('✅') || line.includes('✓')) cls += ' log-success';
+
+    const escapedLine = escapeHtml(line);
+    if (!query) {
+        return `<div class="${cls}">${escapedLine}</div>`;
+    }
+
+    const escapedQuery = escapeHtml(query);
+    const highlightRegex = new RegExp(`(${escapeRegExp(escapedQuery)})`, 'ig');
+    const highlighted = escapedLine.replace(highlightRegex, '<mark class="logs-hit">$1</mark>');
+
+    return `<div class="${cls}">${highlighted}</div>`;
+}
+
+function appendLog(log) {
+    const container = document.getElementById('logsContainer');
+    
+    const emptyMsg = container.querySelector('.logs-empty');
+    if (emptyMsg) emptyMsg.remove();
+    
+    const logHtml = formatLogLine(log);
+    container.insertAdjacentHTML('afterbegin', logHtml);
+    
+    const lines = container.querySelectorAll('.log-line');
+    if (lines.length > 100) {
+        lines[lines.length - 1].remove();
+    }
+}
+
+function onLogsSearchInput(value) {
+    const clearBtn = document.getElementById('logsSearchClear');
+    const countEl = document.getElementById('logsSearchCount');
+    const hasValue = value.trim().length > 0;
+    clearBtn.style.display = hasValue ? 'flex' : 'none';
+    if (!hasValue && countEl) countEl.textContent = '';
+
+    clearTimeout(logsSearchDebounce);
+    logsSearchDebounce = setTimeout(() => {
+        const q = value.trim();
+        if (q) {
+            execLogsSearch(q);
+        } else {
+            exitLogsSearchMode();
+        }
+    }, 400);
+}
+
+async function execLogsSearch(q) {
+    const requestId = ++logsSearchRequestId;
+    logsSearchMode = true;
+    const container = document.getElementById('logsContainer');
+    const countEl = document.getElementById('logsSearchCount');
+
+    container.innerHTML = '<div class="logs-loading">' + i18n.loading + '</div>';
+    if (countEl) countEl.textContent = '...';
+
+    try {
+        const res = await fetch(`/panel/logs/search?q=${encodeURIComponent(q)}&limit=200`, { credentials: 'include' });
+        const data = await res.json();
+
+        if (!logsSearchMode || requestId !== logsSearchRequestId) return;
+
+        if (data.matches && data.matches.length > 0) {
+            container.innerHTML = data.matches.map(line => formatRawLine(line, q)).join('');
+            if (countEl) {
+                const shown = data.matches.length;
+                const total = data.total;
+                countEl.textContent = shown < total ? `${shown}/${total}` : `${total}`;
+            }
+        } else {
+            container.innerHTML = '<div class="logs-empty">' + i18n.noLogs + '</div>';
+            if (countEl) countEl.textContent = '0';
+        }
+    } catch (e) {
+        if (logsSearchMode) {
+            container.innerHTML = '<div class="logs-empty">—</div>';
+            if (countEl) countEl.textContent = '';
+        }
+    }
+}
+
+function exitLogsSearchMode() {
+    logsSearchMode = false;
+    logsSearchRequestId += 1;
+    const countEl = document.getElementById('logsSearchCount');
+    if (countEl) countEl.textContent = '';
+    const container = document.getElementById('logsContainer');
+    container.innerHTML = '<div class="logs-loading">' + i18n.loading + '</div>';
+    if (logsWs) {
+        logsWs.onclose = null;
+        logsWs.close();
+        logsWs = null;
+    }
+    connectLogsWebSocket();
+}
+
+function clearLogsSearch() {
+    const input = document.getElementById('logsSearch');
+    input.value = '';
+    input.focus();
+    onLogsSearchInput('');
+}
+
+function setLogsSearchUiState(state) {
+    // Оставлен для совместимости, состояние теперь отображается через count badge
+}
+
+function scrollLogsToBottom() {
+    if (logsAutoScroll) {
+        const container = document.getElementById('logsContainer');
+        container.scrollTop = 0;
+    }
+}
+
+function updateLogsStatus(status) {
+    const dot = document.getElementById('logsStatusDot');
+    dot.className = 'logs-status-dot ' + status;
+}
+
+function toggleLogs() {
+    logsPaused = !logsPaused;
+    const btn = document.getElementById('logsToggleBtn');
+    btn.innerHTML = logsPaused ? '<i class="ti ti-player-play"></i>' : '<i class="ti ti-player-pause"></i>';
+    btn.title = logsPaused ? 'Resume' : 'Pause';
+}
+
+function clearLogs() {
+    document.getElementById('logsContainer').innerHTML = '<div class="logs-empty">' + i18n.noLogs + '</div>';
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function loadSystemStats() {
+    try {
+        const res = await fetch('/panel/system-stats', { credentials: 'include' });
+        const data = await res.json();
+        
+        if (data.success) {
+            // CPU в процентах
+            const cpuPercent = data.cpu.percent || 0;
+            const cpuBar = document.getElementById('cpuBar');
+            cpuBar.style.width = cpuPercent + '%';
+            cpuBar.className = 'progress-bar' + (cpuPercent > 80 ? ' high' : cpuPercent > 60 ? ' medium' : '');
+            document.getElementById('cpuValue').textContent = cpuPercent + '%';
+            
+            // RAM
+            const ramPercent = data.mem.percent;
+            const ramBar = document.getElementById('ramBar');
+            ramBar.style.width = ramPercent + '%';
+            ramBar.className = 'progress-bar' + (ramPercent > 80 ? ' high' : ramPercent > 60 ? ' medium' : '');
+            document.getElementById('ramValue').textContent = ramPercent + '%';
+
+            // Disk (panel host filesystem)
+            const diskBar = document.getElementById('diskBar');
+            if (diskBar && data.disk && data.disk.total > 0) {
+                const diskPercent = data.disk.percent || 0;
+                diskBar.style.width = diskPercent + '%';
+                diskBar.className = 'progress-bar' + (diskPercent > 90 ? ' high' : diskPercent > 75 ? ' medium' : '');
+                const freeGB = (data.disk.free / 1073741824).toFixed(1);
+                document.getElementById('diskValue').textContent = `${diskPercent}% (${freeGB} GB free)`;
+            } else if (diskBar) {
+                document.getElementById('diskValue').textContent = 'n/a';
+            }
+
+            // RPS (Requests Per Second)
+            const rps = data.requests?.rps || 0;
+            const rpm = data.requests?.rpm || 0;
+            document.getElementById('rpsValue').textContent = `${rps}/s (${rpm}/m)`;
+            
+            // Active connections
+            document.getElementById('connectionsValue').textContent = data.connections || 0;
+            
+            // Cache (Redis keys)
+            const cacheKeys = data.cache?.keys || 0;
+            const cacheMem = data.cache?.usedMemoryMB || '0';
+            document.getElementById('cacheValue').textContent = `${cacheKeys} (${cacheMem}MB)`;
+            
+            // Process memory
+            const processMB = Math.round(data.process.rss / 1024 / 1024);
+            document.getElementById('processValue').textContent = processMB + ' MB';
+            
+            // Uptime
+            const uptime = data.uptime;
+            const hours = Math.floor(uptime / 3600);
+            const mins = Math.floor((uptime % 3600) / 60);
+            document.getElementById('uptime').textContent = `${hours}h ${mins}m`;
+        }
+    } catch (e) {
+        console.error('Failed to load system stats:', e);
+    }
+}
+
+async function loadNodesStats(onlyIds) {
+    const renderStats = (data, desktopEl, mobileEl) => {
+        if (data.success) {
+            const cpuPercent = data.cpu.percent != null ? data.cpu.percent : Math.min(Math.round((data.cpu.load1 / data.cpu.cores) * 100), 100);
+            const memPercent = data.mem.percent;
+            const diskPercent = data.disk && data.disk.total > 0 ? data.disk.percent : null;
+
+            let cpuColor = 'var(--text-primary)';
+            if (cpuPercent >= 80) cpuColor = '#ef4444';
+            else if (cpuPercent >= 60) cpuColor = '#f59e0b';
+
+            const diskDesktop = diskPercent != null ? `<span class="disk">Disk: ${diskPercent}%</span>` : '';
+            const diskMobile = diskPercent != null ? ` / ${diskPercent}%` : '';
+
+            if (desktopEl) {
+                desktopEl.innerHTML = `
+                    <span class="cpu" style="color: ${cpuColor}">CPU: ${cpuPercent}%</span>
+                    <span class="mem">RAM: ${memPercent}%</span>
+                    ${diskDesktop}
+                `;
+            }
+            if (mobileEl) {
+                mobileEl.innerHTML = `<span style="color: ${cpuColor}">${cpuPercent}%</span> / ${memPercent}%${diskMobile}`;
+            }
+        } else {
+            if (desktopEl) desktopEl.innerHTML = '<span class="load-placeholder">N/A</span>';
+            if (mobileEl) mobileEl.textContent = 'N/A';
+        }
+    };
+    
+    // Collect visible node IDs only -- skip collapsed rows to avoid N*2 requests on page load
+    // When onlyIds is provided, further restrict to that set (used by showAllDashboardNodes)
+    const nodesMap = new Map();
+    
+    document.querySelectorAll('.node-row:not(.node-collapsed)').forEach(row => {
+        const nodeId = row.dataset.nodeid;
+        if (onlyIds && !onlyIds.has(nodeId)) return;
+        if (!nodesMap.has(nodeId)) nodesMap.set(nodeId, { desktop: null, mobile: null });
+        nodesMap.get(nodeId).desktop = row.querySelector('.node-load');
+    });
+    
+    document.querySelectorAll('.node-load-mobile').forEach(card => {
+        const row = card.closest('.mobile-node-card');
+        if (row && row.classList.contains('node-collapsed')) return;
+        const nodeId = card.dataset.nodeid;
+        if (onlyIds && !onlyIds.has(nodeId)) return;
+        if (!nodesMap.has(nodeId)) nodesMap.set(nodeId, { desktop: null, mobile: null });
+        nodesMap.get(nodeId).mobile = card.querySelector('.mobile-stat-value');
+    });
+    
+    // One request per visible node, in parallel
+    const tasks = Array.from(nodesMap.entries()).map(([nodeId, elements]) => 
+        fetch(`/panel/nodes/${nodeId}/stats`, { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => renderStats(data, elements.desktop, elements.mobile))
+            .catch(() => {
+                if (elements.desktop) elements.desktop.innerHTML = '<span class="load-placeholder">—</span>';
+                if (elements.mobile) elements.mobile.textContent = '—';
+            })
+    );
+    
+    await Promise.all(tasks);
+}
+
+async function loadNodesSpeed(onlyIds) {
+    const formatSpeed = (bytes) => {
+        const bits = bytes * 8;
+        if (bits < 1000) return `${bits.toFixed(0)} bit/s`;
+        if (bits < 1000 * 1000) return `${(bits / 1000).toFixed(1)} Kbit/s`;
+        if (bits < 1000 * 1000 * 1000) return `${(bits / 1000 / 1000).toFixed(1)} Mbit/s`;
+        return `${(bits / 1000 / 1000 / 1000).toFixed(2)} Gbit/s`;
+    };
+    
+    const renderSpeed = (data, desktopEl, mobileEl) => {
+        if (data.success) {
+            const txSpeed = formatSpeed(data.tx);
+            const rxSpeed = formatSpeed(data.rx);
+            
+            if (desktopEl) {
+                desktopEl.innerHTML = `
+                    <span class="speed-up" title="Upload"><i class="ti ti-arrow-up"></i> ${txSpeed}</span>
+                    <span class="speed-down" title="Download"><i class="ti ti-arrow-down"></i> ${rxSpeed}</span>
+                `;
+            }
+            if (mobileEl) {
+                mobileEl.innerHTML = `
+                    <span style="color: var(--success); font-size: 12px;"><i class="ti ti-arrow-up"></i> ${txSpeed}</span><br>
+                    <span style="color: var(--info); font-size: 12px;"><i class="ti ti-arrow-down"></i> ${rxSpeed}</span>
+                `;
+            }
+        } else {
+            if (desktopEl) desktopEl.innerHTML = '<span class="load-placeholder">N/A</span>';
+            if (mobileEl) mobileEl.textContent = 'N/A';
+        }
+    };
+    
+    // Collect visible node IDs only -- skip collapsed rows
+    // When onlyIds is provided, further restrict to that set (used by showAllDashboardNodes)
+    const nodesMap = new Map();
+    
+    document.querySelectorAll('.node-row:not(.node-collapsed)').forEach(row => {
+        const nodeId = row.dataset.nodeid;
+        if (onlyIds && !onlyIds.has(nodeId)) return;
+        if (!nodesMap.has(nodeId)) nodesMap.set(nodeId, { desktop: null, mobile: null });
+        const el = row.querySelector('.node-speed');
+        el.innerHTML = '<span class="load-placeholder"><i class="ti ti-loader-2"></i></span>';
+        nodesMap.get(nodeId).desktop = el;
+    });
+    
+    document.querySelectorAll('.node-speed-mobile').forEach(card => {
+        const row = card.closest('.mobile-node-card');
+        if (row && row.classList.contains('node-collapsed')) return;
+        const nodeId = card.dataset.nodeid;
+        if (onlyIds && !onlyIds.has(nodeId)) return;
+        if (!nodesMap.has(nodeId)) nodesMap.set(nodeId, { desktop: null, mobile: null });
+        const el = card.querySelector('.mobile-stat-value');
+        el.innerHTML = '<i class="ti ti-loader-2"></i>';
+        nodesMap.get(nodeId).mobile = el;
+    });
+    
+    // One request per visible node, in parallel
+    const tasks = Array.from(nodesMap.entries()).map(([nodeId, elements]) => 
+        fetch(`/panel/nodes/${nodeId}/speed`, { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => renderSpeed(data, elements.desktop, elements.mobile))
+            .catch(() => {
+                if (elements.desktop) elements.desktop.innerHTML = '<span class="load-placeholder">—</span>';
+                if (elements.mobile) elements.mobile.textContent = '—';
+            })
+    );
+    
+    await Promise.all(tasks);
+}
+
+// Expand all hidden nodes and load their stats/speed (only for newly revealed)
+async function showAllDashboardNodes() {
+    // Collect IDs of nodes that were collapsed (not yet loaded)
+    const newIds = new Set();
+    document.querySelectorAll('.node-collapsed').forEach(el => {
+        newIds.add(el.dataset.nodeid);
+        el.classList.remove('node-collapsed');
+    });
+    const wrapper = document.getElementById('showAllNodesWrapper');
+    if (wrapper) wrapper.remove();
+    const mobileWrapper = document.getElementById('showAllNodesMobileWrapper');
+    if (mobileWrapper) mobileWrapper.remove();
+    if (newIds.size === 0) return;
+    // Only fetch stats/speed for newly revealed nodes
+    await Promise.all([loadNodesStats(newIds), loadNodesSpeed(newIds)]);
+}
+
+async function refreshStats() {
+    location.reload();
+}
+
+async function restartNode(nodeId) {
+    const row = document.querySelector(`tr[data-nodeid="${nodeId}"]`);
+    const btn = row.querySelector('.btn-icon');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2"></i>';
+    
+    try {
+        const res = await fetch(`/panel/nodes/${nodeId}/restart`, { 
+            method: 'POST', 
+            credentials: 'include' 
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast(i18n.nodeRestarted);
+            row.querySelector('.status-indicator').className = 'status-indicator status-online';
+            row.querySelector('.status-indicator').innerHTML = '<span class="status-dot"></span>online';
+        } else {
+            showToast(i18n.error + ': ' + (data.error || 'unknown'), 'error');
+        }
+    } catch (e) {
+        showToast(i18n.restartError, 'error');
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-refresh"></i>';
+}
+
+async function createBackup() {
+    return window.CelerityBackupActions.downloadBackup({ i18n, showToast });
+}
+
+async function restoreBackup(input) {
+    return window.CelerityBackupActions.restoreBackupFromFile(input, { i18n, showToast });
+}
+
+</script>

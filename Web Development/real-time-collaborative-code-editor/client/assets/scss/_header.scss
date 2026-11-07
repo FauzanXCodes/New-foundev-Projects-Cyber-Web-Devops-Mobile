@@ -1,0 +1,191 @@
+.header, #toolbar {
+  font-family: $Brandon-font-stack;
+}
+
+.header, #toolbar {
+  $li-padding: 10px;
+  font-size: 0.8em;
+  letter-spacing: 0.13em;
+  font-weight: 400;
+  border: 0;
+  color: #fff;
+  font-size: 1.6em;
+  cursor: default;
+  background-color: $blue-grey;
+  color: #fff;
+  z-index: 95;
+  height: $toolbar-height;
+  border-radius: 0;
+  margin-bottom: 0;
+  .dropdown-menu {
+    background: rgba(96, 121, 132, 0.98);
+    padding: 0;
+  }
+  .navbar-brand {
+    &:hover, &:focus {
+      background: $darkened-blue-grey;
+    }
+  }
+  &.navbar {
+    border-radius: 0;
+    border: 0;
+  }
+  nav .open > a,
+  .nav .open > a:hover,
+  .nav .open > a:focus {
+    color: #fff;
+    background: $darkened-blue-grey;
+  }
+  .navbar-nav > .open > a,
+  .navbar-nav > .open > a:hover,
+  .navbar-nav > .open > a:focus, {
+    background: $darkened-blue-grey;
+  }
+  .navbar-nav > li > a,
+  .navbar-nav > a {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .navbar-nav > li > a:hover,
+  .navbar-nav > li > a:focus {
+    color: #fff;
+  }
+  &.navbar-default {
+    .dropdown-menu {
+      border-radius: 0;
+      li {
+        font-family: $Proxima-font-stack;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        padding-left: 10px;
+        &.divider {
+          background: none;
+          height: 0;
+          padding-top: 0;
+          padding-bottom: 0;
+          border-bottom: 1px solid $darkened-blue-grey;
+        }
+        &.dropdown-header {
+          color: #d7d7d7;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          &:hover {
+            background: none;
+          }
+        }
+        &.form-container {
+          padding: 0;
+          input {
+            background: none;
+            border: none;
+            width: 100%;
+            text-align: left;
+            height: 100%;
+            padding: 7px 10px;
+            color: #fff;
+            font-family: $Proxima-font-stack;
+            font-size: 1em;
+            letter-spacing: 0.06em;
+            font-weight: 300;
+          }
+        }
+      }
+    }
+  }
+  &.navbar-default{
+    #logo-text {
+      color: #fff;
+    }
+    a.navbar-brand.dropdown-toggle {
+      color: #fff;
+    }
+    .dropdown-menu {
+      background: $blue-grey;
+      li {
+        &:hover {
+          background: $darkened-blue-grey;
+        }
+      }
+    }
+  }
+  .dropdown-menu > li > a {
+    color: #fff;
+    background: none;
+    font-weight: 300;
+    display: inline-block;
+  }
+  .userName {
+    color: #fff;
+    cursor: pointer;
+    &:hover {
+      color: #fff;
+      background: $darkened-blue-grey;
+    }
+  }
+  .profile-image {
+    float: left;
+    border-radius: 18px;
+    margin-right: 5px;
+    width: 24px;
+    height: 24px;
+    margin-top: -2px;
+  }
+}
+
+.navbar-brand, .navbar-default .navbar-brand {
+  color: #fff;
+  #logo-image {
+    background: url($shapes-friends-path) no-repeat center center;
+    background-size: contain;
+    width: 60px;
+    height: 20px;
+    display: inline-block;
+    float: left;
+    margin-top: 2px;
+  }
+  #logo-text {
+    font-size: 1em;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.1em;
+    display: inline-block;
+    margin-left: 5px;
+    text-transform: uppercase;
+    position: relative;
+    top: 3px;
+  }
+}
+
+
+// Toolbar styling
+#toolbar {
+  ul {
+    li {
+      cursor: pointer;
+      ul {
+        font-family: $Proxima-font-stack;
+        font-size: 0.6em;
+        letter-spacing: 0.06em;
+        font-weight: 300;
+      }
+    }
+  }
+  // ul li ul
+  .first-dropDown, .second-dropDown {
+    li {
+      background: $blue-grey;
+    }
+  }
+}
+
+#toolbar-user {
+  float: right;
+  ul {
+    float: right;
+  }
+}
+
+#toolbar.navbar-default .dropdown-menu {
+  background: rgba(96, 121, 132, 0.98)
+}

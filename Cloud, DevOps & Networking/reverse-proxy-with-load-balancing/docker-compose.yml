@@ -1,0 +1,124 @@
+# Hysteria Backend - Docker Compose
+# Запуск: docker-compose up -d
+
+services:
+  # Redis - кэширование
+  redis:
+    image: redis:7-alpine
+    container_name: hysteria-redis
+    restart: always
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - hysteria-net
+
+  # MongoDB
+  mongo:
+    image: mongo:7
+    container_name: hysteria-mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: hysteria
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-hysteria}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - hysteria-net
+
+  # Caddy - reverse proxy с автоматическим SSL
+  caddy:
+    image: caddy:2-alpine
+    container_name: hysteria-caddy
+    restart: always
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - PANEL_DOMAIN=${PANEL_DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
+    networks:
+      - hysteria-net
+    depends_on:
+      - backend
+
+  # Hysteria Backend
+  backend:
+    build: .
+    container_name: hysteria-backend
+    restart: always
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3000"
+    volumes:
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      # Access-logs ingest spool must survive container rebuilds (batches not
+      # yet forwarded to ClickHouse live here).
+      - ./data:/app/data
+      - caddy_data:/caddy_data:ro
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://${MONGO_USER:-hysteria}:${MONGO_PASSWORD}@mongo:27017/hysteria?authSource=admin
+      REDIS_URL: redis://redis:6379
+      PORT: 3000
+      USE_CADDY: "true"
+      # In-cluster URL of the updater sidecar. UPDATER_SECRET comes from .env.
+      UPDATER_URL: http://updater:8484
+    networks:
+      - hysteria-net
+
+  # Panel updater sidecar (source mode: git checkout + rebuild).
+  #
+  # This is the ONLY container with access to the Docker socket. It rebuilds and
+  # recreates the backend on request from the panel (HMAC-signed). The project
+  # directory is mounted at the SAME absolute path it has on the host so that the
+  # relative bind mounts above (./logs, ./backups, ./data) resolve correctly when
+  # `docker compose up` runs from inside this container.
+  #
+  # Disabled unless UPDATER_SECRET (>=32 chars) is set in .env.
+  updater:
+    build: ./updater
+    container_name: hysteria-updater
+    restart: always
+    environment:
+      UPDATE_MODE: source
+      PROJECT_DIR: ${PWD}
+      COMPOSE_FILE: docker-compose.yml
+      SERVICE: backend
+      UPDATER_SECRET: ${UPDATER_SECRET:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+    working_dir: ${PWD}
+    networks:
+      - hysteria-net
+
+networks:
+  hysteria-net:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  caddy_data:
+  caddy_config:

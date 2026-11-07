@@ -1,0 +1,17 @@
+# Lockfiles and generated output
+pnpm-lock.yaml
+dist/
+coverage/
+
+# Vendored / generated static assets
+public/deps/
+public/styles/
+public/assets/
+
+# pnpm patch files
+patches/
+
+# Local-only directories
+.pr-docs/
+.claude/
+.idea/

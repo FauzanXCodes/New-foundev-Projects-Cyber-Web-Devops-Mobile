@@ -1,0 +1,14 @@
+﻿{
+    "id":  "peer-to-peer-file-transfer-over-lan",
+    "name":  "Peer-to-Peer File Transfer over LAN",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/jakobkuy/p2p-lan",
+    "stack":  "Python; asyncio",
+    "goal":  "Chunked transfer, resume on failure, integrity hash and a transfer-speed UI.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "src/p2p_lan/__main__.py",
+    "expectedFileCount":  12,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  17
+}

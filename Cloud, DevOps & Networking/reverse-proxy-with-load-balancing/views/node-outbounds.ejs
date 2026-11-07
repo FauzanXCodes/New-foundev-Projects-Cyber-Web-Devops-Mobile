@@ -1,0 +1,402 @@
+<div class="page-header">
+    <a href="/panel/nodes/<%= node._id %>" class="btn btn-back"><i class="ti ti-chevron-left"></i> <%= t('outbounds.backToNode') %></a>
+</div>
+
+<% if (message) { %>
+<div class="alert alert-success"><%= message %></div>
+<% } %>
+<% if (error) { %>
+<div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<%
+const aclInlineEditable = aclInlineState?.editable !== false;
+const aclInlineReason = aclInlineState?.reason || '';
+%>
+
+<div class="card">
+    <div class="card-header">
+        <h2><%= t('outbounds.title') %> — <%= node.name %></h2>
+        <p class="hint" style="margin:0"><%= t('outbounds.pageDesc') %></p>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="/panel/nodes/<%= node._id %>/outbounds" id="outboundsForm">
+
+            <!-- PRESETS -->
+            <div class="form-section">
+                <h3><%= t('outbounds.presets') %> <small style="font-weight:400; color:var(--text-muted); font-size:12px;"><%= t('outbounds.presetsHint') %></small></h3>
+                <div class="presets-grid<%= !aclInlineEditable ? ' is-disabled' : '' %>">
+                    <div class="preset-card" onclick="applyPreset('block-ads', this)">
+                        <div class="preset-icon"><i class="ti ti-ban"></i></div>
+                        <div class="preset-title"><%= t('outbounds.blockAds') %></div>
+                        <div class="preset-desc"><%= t('outbounds.blockAdsDesc') %></div>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('block-cn', this)">
+                        <div class="preset-icon"><i class="ti ti-shield"></i></div>
+                        <div class="preset-title"><%= t('outbounds.blockCn') %></div>
+                        <div class="preset-desc"><%= t('outbounds.blockCnDesc') %></div>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('direct-all', this)">
+                        <div class="preset-icon"><i class="ti ti-arrow-up-right"></i></div>
+                        <div class="preset-title"><%= t('outbounds.directAll') %></div>
+                        <div class="preset-desc"><%= t('outbounds.directAllDesc') %></div>
+                    </div>
+                    <div class="preset-card" onclick="applyPreset('clear', this)">
+                        <div class="preset-icon"><i class="ti ti-trash"></i></div>
+                        <div class="preset-title"><%= t('outbounds.reset') %></div>
+                        <div class="preset-desc"><%= t('outbounds.resetDesc') %></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACL RULES -->
+            <div class="form-section">
+                <h3><%= t('outbounds.rules') %></h3>
+                <p class="hint" style="margin-bottom: 12px;"><%- t('outbounds.rulesHint') %></p>
+
+                <% if (!aclInlineEditable) { %>
+                <div class="alert alert-warning" style="margin-bottom: 12px; font-size: 13px;">
+                    <i class="ti ti-alert-triangle"></i>
+                    <%= aclInlineReason === 'file' ? t('outbounds.aclInlineDisabledFile') : t('outbounds.aclInlineDisabled') %>
+                </div>
+                <% } %>
+
+                <div id="noProxyAclWarning" class="alert alert-warning" style="display:none; margin-bottom:10px; font-size:13px;"></div>
+
+                <div id="proxyChipsWrap" style="display:none; margin-bottom:8px;">
+                    <small style="color:var(--text-muted)"><%= t('outbounds.proxyChipsHint') %></small>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;" id="proxyChips"></div>
+                </div>
+
+                <textarea name="aclRules" id="aclRulesEditor" class="acl-editor"
+                    placeholder="reject(suffix:doubleclick.net)&#10;reject(geoip:cn)&#10;reject(geoip:private)&#10;direct(all)" <%= aclInlineEditable ? '' : 'readonly disabled' %>><%= (node.aclRules || []).join('\n') %></textarea>
+
+                <% if (aclInlineEditable) { %>
+                <div style="margin-top: 10px;">
+                    <small style="color: var(--text-muted)"><%= t('outbounds.templates') %>:</small>
+                    <div class="acl-hint-tags">
+                        <span class="acl-tag" onclick="insertAcl('direct(all)')">direct(all)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(geoip:cn)')">reject(geoip:cn)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(geoip:private)')">reject(geoip:private)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(geoip:ru)')">reject(geoip:ru)</span>
+                        <span class="acl-tag" onclick="insertAcl('direct(geoip:ru)')">direct(geoip:ru)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(suffix:doubleclick.net)')">reject(suffix:doubleclick.net)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(suffix:googlesyndication.com)')">reject(suffix:googlesyndication.com)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(suffix:googleadservices.com)')">reject(suffix:googleadservices.com)</span>
+                        <span class="acl-tag" onclick="insertAcl('reject(suffix:adnxs.com)')">reject(suffix:adnxs.com)</span>
+                        <span class="acl-tag" onclick="insertAcl('direct(suffix:local)')">direct(suffix:local)</span>
+                    </div>
+                </div>
+                <% } %>
+
+                <% if (aclInlineEditable) { %>
+                <div class="alert alert-warning" style="margin-top:12px; font-size:12px; padding:8px 12px;">
+                    <i class="ti ti-info-circle"></i> <%- t('outbounds.defaultRulesWarning') %>
+                </div>
+                <% } %>
+
+                <button type="button" class="preview-toggle" onclick="togglePreview()">
+                    <span id="previewArrow"><i class="ti ti-chevron-right"></i></span> <%= t('outbounds.yamlPreview') %>
+                </button>
+                <pre class="preview-yaml" id="yamlPreview" style="display:none"></pre>
+            </div>
+
+            <!-- PROXY SERVERS -->
+            <div class="form-section">
+                <div class="proxy-section">
+                    <button type="button" class="proxy-toggle" id="proxyToggleBtn" onclick="toggleProxySection()">
+                        <span>
+                            <i class="ti ti-refresh"></i> <%= t('outbounds.proxyServers') %>
+                            <small style="color:var(--text-muted); font-weight:400; margin-left:6px;"><%= t('outbounds.proxyServersHint') %></small>
+                            <% if (node.outbounds && node.outbounds.length > 0) { %>
+                            <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:6px;"><%= node.outbounds.length %></span>
+                            <% } %>
+                        </span>
+                        <span class="proxy-toggle-arrow"><i class="ti ti-chevron-down"></i></span>
+                    </button>
+                    <div class="proxy-body" id="proxyBody">
+                        <p class="hint" style="margin-bottom:14px;"><%- t('outbounds.proxyDesc') %></p>
+
+                        <div class="ob-cards" id="obCards"></div>
+                        <div id="obHiddenInputs"></div>
+
+                        <div class="add-proxy-row">
+                            <div class="form-group" style="flex:1.2; min-width:120px;">
+                                <label><%= t('outbounds.proxyName') %></label>
+                                <input type="text" id="newObName" placeholder="my-proxy" maxlength="40"
+                                    onkeydown="if(event.key==='Enter'){event.preventDefault();addProxy();}">
+                            </div>
+                            <div class="form-group" style="flex:0 0 100px;">
+                                <label><%= t('outbounds.proxyType') %></label>
+                                <select id="newObType">
+                                    <option value="socks5">SOCKS5</option>
+                                    <option value="http">HTTP</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1.5; min-width:150px;">
+                                <label><%= t('outbounds.proxyAddr') %></label>
+                                <input type="text" id="newObAddr" placeholder="1.2.3.4:1080">
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:90px;">
+                                <label><%= t('outbounds.proxyLogin') %></label>
+                                <input type="text" id="newObUsername" placeholder="<%= t('outbounds.proxyOptional') %>">
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:90px;">
+                                <label><%= t('outbounds.proxyPassword') %></label>
+                                <input type="password" id="newObPassword" placeholder="<%= t('outbounds.proxyOptional') %>">
+                            </div>
+                            <div class="form-group" style="flex:0 0 auto;">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn btn-primary" onclick="addProxy()"><i class="ti ti-plus"></i> <%= t('outbounds.addProxy') %></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> <%= t('common.save') %></button>
+                <button type="button" class="btn btn-success" id="btnApply" onclick="saveAndApply()"
+                    <%= !node.ssh?.password && !node.ssh?.privateKey ? 'disabled title="Configure SSH first"' : '' %>>
+                    <i class="ti ti-rocket"></i> <%= t('outbounds.saveAndApply') %>
+                </button>
+                <a href="/panel/nodes/<%= node._id %>" class="btn"><%= t('common.cancel') %></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const NODE_ID = <%- JSON.stringify(String(node._id || '')) %>;
+const ACL_EDITOR_EDITABLE = <%= aclInlineEditable ? 'true' : 'false' %>;
+const ACL_EDITOR_REASON = <%- JSON.stringify(String(aclInlineReason || '')) %>;
+const I18N = {
+    noProxyWarning: <%- JSON.stringify(t("outbounds.noProxyWarning")) %>,
+    replaceRules: <%- JSON.stringify(t("outbounds.replaceRules")) %>,
+    applying: <%- JSON.stringify(t("outbounds.applying")) %>,
+    applied: <%- JSON.stringify(t("outbounds.applied")) %>,
+    applyError: <%- JSON.stringify(t("outbounds.applyError")) %>,
+    noRulesDefault: <%- JSON.stringify(t("outbounds.noRulesDefault")) %>,
+    aclInlineDisabled: <%- JSON.stringify(t("outbounds.aclInlineDisabled")) %>,
+    aclInlineDisabledFile: <%- JSON.stringify(t("outbounds.aclInlineDisabledFile")) %>,
+    proxyExists: <%- JSON.stringify(`${t("common.error")}: Proxy already exists`) %>
+};
+
+let pendingOutbounds = <%- JSON.stringify((node.outbounds || []).filter(o => o.type === 'socks5' || o.type === 'http')) %>;
+
+const PRESETS = {
+    'block-ads': [
+        'reject(suffix:doubleclick.net)',
+        'reject(suffix:googlesyndication.com)',
+        'reject(suffix:googleadservices.com)',
+        'reject(suffix:adnxs.com)',
+        'reject(suffix:moatads.com)',
+        'direct(all)',
+    ],
+    'block-cn':  ['reject(geoip:cn)', 'reject(geoip:private)', 'direct(all)'],
+    'direct-all': ['direct(all)'],
+    'clear': [],
+};
+
+function applyPreset(key, el) {
+    if (!ACL_EDITOR_EDITABLE) return;
+    const rules = PRESETS[key];
+    if (rules === undefined) return;
+
+    const ta = document.getElementById('aclRulesEditor');
+    if (key !== 'clear' && ta.value.trim() && !confirm(I18N.replaceRules)) return;
+
+    ta.value = rules.join('\n');
+    checkProxyWarning();
+    if (document.getElementById('yamlPreview').style.display !== 'none') updatePreview();
+
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 800);
+}
+
+function insertAcl(rule) {
+    if (!ACL_EDITOR_EDITABLE) return;
+    const ta = document.getElementById('aclRulesEditor');
+    const lines = ta.value ? ta.value.split('\n') : [];
+    if (!lines.includes(rule)) { lines.push(rule); ta.value = lines.join('\n'); }
+    checkProxyWarning();
+}
+
+function insertProxyName(name) {
+    if (!ACL_EDITOR_EDITABLE) return;
+    const ta = document.getElementById('aclRulesEditor');
+    const pos = ta.selectionStart;
+    const ins = name + '(';
+    ta.value = ta.value.slice(0, pos) + ins + ta.value.slice(pos);
+    ta.selectionStart = ta.selectionEnd = pos + ins.length;
+    ta.focus();
+}
+
+function checkProxyWarning() {
+    if (!ACL_EDITOR_EDITABLE) {
+        const warn = document.getElementById('noProxyAclWarning');
+        if (warn) warn.style.display = 'none';
+        return;
+    }
+    const hasProxy = pendingOutbounds.length > 0;
+    const aclVal = document.getElementById('aclRulesEditor').value.trim();
+    const warn = document.getElementById('noProxyAclWarning');
+    if (hasProxy && !aclVal) {
+        const name = pendingOutbounds[0]?.name || 'my-proxy';
+        warn.innerHTML = '<i class="ti ti-alert-triangle"></i> ' + I18N.noProxyWarning + ' <code>' + escHtml(name) + '(all)</code>';
+        warn.style.display = '';
+    } else {
+        warn.style.display = 'none';
+    }
+}
+
+function toggleProxySection() {
+    const body = document.getElementById('proxyBody');
+    const btn = document.getElementById('proxyToggleBtn');
+    const isOpen = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    btn.classList.toggle('open', !isOpen);
+}
+
+function addProxy() {
+    const name = document.getElementById('newObName').value.trim();
+    const type = document.getElementById('newObType').value;
+    const addr = document.getElementById('newObAddr').value.trim();
+    const username = document.getElementById('newObUsername').value.trim();
+    const password = document.getElementById('newObPassword').value.trim();
+
+    if (!name) { document.getElementById('newObName').focus(); return; }
+    if (!addr)  { document.getElementById('newObAddr').focus(); return; }
+    if (pendingOutbounds.some(o => o.name === name)) { alert(I18N.proxyExists + ': ' + name); return; }
+
+    pendingOutbounds.push({ name, type, addr, username, password });
+    renderProxies();
+
+    document.getElementById('newObName').value = '';
+    document.getElementById('newObAddr').value = '';
+    document.getElementById('newObUsername').value = '';
+    document.getElementById('newObPassword').value = '';
+}
+
+function removeProxy(idx) {
+    pendingOutbounds.splice(idx, 1);
+    renderProxies();
+    checkProxyWarning();
+}
+
+function renderProxies() {
+    const cards = document.getElementById('obCards');
+    const typeCls = { socks5: 'ob-type-socks5', http: 'ob-type-http' };
+    cards.innerHTML = pendingOutbounds.map((ob, i) => `
+        <div class="ob-card">
+            <span class="ob-type-badge ${typeCls[ob.type] || ''}">${escHtml(ob.type)}</span>
+            <strong>${escHtml(ob.name)}</strong>
+            <code style="color:var(--text-muted);font-size:12px">${escHtml(ob.addr)}</code>
+            <button type="button" class="ob-card-del" onclick="removeProxy(${i})"><i class="ti ti-x"></i></button>
+        </div>
+    `).join('');
+
+    document.getElementById('obHiddenInputs').innerHTML = pendingOutbounds.map(ob => `
+        <input type="hidden" name="outbound_name"     value="${escHtml(ob.name)}">
+        <input type="hidden" name="outbound_type"     value="${escHtml(ob.type)}">
+        <input type="hidden" name="outbound_addr"     value="${escHtml(ob.addr || '')}">
+        <input type="hidden" name="outbound_username" value="${escHtml(ob.username || '')}">
+        <input type="hidden" name="outbound_password" value="${escHtml(ob.password || '')}">
+    `).join('');
+
+    const wrap = document.getElementById('proxyChipsWrap');
+    const chips = document.getElementById('proxyChips');
+    if (pendingOutbounds.length === 0) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    chips.innerHTML = pendingOutbounds.map(ob => `
+        <button type="button"
+            style="background:rgba(99,102,241,0.15);color:#818cf8;border:none;border-radius:20px;padding:4px 12px;font-size:12px;font-family:monospace;cursor:pointer;font-weight:600"
+            onclick="insertProxyName('${escHtml(ob.name)}')" title="Insert into rule">
+            <i class="ti ti-refresh"></i> ${escHtml(ob.name)}
+        </button>
+    `).join('');
+}
+
+function togglePreview() {
+    const pre = document.getElementById('yamlPreview');
+    const arrow = document.getElementById('previewArrow');
+    const show = pre.style.display === 'none';
+    if (show) { updatePreview(); pre.style.display = ''; arrow.innerHTML = '<i class="ti ti-chevron-down"></i>'; }
+    else { pre.style.display = 'none'; arrow.innerHTML = '<i class="ti ti-chevron-right"></i>'; }
+}
+
+function updatePreview() {
+    const aclRules = ACL_EDITOR_EDITABLE
+        ? document.getElementById('aclRulesEditor').value.split('\n').map(r => r.trim()).filter(Boolean)
+        : [];
+    let yaml = '';
+    if (pendingOutbounds.length > 0) {
+        yaml += 'outbounds:\n';
+        pendingOutbounds.forEach(ob => {
+            yaml += `  - name: ${ob.name}\n    type: ${ob.type}\n`;
+            if (ob.type === 'socks5') {
+                yaml += `    socks5:\n      addr: ${ob.addr}\n`;
+                if (ob.username) yaml += `      username: ${ob.username}\n`;
+                if (ob.password) yaml += `      password: ****\n`;
+            } else if (ob.type === 'http') {
+                let url = ob.addr.startsWith('http') ? ob.addr : 'http://' + ob.addr;
+                if (ob.username && ob.password) url = url.replace('://', `://${ob.username}:****@`);
+                yaml += `    http:\n      url: ${url}\n`;
+            }
+        });
+        yaml += '\n';
+    }
+    if (aclRules.length > 0) {
+        yaml += 'acl:\n  inline:\n';
+        aclRules.forEach(r => { yaml += `    - ${r}\n`; });
+    } else if (!ACL_EDITOR_EDITABLE) {
+        const disabledMsg = ACL_EDITOR_REASON === 'file'
+            ? I18N.aclInlineDisabledFile
+            : I18N.aclInlineDisabled;
+        yaml += '# ' + disabledMsg + '\n';
+    }
+    document.getElementById('yamlPreview').textContent = yaml || I18N.noRulesDefault;
+}
+
+async function saveAndApply() {
+    const btn = document.getElementById('btnApply');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2"></i> ' + I18N.applying;
+    const form = document.getElementById('outboundsForm');
+    try {
+        await fetch(form.action, {
+            method: 'POST',
+            body: new URLSearchParams(new FormData(form)),
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            redirect: 'manual',
+        });
+        const res = await fetch('/api/nodes/' + NODE_ID + '/update-config', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            btn.innerHTML = '<i class="ti ti-check"></i> ' + I18N.applied;
+            setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000);
+        } else {
+            alert(I18N.applyError + ': ' + (data.error || 'Unknown'));
+            btn.innerHTML = orig; btn.disabled = false;
+        }
+    } catch (e) {
+        alert(I18N.applyError + ': ' + e.message);
+        btn.innerHTML = orig; btn.disabled = false;
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+renderProxies();
+checkProxyWarning();
+if (pendingOutbounds.length > 0) toggleProxySection();
+if (ACL_EDITOR_EDITABLE) {
+    document.getElementById('aclRulesEditor').addEventListener('input', () => {
+        checkProxyWarning();
+        if (document.getElementById('yamlPreview').style.display !== 'none') updatePreview();
+    });
+}
+</script>

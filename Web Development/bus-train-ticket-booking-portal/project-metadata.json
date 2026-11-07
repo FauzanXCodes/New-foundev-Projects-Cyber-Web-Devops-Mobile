@@ -1,0 +1,14 @@
+﻿{
+    "id":  "bus-train-ticket-booking-portal",
+    "name":  "Bus / Train Ticket Booking Portal",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/MiladJoodi/Tripix",
+    "stack":  "MERN",
+    "goal":  "Route search, seat availability, PNR-style reservation lookup and cancellation window.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "next-env.d.ts",
+    "expectedFileCount":  38,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  46
+}

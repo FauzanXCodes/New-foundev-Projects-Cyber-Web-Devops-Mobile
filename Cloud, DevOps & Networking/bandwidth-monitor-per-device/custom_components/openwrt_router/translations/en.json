@@ -1,0 +1,201 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "title": "Router Options",
+        "data": {
+          "topology_port_debug": "Port mapping debug data in topology snapshot"
+        },
+        "data_description": {
+          "topology_port_debug": "Include the raw per-port mapping trace (FDB/DHCP/ARP matches and assignment reasons) in the topology snapshot endpoint. HA diagnostics always stay redacted."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OpenWrt Router",
+        "description": "Enter the connection details for your OpenWrt router. The router must have rpcd and uhttpd running.",
+        "data": {
+          "host": "Host / IP Address",
+          "port": "Port",
+          "protocol": "Protocol",
+          "username": "Username",
+          "password": "Password"
+        },
+        "data_description": {
+          "host": "Hostname or IP address of the router (e.g. 192.168.1.1)",
+          "port": "Port — 443 for HTTPS, 80 for HTTP",
+          "protocol": "Connection protocol (HTTPS Self-Signed recommended for most OpenWrt routers)",
+          "username": "rpcd username, usually 'root'",
+          "password": "Router password"
+        }
+      },
+      "checklist": {
+        "title": "Check Router Configuration — {host}",
+        "description": "**Model:** {model}\n\n**ubus permissions:**\n\n{checklist}\n\n---\n\n{status}\n\nClick **Next** to continue (possible even with missing permissions).",
+        "data": {
+          "deploy_acl": "Set up permissions automatically (deploy ACL via ubus + restart rpcd)"
+        },
+        "data_description": {
+          "deploy_acl": "Writes the rpcd ACL file to the router via ubus and restarts rpcd. If the router blocks ubus file access, an SSH fallback with the same credentials is attempted. Permissions are re-checked afterwards."
+        }
+      },
+      "reauth_rpcd_setup": {
+        "title": "rpcd Not Responding on {host}",
+        "description": "The router **{host}** is blocking authentication — rpcd may not be configured.\n\nSSH into the router and run:\n\n`opkg update && opkg install rpcd rpcd-mod-rpcsys && uci set rpcd.@rpcd[0].socket='/var/run/ubus/ubus.sock' && uci set rpcd.@rpcd[0].timeout=30 && uci commit rpcd && service rpcd restart`\n\nThen click **Submit** to retry."
+      },
+      "reauth_cannot_connect": {
+        "title": "Router Unreachable: {host}",
+        "description": "Cannot reach **{host}**. Make sure the router is powered on and reachable on the network.\n\nClick **Submit** to retry."
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with OpenWrt Router",
+        "description": "The credentials for **{host}** (user: {username}) are no longer valid. Please enter the new password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the router. Check the host, port and protocol, and ensure the router is reachable.",
+      "invalid_auth": "Authentication failed. Check the username and password.",
+      "invalid_host": "Invalid host address. Use a valid IP or hostname.",
+      "timeout": "Connection timed out. The router may be unreachable or overloaded.",
+      "unknown": "An unexpected error occurred. Check the Home Assistant logs for details.",
+      "rpcd_setup_required": "rpcd is not configured on this router. SSH into the router and run: opkg update && opkg install rpcd rpcd-mod-rpcsys && uci set rpcd.@rpcd[0].socket='/var/run/ubus/ubus.sock' && uci set rpcd.@rpcd[0].timeout=30 && uci commit rpcd && service rpcd restart",
+      "acl_deploy_failed": "Automatic ACL deployment failed — the router rejected ubus file/write and the SSH fallback did not succeed. Deploy the ACL manually using the SSH commands shown above, then run the check again.",
+      "acl_deploy_no_change": "The ACL file was written, but the permissions did not change after re-checking. rpcd may not have finished restarting or required packages are missing — see the install commands above, then try again.",
+      "acl_already_current": "The ACL file on the router is already up to date — the missing permissions have another cause (missing packages or a pending rpcd restart). See the install commands above."
+    },
+    "abort": {
+      "already_configured": "This router is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Connectivity"
+      },
+      "wan_connectivity": {
+        "name": "WAN Connectivity"
+      }
+    },
+    "sensor": {
+      "router_status": {
+        "name": "Router Status",
+        "state": {
+          "online": "Online",
+          "offline": "Offline",
+          "auth_error": "Authentication Error",
+          "timeout": "Timeout",
+          "response_error": "Invalid Response"
+        }
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "wan_status": {
+        "name": "WAN Status"
+      },
+      "client_count": {
+        "name": "Connected Clients"
+      },
+      "cpu_load": {
+        "name": "CPU Load"
+      },
+      "memory_usage": {
+        "name": "Memory Usage"
+      },
+      "memory_total": {
+        "name": "Memory Total"
+      },
+      "memory_used": {
+        "name": "Memory Used"
+      },
+      "memory_free": {
+        "name": "Memory Free"
+      },
+      "wan_ip": {
+        "name": "WAN IP Address"
+      },
+      "wan_rx": {
+        "name": "WAN Download"
+      },
+      "wan_tx": {
+        "name": "WAN Upload"
+      },
+      "firmware": {
+        "name": "Firmware Version"
+      },
+      "update_status": {
+        "name": "Update Status"
+      },
+      "platform_architecture": {
+        "name": "Platform Architecture"
+      },
+      "cpu_load_5min": {
+        "name": "CPU Load (5-minute)"
+      },
+      "cpu_load_15min": {
+        "name": "CPU Load (15-minute)"
+      },
+      "memory_cached": {
+        "name": "Memory Cached"
+      },
+      "memory_shared": {
+        "name": "Memory Shared"
+      },
+      "memory_buffered": {
+        "name": "Memory Buffered"
+      },
+      "disk_total": {
+        "name": "Disk Total"
+      },
+      "disk_used": {
+        "name": "Disk Used"
+      },
+      "disk_free": {
+        "name": "Disk Free"
+      },
+      "disk_usage": {
+        "name": "Disk Usage"
+      },
+      "tmpfs_total": {
+        "name": "Temporary Storage Total"
+      },
+      "tmpfs_used": {
+        "name": "Temporary Storage Used"
+      },
+      "tmpfs_free": {
+        "name": "Temporary Storage Free"
+      },
+      "tmpfs_usage": {
+        "name": "Temporary Storage Usage"
+      },
+      "active_connections": {
+        "name": "Active Network Connections"
+      },
+      "network_topology": {
+        "name": "Network Topology"
+      }
+    },
+    "switch": {},
+    "button": {
+      "reload_wifi": {
+        "name": "Reload WiFi"
+      },
+      "check_updates": {
+        "name": "Check for Updates"
+      },
+      "perform_updates": {
+        "name": "Perform Updates"
+      },
+      "reboot": {
+        "name": "Reboot"
+      }
+    }
+  }
+}

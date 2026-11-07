@@ -1,0 +1,14 @@
+﻿{
+    "id":  "infrastructure-as-code-demo",
+    "name":  "Infrastructure as Code Demo",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/lreimer/clean-infrastructure-as-code",
+    "stack":  "Terraform; AWS",
+    "goal":  "Provision VPC, EC2, S3, security groups; `terraform plan` explainer and teardown.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "docker/index.html",
+    "expectedFileCount":  13,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  98
+}

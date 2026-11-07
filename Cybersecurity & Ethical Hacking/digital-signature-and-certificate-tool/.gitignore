@@ -1,0 +1,41 @@
+/.settings
+/.project
+/.buildpath
+/composer.phar
+/vendor
+/nbproject
+.vagrant
+Vagrantfile
+.idea
+.php_cs.cache
+.phpunit.result.cache
+.phpunit.cache/
+*.bak
+demo.php
+*Zone.Identifier
+Temp
+*.pdf
+*.pfx
+# A PEM private key is often unencrypted, so this matters more than the rules
+# above, not less. See ARCHITECTURE-V2.md §3i.
+*.pem
+*.key
+
+# Committed on purpose. See samples/README.md.
+!/samples/*.pdf
+!/samples/*.pfx
+!/samples/*.pem
+
+# The revocation fixtures, which are certificates and nothing else: the CA that
+# signed the OCSP responses and CRLs beside them, and the leaf they answer
+# about. No private key is generated into this directory, so the rule above is
+# narrowed here rather than weakened.
+# See docs/decisions/0024-revocation-is-evaluated-not-counted.md.
+!/tests/Resources/revocation/*.pem
+node_modules
+dist
+.output
+/docs/.vitepress/dist
+/docs/.vitepress/cache
+/docs/.vitepress/node_modules
+/docs/node_modules

@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Dietinator",
+    "slug": "dietinator",
+    "version": "1.15.2",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "dietinator",
+    "assetBundlePatterns": ["assets/**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.personal.dietinator",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan barcodes to log food quickly."
+      }
+    },
+    "android": {
+      "package": "com.personal.dietinator",
+      "permissions": ["CAMERA", "REQUEST_INSTALL_PACKAGES"],
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1b26",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "versionCode": 11502
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-font",
+        {
+          "fonts": ["./assets/fonts/DepartureMono-Regular.otf"]
+        }
+      ],
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Dietinator to scan food barcodes."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1a1b26"
+        }
+      ],
+      "expo-asset",
+      "expo-sharing",
+      "expo-status-bar"
+    ]
+  }
+}

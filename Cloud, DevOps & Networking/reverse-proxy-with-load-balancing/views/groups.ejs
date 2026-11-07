@@ -1,0 +1,213 @@
+<div class="page-header">
+    <h1><%= t('groups.title') %></h1>
+    <p class="hint"><%= t('groups.pageHint') %></p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2><i class="ti ti-folder-plus"></i> <%= t('groups.addGroup') %></h2>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="/panel/groups" class="form-inline">
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <input type="text" name="name" placeholder="<%= t('groups.groupNamePlaceholder') %>" required>
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <input type="text" name="subscriptionTitle" placeholder="<%= t('groups.subscriptionTitlePlaceholder') %>" title="<%= t('groups.subscriptionTitleHint') %>">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <input type="number" name="maxDevices" placeholder="<%= t('groups.maxDevicesPlaceholder') %>" min="0" value="0" title="<%= t('groups.maxDevicesHint') %>">
+                </div>
+                <div class="form-group" style="flex: 0.5;">
+                    <input type="color" name="color" value="#6366f1" title="<%= t('groups.colorHint') %>">
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> <%= t('groups.createGroup') %></button>
+            </div>
+            <small class="hint"><%= t('groups.formHint') %></small>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">
+        <h2><i class="ti ti-folders"></i> <%= t('groups.allGroups') %> (<%= groups.length %>)</h2>
+    </div>
+    <div class="card-body">
+        <% if (groups.length === 0) { %>
+            <div class="empty-state">
+                <span class="empty-icon"><i class="ti ti-folders"></i></span>
+                <p><%= t('groups.noGroups') %></p>
+                <p class="hint"><%= t('groups.noGroupsHint') %></p>
+            </div>
+        <% } else { %>
+            <div class="groups-grid">
+                <% groups.forEach(group => { %>
+                    <div class="group-card" style="border-left: 4px solid <%= group.color %>">
+                        <form method="POST" action="/panel/groups/<%= group._id %>">
+                            <div class="group-header">
+                                <input type="text" name="name" value="<%= group.name %>" class="group-name-input" required>
+                                <input type="color" name="color" value="<%= group.color %>" class="color-picker">
+                            </div>
+                            
+                            <div class="group-stats">
+                                <span class="stat"><i class="ti ti-server"></i> <%= group.nodesCount || 0 %> <%= t('groups.nodesCount') %></span>
+                                <span class="stat"><i class="ti ti-users"></i> <%= group.usersCount || 0 %> <%= t('groups.usersCount') %></span>
+                                <span class="stat" title="<%= t('groups.maxDevices') %>"><i class="ti ti-device-mobile"></i> <%= group.maxDevices || '∞' %></span>
+                            </div>
+                            
+                            <div class="form-row-inline">
+                                <input type="text" name="subscriptionTitle" value="<%= group.subscriptionTitle || '' %>" placeholder="<%= t('groups.subscriptionTitlePlaceholder') %>" class="group-description" style="flex: 2;" title="<%= t('groups.subscriptionTitleHint') %>">
+                                <input type="number" name="maxDevices" value="<%= group.maxDevices || 0 %>" min="0" placeholder="<%= t('groups.maxDevices') %>" class="group-devices" style="flex: 1;" title="<%= t('groups.maxDevicesHint') %>">
+                            </div>
+                            
+                            <div class="group-actions">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="active" <%= group.active !== false ? 'checked' : '' %>>
+                                    <span><%= t('groups.isActive') %></span>
+                                </label>
+                                <div class="btn-group">
+                                    <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-device-floppy"></i> <%= t('groups.save') %></button>
+                                </div>
+                            </div>
+                        </form>
+                        
+                        <form method="POST" action="/panel/groups/<%= group._id %>/delete" class="delete-form" onsubmit="return confirm('<%= t('groups.confirmDelete').replace('{name}', group.name) %>')">
+                            <button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-trash"></i></button>
+                        </form>
+                    </div>
+                <% }); %>
+            </div>
+        <% } %>
+    </div>
+</div>
+
+<style>
+.form-inline .form-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+.form-inline .form-group {
+    margin: 0;
+}
+.form-inline input[type="color"] {
+    width: 48px;
+    height: 38px;
+    padding: 2px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+}
+@media (max-width: 768px) {
+    .form-inline .form-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .form-inline .form-group {
+        flex: 1 1 100% !important;
+    }
+    .form-inline .form-row > .btn {
+        width: 100%;
+    }
+    .form-row-inline {
+        flex-direction: column;
+    }
+    .group-devices {
+        width: 100% !important;
+    }
+    .groups-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+.group-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    position: relative;
+    backdrop-filter: var(--glass-blur-sm);
+    -webkit-backdrop-filter: var(--glass-blur-sm);
+    box-shadow: var(--glass-shadow);
+}
+.group-header {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.group-name-input {
+    flex: 1;
+    font-weight: 600;
+    font-size: 1.1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.25rem 0;
+}
+.group-name-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.color-picker {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+}
+.group-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.form-row-inline {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.group-description, .group-devices {
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+.group-description:focus, .group-devices:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.06);
+}
+.group-devices {
+    width: 80px;
+    text-align: center;
+}
+.group-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.delete-form {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
+.delete-form .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+}
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+</style>

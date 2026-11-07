@@ -1,0 +1,73 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 62.5%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  background-color: $silver-blue;
+}
+
+body {
+  font-family: $Proxima-font-stack;
+  font-size: 1.3em;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+  &:hover {
+    text-decoration: none;
+    color: inherit;
+  }
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: $Brandon-font-stack;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+h4 {
+  font-weight: 700;
+  font-size: 0.70em;
+  letter-spacing: 0.05em;
+  padding-left: 1.33em;
+  padding-top: 1.33em;
+  margin: 0;
+}
+
+.avatar-48 {
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+}
+
+.avatar-72 {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.tab-content {
+  padding-top: 20px;
+  @include placeholder-color($light-grey);
+}
+
+.main-view {
+  overflow-x: hidden;
+}
+
+button {
+  background: none;
+  border: 0;
+}

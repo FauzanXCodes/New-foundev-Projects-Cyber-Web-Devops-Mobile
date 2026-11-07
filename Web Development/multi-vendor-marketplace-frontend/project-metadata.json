@@ -1,0 +1,14 @@
+﻿{
+    "id":  "multi-vendor-marketplace-frontend",
+    "name":  "Multi-vendor Marketplace Frontend",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/gohar-alii/Multi-Vendor-Marketplace",
+    "stack":  "Next.js; Tailwind; Zustand",
+    "goal":  "Vendor storefronts, cart across vendors, order splitting and vendor dashboard.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "next.config.js",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  279
+}

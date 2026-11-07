@@ -1,0 +1,14 @@
+﻿{
+    "id":  "file-storage-service-with-presigned-urls",
+    "name":  "File Storage Service with Presigned URLs",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/imbrace-co/file",
+    "stack":  "Node; S3",
+    "goal":  "Direct browser upload, size/type validation, virus-scan hook and share links with expiry.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "src/index.ts",
+    "expectedFileCount":  45,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  63
+}

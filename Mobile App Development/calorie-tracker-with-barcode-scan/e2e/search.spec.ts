@@ -1,0 +1,58 @@
+import { expect, test, bootAuthenticated } from "./helpers"
+
+test.describe("food search (offline)", () => {
+  test("food search renders cached-first and shows the offline banner", async ({ page }) => {
+    await bootAuthenticated(page)
+
+    await page.getByRole("button", { name: "Add food to Breakfast" }).click()
+    await page.getByRole("button", { name: "Search foods" }).click()
+    await expect(page.getByPlaceholder("Search foods…")).toBeVisible()
+    // The unified log-meal screen switches lists via quick tabs, not buttons.
+    await expect(page.getByRole("tab", { name: "Favorites" })).toBeVisible()
+
+    await page.getByPlaceholder("Search foods…").click()
+    await expect(page.getByPlaceholder("Search foods…")).toBeFocused()
+    await page.getByPlaceholder("Search foods…").fill("oats")
+    // No YAZIO in tests → remote fails, offline banner appears, cached list stays usable.
+    // The dashboard behind the modal renders the same banner, so match the visible one.
+    await expect(page.getByText(/YAZIO unavailable/i).filter({ visible: true })).toBeVisible({
+      timeout: 20_000,
+    })
+  })
+
+  test("log-meal modal opens from the dashboard and can close", async ({ page }) => {
+    await bootAuthenticated(page)
+
+    await page.getByRole("button", { name: "Add food to Breakfast" }).click()
+    // The modal title (the dashboard card behind it also says "Breakfast", so scope to the modal).
+    await expect(page.getByRole("button", { name: "More" })).toBeVisible()
+    await page.getByRole("button", { name: "Search foods" }).click()
+    await expect(page.getByPlaceholder("Search foods…")).toBeVisible()
+
+    // The log-meal modal closes via its bottom-left back FAB.
+    await expect(page.getByRole("button", { name: "Go back" })).toBeVisible()
+    await page.getByRole("button", { name: "Go back" }).click()
+    await expect(page.getByRole("button", { name: "Open calendar" })).toBeVisible()
+  })
+
+  test("settings screen sections group goals, sync, and about", async ({ page }) => {
+    await bootAuthenticated(page)
+
+    await page.getByRole("tab", { name: "Settings" }).click()
+
+    // The hub lists sections; the Goals row opens the goal form.
+    await page.getByRole("button", { name: "Goals and Nutrition" }).click()
+    await expect(page.getByText("Goals and Nutrition", { exact: true })).toBeVisible()
+    await expect(page.getByText("Calories", { exact: true })).toBeVisible()
+
+    // Sync section lives under Data and Sync.
+    await page.getByRole("button", { name: "Back to all settings" }).click()
+    await page.getByRole("button", { name: "Data and Sync" }).click()
+    await expect(page.getByText("YAZIO Cloud Sync", { exact: true }).first()).toBeVisible()
+
+    // About section hosts the sign-out button (now under AI and Account).
+    await page.getByRole("button", { name: "Back to all settings" }).click()
+    await page.getByRole("button", { name: "AI and Account" }).click()
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible()
+  })
+})

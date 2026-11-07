@@ -1,0 +1,63 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: pip install homeassistant pytest pytest-asyncio aiohttp ruff asyncssh
+      - name: Lint (ruff)
+        run: |
+          ruff check custom_components/
+          ruff format --check custom_components/
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  release:
+    needs: [test, hassfest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: ver
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('custom_components/openwrt_router/manifest.json'))['version'])")
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Check if release exists
+        id: check
+        run: |
+          if git ls-remote --tags origin "${{ steps.ver.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Version $TAG — siehe CHANGELOG.md" \
+            --target main

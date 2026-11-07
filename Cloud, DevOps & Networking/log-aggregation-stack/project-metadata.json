@@ -1,0 +1,14 @@
+﻿{
+    "id":  "log-aggregation-stack",
+    "name":  "Log Aggregation Stack",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/cassiomolin/log-aggregation-spring-boot-elastic-stack",
+    "stack":  "ELK/OpenSearch; Filebeat",
+    "goal":  "Ship app logs, parse with grok, dashboards for error rate and slow requests.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "comment-service/src/main/java/com/cassiomolin/logaggregation/comment/CommentServiceApplication.java",
+    "expectedFileCount":  13,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  50
+}

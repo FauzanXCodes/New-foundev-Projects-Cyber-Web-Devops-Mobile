@@ -1,0 +1,35 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: #fff;
+    margin: 20px;
+}
+
+h1 {
+    text-align: center;
+    color: #4cc9f0;
+}
+
+.section {
+    margin-top: 40px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    background: #1c1c1c;
+}
+
+th, td {
+    padding: 10px;
+    border: 1px solid #333;
+}
+
+th {
+    background: #222;
+}
+
+tr:hover {
+    background: #333;
+}

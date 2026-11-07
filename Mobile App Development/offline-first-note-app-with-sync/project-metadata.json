@@ -1,0 +1,14 @@
+﻿{
+    "id":  "offline-first-note-app-with-sync",
+    "name":  "Offline-First Note App with Sync",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/kuhyx/todo-app",
+    "stack":  "Flutter; Firestore",
+    "goal":  "Local-first CRUD, sync conflict handling and markdown support.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "lib/main.dart",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  344
+}

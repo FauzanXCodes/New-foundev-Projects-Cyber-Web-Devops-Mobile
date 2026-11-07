@@ -1,0 +1,21 @@
+[Unit]
+Description=Hubblestack
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/hubble.pid
+ExecStart=/opt/hubble/hubble -d
+Restart=always
+RestartSec=300
+MemoryAccounting=true
+CPUQuota=5%
+CPUWeight=10
+IOWeight=10
+MemorySwapMax=0
+
+
+
+[Install]
+WantedBy=multi-user.target

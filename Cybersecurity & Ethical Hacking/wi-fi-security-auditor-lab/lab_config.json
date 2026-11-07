@@ -1,0 +1,11 @@
+{
+  "lab_name": "Educational Wi-Fi Security Lab",
+  "interface": "wlan0mon",
+  "target_bssid": "00:11:22:33:44:55",
+  "target_essid": "TestAP",
+  "target_channel": 11,
+  "client_mac": "AA:BB:CC:DD:EE:FF",
+  "output_dir": "sessions",
+  "wordlist_path": "/usr/share/wordlists/rockyou.txt",
+  "log_level": "INFO"
+}

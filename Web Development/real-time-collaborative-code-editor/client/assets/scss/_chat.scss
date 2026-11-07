@@ -1,0 +1,226 @@
+$chat-header-height: $toolbar-height;
+$chat-container-height: calc(100vh - #{$toolbar-height});
+
+$height-all-headers: $chat-header-height * 3;
+$height-all-users: $chat-header-height;
+$height-all: $height-all-headers + $height-all-users;
+
+$single-friend-height: 36px; // height of gravatar thumbnail
+
+@mixin chatContentHeight($number-of-users) {
+  $total-toolbar-height: $toolbar-height * $number-of-users;
+  height: calc(100vh - #{$height-all} - #{$total-toolbar-height});
+}
+
+.chat-container-container {
+  height: $chat-container-height;
+  border-left: solid 1px #f2f2f2;
+  font-size: 0.9em;
+  margin-top: 8px;
+  .username {
+    font-weight: 700;
+    letter-spacing: 0.7px;
+  }
+  .messageText {
+    color: whitesmoke;
+  }
+}
+
+.chatContent4 {
+  display: block;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  bottom: $toolbar-height;
+  @include chatContentHeight(4);
+}
+
+.chatContent3 {
+  display: block;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  bottom: $toolbar-height;
+  @include chatContentHeight(3);
+}
+
+.chatContent2 {
+  display: block;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  bottom: $toolbar-height;
+  @include chatContentHeight(2);
+}
+
+.chatContent1 {
+  display: block;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  bottom: $toolbar-height;
+  @include chatContentHeight(1);
+}
+
+
+.chatInputForm {
+  width: 100%;
+  height: 33px;
+  position: absolute;
+  display: block; 
+  bottom: 10px;
+  height: $chat-header-height;
+  ::-webkit-input-placeholder {
+    color: #DBDBDB;
+    letter-spacing: 0.5px;
+  }
+  :-moz-placeholder {
+    color: #DBDBDB;
+    letter-spacing: 0.5px;
+  }
+  ::-moz-placeholder {
+    color: #DBDBDB;
+    letter-spacing: 0.5px;
+  }
+  :-ms-input-placeholder {
+    color: #DBDBDB;
+    letter-spacing: 0.5px;
+  }
+  input{
+    color: white;
+    width: 100%;
+    height: $chat-header-height;
+    padding: 10px;
+    border: none;
+    background-color: rgba(30, 76, 97, 0.2);
+    border-radius: 41px;
+    &:focus {
+      outline: 0;
+    }
+  }
+}
+
+.nopadding {
+   padding: 0px;
+   margin: 0px;
+}
+
+.messageContainer {
+  padding: 5px;
+  padding-left: 11px;
+  &:hover {
+    background-color: rgba(29, 74, 95, 0.3);
+    .username {
+      color: $accent-blue;
+    }  
+  }
+  // &:hover .timestamp{
+  //   color: ;
+  // }
+  .timestamp {
+    font-size: 10px;
+    text-align: right;
+    padding-right: 5px;
+    margin-top: 2px;
+    color: #DBDBDB;
+  }
+}
+
+.messageText {
+  a{
+    color: #0000EE
+  }
+  a:visited{
+    color: #551A8B;
+  }
+}
+
+.thumbnailAndName {
+  padding-right: 0px;
+  margin-right: 0px;
+  padding-left: 4%;
+  table {
+    width: 100%;
+    .camera-button {
+      background-color: $opaque-blue;
+      border: none;
+      &:focus {
+        outline: none;
+      }
+    }
+    .buttons {
+      width: 60px;
+    }
+  }
+}
+
+.friendsContainer  {
+  max-height: $single-friend-height * 5;
+  overflow-y: scroll;
+  .single-friend-container {
+    height: $single-friend-height;
+  }
+}
+
+.chatSubTitle {
+  height: 30px;
+  letter-spacing: 1px;
+  color: $accent-blue;
+}
+
+.videoContainer {
+    position: absolute;
+    bottom: 0px; 
+    width: 200px;
+    left: -$video-width;
+    padding-right: 1px;
+    z-index: 999;
+    video {
+      width: 100%;
+      height: 100%;
+  }
+}
+
+.volume_bar {
+    position: absolute;
+    width: 5px;
+    height: 0px;
+    right: 0px;
+    bottom: 0px;
+    background-color: #12acef;
+}
+
+.localVideo {
+  display: none; 
+}
+
+.localVideoActive {
+  box-shadow: -3px -3px 4px #222;
+  display: block;
+}
+
+.active {
+  color: #20E200;
+}
+
+#remotes{
+  position: relative;
+  display: block;
+  z-index: 999;
+  .remoteContainer{
+    width: 200px;
+    height: 150px;
+    left: 0px;
+    z-index: -99;
+    float: right;
+    clear: right;
+    margin-left: -1px;
+    display: block;
+    margin-bottom: 5px;
+    // @for $i from 2 through 10 {
+    //       &:nth-child(#{$i}) {
+    //         bottom: (($i - 1) * 150px);
+    //       }
+    //     }
+  }
+}

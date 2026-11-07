@@ -1,0 +1,14 @@
+﻿{
+    "id":  "security-audit-and-compliance-report-generator",
+    "name":  "Security Audit \u0026 Compliance Report Generator",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/hubblestack/hubble",
+    "stack":  "Python; Flask",
+    "goal":  "Checklist-driven assessment (password policy, patching, backups), scoring and PDF report.",
+    "license":  "Apache-2.0",
+    "licenseWarning":  null,
+    "entry":  "hubble.py",
+    "expectedFileCount":  39,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  741
+}

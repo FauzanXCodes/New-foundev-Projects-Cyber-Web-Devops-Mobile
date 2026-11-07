@@ -1,0 +1,14 @@
+﻿{
+    "id":  "phishing-awareness-simulator",
+    "name":  "Phishing Awareness Simulator",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/sepehr-sanaei/Phishing-Mail-Simulator",
+    "stack":  "Python; Flask; SMTP",
+    "goal":  "Consent-based training campaign, landing-page education, click-rate reporting per department.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "campaigns/apps.py",
+    "expectedFileCount":  16,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  31
+}

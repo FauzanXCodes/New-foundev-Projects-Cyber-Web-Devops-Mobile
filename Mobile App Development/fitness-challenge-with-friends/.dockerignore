@@ -1,0 +1,8 @@
+# Only the server, the shared code and the icon go into the image.
+*
+!package.json
+!server
+!shared
+!assets/icon.png
+# Never the local data: real accounts, session tokens and PIN hashes.
+server/data

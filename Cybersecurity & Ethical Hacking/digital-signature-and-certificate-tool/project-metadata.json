@@ -1,0 +1,14 @@
+﻿{
+    "id":  "digital-signature-and-certificate-tool",
+    "name":  "Digital Signature \u0026 Certificate Tool",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/lsnepomuceno/laravel-a1-pdf-sign",
+    "stack":  "Python; OpenSSL",
+    "goal":  "Sign/verify files, inspect X.509 certificates, build a mini CA and check a trust chain.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "composer-dependency-analyser.php",
+    "expectedFileCount":  64,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  184
+}

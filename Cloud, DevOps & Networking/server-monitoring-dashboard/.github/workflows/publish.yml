@@ -1,0 +1,72 @@
+name: Build and Publish
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+    name: Build and Publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Tests
+        run: npm test
+
+      # Build without the sitemap and any references to website.
+      - name: Build release files
+        run: npm run build
+
+      - name: Create zip file
+        run: zip -r build.zip ./dist
+
+      - name: Upload release zip file
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: build.zip
+
+      - name: Build production site
+        run: npm run build
+        env:
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: nats-dashboard
+          directory: dist
+          branch: main
+          wranglerVersion: '3'
+
+      - name: Purge Cloudflare Cache
+        run: |
+          RESPONSE=$(curl -sS \
+            -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}')
+
+          SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+
+          if [ "$SUCCESS" != "true" ]; then
+            echo "Failed to purge the Cloudflare Zone cache:"
+            echo "$RESPONSE"
+            exit 1
+          fi

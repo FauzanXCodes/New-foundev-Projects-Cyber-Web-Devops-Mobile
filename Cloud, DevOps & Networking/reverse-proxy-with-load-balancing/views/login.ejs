@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= typeof t !== 'undefined' ? t('auth.loginTitle') : 'Panel Login' %> | C³ CELERITY</title>
+    <%- include('partials/favicon') %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.min.css">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <span class="logo-icon large">⚡</span>
+                <h1>C³ CELERITY</h1>
+                <a href="https://t.me/First_VPN_Click_bot" target="_blank" style="background: linear-gradient(135deg, var(--accent) 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-decoration: none;">by Click Connect</a>
+            </div>
+            
+            <!-- Language Switcher -->
+            <div class="login-lang-switcher">
+                <% const langOptions = typeof languageOptions !== 'undefined' ? languageOptions : []; %>
+                <% langOptions.forEach(function(option) { %>
+                <a href="?lang=<%= encodeURIComponent(option.code) %>" class="lang-btn <%= typeof lang !== 'undefined' && lang === option.code ? 'active' : '' %>"><%= option.label %></a>
+                <% }); %>
+            </div>
+            
+            <% const lockoutIsActive = Boolean(lockoutActive && lockoutIso && lockoutUntil); %>
+            <% if (error) { %>
+            <div class="alert alert-error"><%= error %></div>
+            <% } %>
+            <% if (lockoutIsActive) { %>
+            <div class="alert alert-error lockout-alert" id="login-lockout-alert" data-lockout-iso="<%= lockoutIso %>">
+                <strong><%= lockoutReason || (typeof t !== 'undefined' ? t('auth.totpLoginLockoutMessage') : 'Login is temporarily blocked due to too many invalid verification attempts.') %></strong>
+                <div class="lockout-meta"><%= typeof t !== 'undefined' ? t('auth.totpLockoutUntilLabel') : 'Unlock time' %>: <time id="lockout-until-time" datetime="<%= lockoutIso %>"><%= lockoutIso %></time></div>
+                <div class="lockout-meta"><%= typeof t !== 'undefined' ? t('auth.totpLockoutRemainingLabel') : 'Time remaining' %>: <span id="lockout-countdown">--:--</span></div>
+            </div>
+            <% } %>
+            
+            <form method="POST" action="/panel/login" class="login-form" data-lockout-active="<%= lockoutIsActive ? 'true' : 'false' %>">
+                <div class="form-group">
+                    <label for="username"><%= typeof t !== 'undefined' ? t('auth.login') : 'Login' %></label>
+                    <input type="text" id="username" name="username" 
+                           placeholder="<%= typeof t !== 'undefined' ? t('auth.enterLogin') : 'Enter login' %>" required autofocus <%= lockoutIsActive ? 'disabled' : '' %>>
+                </div>
+                <div class="form-group">
+                    <label for="password"><%= typeof t !== 'undefined' ? t('auth.password') : 'Password' %></label>
+                    <input type="password" id="password" name="password" 
+                           placeholder="<%= typeof t !== 'undefined' ? t('auth.enterPassword') : 'Enter password' %>" required <%= lockoutIsActive ? 'disabled' : '' %>>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block" <%= lockoutIsActive ? 'disabled' : '' %>><%= typeof t !== 'undefined' ? t('auth.loginButton') : 'Sign In' %></button>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+    (() => {
+        const lockoutAlert = document.getElementById('login-lockout-alert');
+        const loginForm = document.querySelector('.login-form');
+        if (!lockoutAlert || !loginForm) return;
+
+        const lockoutIso = lockoutAlert.dataset.lockoutIso;
+        const blockedUntil = Date.parse(lockoutIso);
+        if (!Number.isFinite(blockedUntil)) return;
+
+        const untilNode = document.getElementById('lockout-until-time');
+        const countdownNode = document.getElementById('lockout-countdown');
+        const expiredLabel = '<%= typeof t !== "undefined" ? t("auth.totpLockoutExpired") : "Expired" %>';
+        const locale = document.documentElement.lang || undefined;
+        const formatTime = new Intl.DateTimeFormat(locale, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        });
+
+        const setFormDisabled = (disabled) => {
+            loginForm.querySelectorAll('input, button').forEach((element) => {
+                element.disabled = disabled;
+            });
+        };
+
+        const formatRemaining = (ms) => {
+            const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        };
+
+        if (untilNode) {
+            untilNode.textContent = formatTime.format(new Date(blockedUntil));
+        }
+
+        const tick = () => {
+            const remaining = blockedUntil - Date.now();
+            if (remaining <= 0) {
+                if (countdownNode) countdownNode.textContent = expiredLabel;
+                setFormDisabled(false);
+                lockoutAlert.remove();
+                return true;
+            }
+
+            if (countdownNode) {
+                countdownNode.textContent = formatRemaining(remaining);
+            }
+            return false;
+        };
+
+        if (tick()) return;
+        const timer = setInterval(() => {
+            if (tick()) clearInterval(timer);
+        }, 1000);
+    })();
+    </script>
+    <% if (typeof appVersion !== 'undefined' && appVersion) { %>
+    <a href="https://github.com/ClickDevTech/CELERITY-panel/releases" target="_blank" rel="noopener" class="login-footer">v<%= appVersion %></a>
+    <% } %>
+</body>
+</html>

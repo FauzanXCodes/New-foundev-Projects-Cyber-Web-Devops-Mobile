@@ -1,0 +1,85 @@
+
+@mixin file-padding($some-number) {
+  padding-left: $some-number;
+}
+
+
+.folder-container{
+  cursor: default; 
+}
+
+.project-file-structure {
+  border-right: solid 1px #f2f2f2;
+  height: calc(100vh - #{$toolbar-height});
+  font-size: 0.9em; 
+  .project-file-structure-header {
+    height: 30px;
+    letter-spacing: 1px;
+    color: $accent-blue;
+  }
+  .project-file-structure-list {
+    // padding-left: 6%;
+    overflow: scroll; 
+    .folder-container, .file-container {
+      width: 100%;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      .inner-container {
+        padding-left: 6%;
+        .glyphicon {
+          margin-right: 5px;
+        }
+      }
+      .fa-cog {
+        display: none;
+        float: right;
+        cursor: pointer;
+        bottom: 13px;
+        margin-right: 5px;
+        margin-top: 2px;
+        color: $accent-blue;
+        padding: 7px;
+        margin: -5px 0;
+        .hidden-fs-menu {
+          display: none;
+          font-size: 1em;
+          letter-spacing: 0.06em;
+          font-weight: 300;
+          color: #fff;
+          background-color: rgba(96, 121, 132, 0.98);
+          width: 120px;
+          height: 86px;
+          margin-top: 7px;
+          li {
+            padding-top: 7%;
+            padding-bottom: 7%;
+            padding-left: 16%;
+            &:hover {
+              background-color: $darken-silver-blue;
+            }
+          }
+        }
+        &:hover {
+          .hidden-fs-menu {
+            display: block;
+            position: absolute;
+            z-index:999;
+          }
+        }
+      }
+      &:hover .fa-cog {
+        display: inline-block;
+      }
+      &:hover {
+        background-color: $darken-silver-blue;
+        color: #fff;
+      }
+      }
+    }
+    @for $depth from 0 through 10 {
+      .file-level-#{$depth} {
+        margin-left: 10px * $depth;
+      }
+  }
+}
+

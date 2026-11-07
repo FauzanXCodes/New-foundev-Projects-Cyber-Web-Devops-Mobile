@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= typeof t !== 'undefined' ? t('auth.totpTitle') : 'Two-factor verification' %> | C³ CELERITY</title>
+    <%- include('partials/favicon') %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.min.css">
+</head>
+<body class="login-page">
+    <%
+        const isSetupMode = mode === 'setup';
+        const isSettingsMode = mode === 'settings';
+        const isEnrollmentMode = isSetupMode || isSettingsMode;
+        const defaultTitle = isSetupMode
+            ? (typeof t !== 'undefined' ? t('auth.totpSetupTitle') : 'Set up two-factor authentication')
+            : isSettingsMode
+                ? (typeof t !== 'undefined' ? t('auth.totpSettingsTitle') : 'Confirm TOTP setup')
+                : (typeof t !== 'undefined' ? t('auth.totpTitle') : 'Two-factor verification');
+        const defaultDescription = isEnrollmentMode
+            ? (typeof t !== 'undefined' ? t('auth.totpSetupDescription') : 'Scan the QR code and enter the 6-digit code from your authenticator app.')
+            : (typeof t !== 'undefined' ? t('auth.totpLoginDescription') : 'Enter the code from your authenticator app to finish login.');
+        const customFormAction = typeof formAction !== 'undefined' ? formAction : null;
+        const customButtonText = typeof buttonText !== 'undefined' ? buttonText : null;
+        const customTitle = typeof title !== 'undefined' ? title : null;
+        const customDescription = typeof description !== 'undefined' ? description : null;
+        const resolvedFormAction = customFormAction || '/panel/totp';
+        const resolvedButtonText = customButtonText || (typeof t !== 'undefined' ? t('auth.totpVerifyButton') : 'Verify');
+        const resolvedTitle = customTitle || defaultTitle;
+        const resolvedDescription = customDescription || defaultDescription;
+        const shouldShowEnrollment = typeof showEnrollment !== 'undefined' ? Boolean(showEnrollment) : isEnrollmentMode;
+        const resolvedCancelHref = typeof cancelHref !== 'undefined' ? cancelHref : null;
+    %>
+    <div class="login-container<%= shouldShowEnrollment ? ' totp-enrollment' : '' %>">
+        <div class="login-box">
+            <div class="login-header">
+                <span class="logo-icon large">⚡</span>
+                <h1>C³ CELERITY</h1>
+                <p><%= resolvedTitle %></p>
+            </div>
+
+            <% if (error) { %>
+            <div class="alert alert-error"><%= error %></div>
+            <% } %>
+
+            <% if (shouldShowEnrollment) { %>
+            <div class="alert alert-info">
+                <%= resolvedDescription %>
+            </div>
+            <div class="totp-qr-section">
+                <img src="<%= qrDataUrl %>" alt="TOTP QR" class="totp-qr">
+            </div>
+            <div class="totp-secret">
+                <div class="totp-secret-label"><%= typeof t !== 'undefined' ? t('auth.totpManualSecret') : 'Manual secret' %></div>
+                <code class="totp-secret-value"><%= secret %></code>
+                <small class="totp-secret-hint"><%= typeof t !== 'undefined' ? t('auth.totpQrHint') : 'If QR does not scan, use this secret manually.' %></small>
+            </div>
+            <% } else { %>
+            <div class="alert alert-info">
+                <%= resolvedDescription %>
+            </div>
+            <% } %>
+
+            <form method="POST" action="<%= resolvedFormAction %>" class="login-form">
+                <div class="form-group">
+                    <label for="token"><%= typeof t !== 'undefined' ? t('auth.totpCode') : 'Verification code' %></label>
+                    <input
+                        type="text"
+                        id="token"
+                        name="token"
+                        inputmode="numeric"
+                        autocomplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        maxlength="6"
+                        placeholder="<%= typeof t !== 'undefined' ? t('auth.totpCodePlaceholder') : '123456' %>"
+                        required
+                        autofocus
+                    >
+                </div>
+                <button type="submit" class="btn btn-primary btn-block"><%= resolvedButtonText %></button>
+                <% if (resolvedCancelHref) { %>
+                <a href="<%= resolvedCancelHref %>" class="btn btn-secondary btn-block mt-2"><%= typeof t !== 'undefined' ? t('common.cancel') : 'Cancel' %></a>
+                <% } %>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

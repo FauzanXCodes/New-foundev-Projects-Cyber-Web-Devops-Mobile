@@ -1,0 +1,1156 @@
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Platform, ScrollView, View } from "react-native"
+import { LoadingSpinner } from "@/components/LoadingSpinner"
+import { useFocusEffect } from "expo-router"
+import { Feather } from "@expo/vector-icons"
+import { PageContainer } from "@/components/PageContainer"
+import { SegmentedControl } from "@/components/SegmentedControl"
+import { EmptyState } from "@/components/EmptyState"
+import { TrendChart, type TrendPoint } from "@/components/TrendChart"
+import { LogWeightModal } from "@/components/LogWeightModal"
+import { useApp } from "@/context/AppContext"
+import { useToast } from "@/context/ToastContext"
+import { useTheme } from "@/hooks/useTheme"
+import { useLayout } from "@/hooks/useLayout"
+import {
+  getWeightEntries,
+  getRecentWeightEntries,
+  deleteWeightEntry,
+  saveWeightEntry,
+} from "@/db/weight"
+import {
+  getDailyNutritionHistory,
+  getWaterHistory,
+  type DailyKcal,
+  type DailyMacros,
+  type DailyWater,
+} from "@/db/stats"
+import { shiftDateKey, toDateKey, formatDisplayDate } from "@/utils/date"
+import { formatWeight, formatWaterAmount } from "@/utils/units"
+import { computeAdherence, computeLogStreak } from "@/utils/adherence"
+import { computeMacroRatios } from "@/utils/nutrients"
+import { confirmAction } from "@/utils/confirm"
+import type { WeightEntry } from "@/types"
+import { spacing, fonts, borders } from "@/theme"
+import { Box } from "@ui/box"
+import { Text } from "@ui/text"
+import { Card } from "@ui/card"
+import { Button, ButtonText } from "@ui/button"
+
+type RangeId = "1w" | "1m" | "3m" | "6m" | "1y"
+type MacroMetric = "protein" | "carbs" | "fat"
+
+const RANGES: { id: RangeId; label: string; days: number }[] = [
+  { id: "1w", label: "1W", days: 7 },
+  { id: "1m", label: "1M", days: 30 },
+  { id: "3m", label: "3M", days: 90 },
+  { id: "6m", label: "6M", days: 180 },
+  { id: "1y", label: "1Y", days: 365 },
+]
+
+const MACRO_METRICS: { value: MacroMetric; label: string }[] = [
+  { value: "protein", label: "Protein" },
+  { value: "carbs", label: "Carbs" },
+  { value: "fat", label: "Fat" },
+]
+
+/** Shared chart height so all four trend cards stay aligned. */
+const CHART_HEIGHT = 170
+
+const AXIS_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const
+
+function formatAxisDate(dateKey: string, range: RangeId): string {
+  const [, m, d] = dateKey.split("-").map(Number)
+  if (!m || !d) return ""
+  if (range === "1y") {
+    return AXIS_MONTHS[m - 1] ?? ""
+  }
+  return `${AXIS_MONTHS[m - 1]} ${d}`
+}
+
+export default function StatsScreen() {
+  const { settings } = useApp()
+  const { showError, showUndo } = useToast()
+  const { colors } = useTheme()
+  const { isWide, isLarge } = useLayout()
+  const [range, setRange] = useState<RangeId>("1m")
+  const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([])
+  const [latest, setLatest] = useState<WeightEntry | null>(null)
+  const [previous, setPrevious] = useState<WeightEntry | null>(null)
+  const [calories, setCalories] = useState<DailyKcal[]>([])
+  const [macros, setMacros] = useState<DailyMacros[]>([])
+  const [water, setWater] = useState<DailyWater[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [logWeightOpen, setLogWeightOpen] = useState(false)
+  const [editWeightDate, setEditWeightDate] = useState<string | null>(null)
+  const [selectedWeight, setSelectedWeight] = useState<WeightEntry | null>(null)
+  const [selectedKcal, setSelectedKcal] = useState<TrendPoint | null>(null)
+  const [selectedMacro, setSelectedMacro] = useState<TrendPoint | null>(null)
+  const [selectedWater, setSelectedWater] = useState<TrendPoint | null>(null)
+  const [macroMetric, setMacroMetric] = useState<MacroMetric>("protein")
+
+  const fromKey = useMemo(
+    () => shiftDateKey(toDateKey(), -RANGES.find((r) => r.id === range)!.days),
+    [range],
+  )
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [chartWeights, recentTwo, nutritionHistory, waterHistory] = await Promise.all([
+        getWeightEntries(fromKey),
+        getRecentWeightEntries(2),
+        getDailyNutritionHistory(fromKey),
+        getWaterHistory(fromKey),
+      ])
+      setWeightEntries(chartWeights)
+      setLatest(recentTwo[0] ?? null)
+      setPrevious(recentTwo[1] ?? null)
+      setCalories(nutritionHistory.map((n) => ({ date: n.date, kcal: n.kcal })))
+      setMacros(
+        nutritionHistory.map((n) => ({
+          date: n.date,
+          protein: n.protein,
+          carbs: n.carbs,
+          fat: n.fat,
+        })),
+      )
+      setWater(waterHistory)
+      setLoadError(false)
+    } catch (error) {
+      showError(error, "Could not load stats.")
+      setLoadError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [fromKey, showError])
+
+  useFocusEffect(
+    useCallback(() => {
+      void load()
+    }, [load]),
+  )
+
+  const closeLogWeight = useCallback(() => {
+    setLogWeightOpen(false)
+    setEditWeightDate(null)
+    void load()
+  }, [load])
+
+  const openLogWeight = useCallback(() => {
+    setEditWeightDate(null)
+    setLogWeightOpen(true)
+  }, [])
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      if (event.metaKey || event.ctrlKey) return
+      const idx = ["1", "2", "3", "4", "5"].indexOf(event.key)
+      if (idx !== -1) {
+        const r = RANGES[idx]
+        if (r) {
+          event.preventDefault()
+          setRange(r.id)
+        }
+      } else if (event.key === "r" || event.key === "R") {
+        event.preventDefault()
+        void load()
+      } else if (event.key === "w" || event.key === "W") {
+        event.preventDefault()
+        openLogWeight()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [load, openLogWeight])
+
+  // Derived aggregates (KPI cards)
+  const adherence = useMemo(
+    () => computeAdherence(calories, settings.calorie_goal),
+    [calories, settings.calorie_goal],
+  )
+  const logStreak = useMemo(() => computeLogStreak(calories), [calories])
+
+  const avgMacros = useMemo(() => {
+    if (macros.length === 0) return null
+    const count = macros.length
+    const protein = Math.round(macros.reduce((s, m) => s + m.protein, 0) / count)
+    const carbs = Math.round(macros.reduce((s, m) => s + m.carbs, 0) / count)
+    const fat = Math.round(macros.reduce((s, m) => s + m.fat, 0) / count)
+    const ratios = computeMacroRatios(protein, carbs, fat)
+    return {
+      protein,
+      carbs,
+      fat,
+      proteinPct: ratios.proteinPct,
+      carbsPct: ratios.carbsPct,
+      fatPct: ratios.fatPct,
+    }
+  }, [macros])
+
+  const onDeleteWeight = useCallback(
+    (entry: WeightEntry) => {
+      confirmAction({
+        title: "Delete weight?",
+        message: `Remove ${formatWeight(entry.weight_kg, settings.units)} from ${formatDisplayDate(entry.date)}?`,
+        confirmLabel: "Delete",
+        onConfirm: async () => {
+          try {
+            await deleteWeightEntry(entry.id)
+            setSelectedWeight(null)
+            await load()
+            showUndo("Weight entry removed.", () => {
+              saveWeightEntry({
+                date: entry.date,
+                weightKg: entry.weight_kg,
+                note: entry.note ?? undefined,
+              })
+                .then(() => load())
+                .catch(() => undefined)
+            })
+          } catch (error) {
+            showError(error, "Could not delete weight entry.")
+          }
+        },
+      })
+    },
+    [load, settings.units, showError, showUndo],
+  )
+
+  const onDeleteLatest = useCallback(() => {
+    if (latest) onDeleteWeight(latest)
+  }, [latest, onDeleteWeight])
+
+  const onWeightPointPress = useCallback(
+    (point: TrendPoint) => {
+      const entry = weightEntries.find((item) => item.date === point.date) ?? null
+      setSelectedWeight(entry)
+    },
+    [weightEntries],
+  )
+
+  const weightChartData = useMemo(
+    () => weightEntries.map((entry) => ({ date: entry.date, value: entry.weight_kg })),
+    [weightEntries],
+  )
+  const calorieChartData = useMemo(
+    () => calories.map((day) => ({ date: day.date, value: day.kcal })),
+    [calories],
+  )
+  const macroChartData = useMemo(
+    () => macros.map((day) => ({ date: day.date, value: day[macroMetric] })),
+    [macroMetric, macros],
+  )
+  const waterChartData = useMemo(
+    () => water.map((day) => ({ date: day.date, value: day.ml })),
+    [water],
+  )
+
+  const rawDelta = latest && previous ? latest.weight_kg - previous.weight_kg : null
+  // Float subtraction (75.5 - 74.8) can produce 0.7000000000000028. Round to
+  // the display precision before formatting.
+  const weightDelta = rawDelta !== null ? Math.round(rawDelta * 10) / 10 : null
+
+  const avgKcal =
+    calorieChartData.length > 0
+      ? Math.round(
+          calorieChartData.reduce((sum, day) => sum + day.value, 0) / calorieChartData.length,
+        )
+      : null
+
+  // Body metrics. BMI needs a height, goal progress needs a target weight.
+  const heightCm = settings.height_cm > 0 ? settings.height_cm : 0
+  const targetKg = settings.target_weight_kg > 0 ? settings.target_weight_kg : 0
+  const bmi =
+    heightCm > 0 && latest ? Math.round((latest.weight_kg / (heightCm / 100) ** 2) * 10) / 10 : null
+  const goalDelta = latest && targetKg > 0 ? latest.weight_kg - targetKg : null
+
+  // Progress toward the target weight uses the earliest logged weigh-in in the
+  // range as the starting point (there is no stored "start weight").
+  const firstWeight = weightEntries.length > 0 ? weightEntries[0].weight_kg : null
+  const goalProgress =
+    latest && firstWeight !== null && targetKg > 0 && firstWeight !== targetKg
+      ? Math.min(Math.max((firstWeight - latest.weight_kg) / (firstWeight - targetKg), 0), 1)
+      : null
+
+  const weightEmptyState = (
+    <EmptyState
+      icon="activity"
+      iconColor={colors.primary}
+      title={`No weight logged ${range === "1w" ? "this week" : "in this range"} yet.`}
+      variant="compact"
+      action={
+        <Button size="sm" onPress={openLogWeight} accessibilityLabel="Log weight">
+          <ButtonText>Log weight</ButtonText>
+        </Button>
+      }
+    />
+  )
+
+  const caloriesEmptyState = (
+    <EmptyState
+      icon="zap"
+      iconColor={colors.primary}
+      title={`No diary entries ${range === "1w" ? "this week" : "in this range"} yet.`}
+      variant="compact"
+    />
+  )
+
+  return (
+    <Box className="flex-1" style={{ backgroundColor: colors.background }}>
+      <PageContainer variant={isWide ? "wide" : "default"} className="flex-1">
+        <Box
+          className={`w-full pb-2 ${isWide ? (isLarge ? "px-6" : "px-5") : "px-4"}`}
+          style={{ paddingTop: spacing.md }}
+        >
+          <Text size="2xl" bold style={{ color: colors.textOnBackground }}>
+            Stats
+          </Text>
+          <Text size="xs" className="mt-1" style={{ color: colors.textMuted }}>
+            Weight, calories and macro trends
+          </Text>
+        </Box>
+
+        <ScrollView
+          contentContainerClassName={`w-full ${isWide ? (isLarge ? "p-6 pb-24" : "p-5 pb-20") : "max-w-[720px] self-center p-3 pb-16"}`}
+        >
+          <SegmentedControl
+            value={range}
+            options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
+            onChange={setRange}
+          />
+          {isWide ? (
+            <Box className="mt-2 flex-row flex-wrap gap-2">
+              <Text
+                size="2xs"
+                className="font-mono uppercase tracking-widest"
+                style={{ color: colors.textMuted, fontFamily: fonts.mono, letterSpacing: 0.06 }}
+              >
+                Shortcuts:
+              </Text>
+              {["1·1W", "2·1M", "3·3M", "4·6M", "5·1Y", "W·Weight", "R·Refresh"].map((s) => (
+                <Box
+                  key={s}
+                  className="rounded-none border px-1.5 py-0.5"
+                  style={{
+                    backgroundColor: colors.surface,
+                    borderWidth: borders.widthThin,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Text size="2xs" bold style={{ fontFamily: fonts.mono }}>
+                    {s}
+                  </Text>
+                </Box>
+              ))}
+            </Box>
+          ) : null}
+
+          {loading ? (
+            <View
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 320,
+                paddingVertical: 48,
+              }}
+            >
+              <LoadingSpinner size={32} />
+            </View>
+          ) : loadError ? (
+            <Card variant="elevated" className="mt-4 p-4">
+              <Box className="flex-row items-center gap-2.5">
+                <Box
+                  className="h-9 w-9 items-center justify-center rounded-none border bg-primary-500/10"
+                  style={{ borderWidth: borders.width, borderColor: colors.border }}
+                >
+                  <Feather name="cloud-off" size={18} color={colors.danger} />
+                </Box>
+                <Box className="min-w-0 flex-1">
+                  <Text size="md" bold className="" style={{ color: colors.text }}>
+                    Could not load stats
+                  </Text>
+                  <Text size="xs" className="" style={{ color: colors.textMuted }}>
+                    Try switching ranges or pull to refresh.
+                  </Text>
+                </Box>
+              </Box>
+            </Card>
+          ) : (
+            <Box
+              className={`mt-4 ${isWide ? "gap-4" : "gap-4"} ${isLarge ? "gap-5" : ""}`}
+              style={
+                Platform.OS === "web" && isWide
+                  ? ({
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: isLarge ? 20 : 16,
+                      alignItems: "start",
+                      gridAutoRows: "auto",
+                    } as never)
+                  : undefined
+              }
+            >
+              {/* Consistency - spans full width on wide */}
+              <Card
+                variant="elevated"
+                className={`p-4 ${isWide ? "col-span-2" : ""}`}
+                style={
+                  Platform.OS === "web" && isWide ? ({ gridColumn: "1 / -1" } as never) : undefined
+                }
+              >
+                <Box className="flex-row items-center justify-between gap-2.5">
+                  <Box className="flex-row items-center gap-2.5">
+                    <Box
+                      className="h-9 w-9 items-center justify-center rounded-none border"
+                      style={{
+                        borderWidth: borders.width,
+                        borderColor: colors.border,
+                        backgroundColor: colors.warning,
+                      }}
+                    >
+                      <Feather name="activity" size={18} color={colors.onWarning} />
+                    </Box>
+                    <Box>
+                      <Text size="md" bold className="" style={{ color: colors.text }}>
+                        Consistency
+                      </Text>
+                      <Text size="xs" className="" style={{ color: colors.textMuted }}>
+                        {RANGES.find((r) => r.id === range)?.days} days · {adherence.loggedDays}{" "}
+                        logged
+                      </Text>
+                    </Box>
+                  </Box>
+                  {logStreak > 2 ? (
+                    <Box
+                      className="flex-row items-center gap-1 rounded-none border px-2 py-1"
+                      style={{
+                        borderWidth: borders.widthThin,
+                        borderColor: colors.warning,
+                        backgroundColor: `${colors.warning}14`,
+                      }}
+                    >
+                      <Feather name="zap" size={12} color={colors.warning} />
+                      <Text
+                        size="xs"
+                        bold
+                        style={{ color: colors.warning, fontFamily: fonts.mono }}
+                      >
+                        {logStreak} day streak
+                      </Text>
+                    </Box>
+                  ) : null}
+                </Box>
+
+                <Box className="mt-3 gap-3">
+                  <Box className="flex-row gap-3">
+                    <Box
+                      className="flex-1 gap-1 rounded-none border p-3"
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderWidth: borders.width,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Box className="flex-row items-center justify-between">
+                        <Text
+                          size="2xs"
+                          bold
+                          className="font-mono uppercase tracking-widest"
+                          style={{ color: colors.textMuted, letterSpacing: 0.06 }}
+                        >
+                          Streak
+                        </Text>
+                        <Feather name="zap" size={12} color={colors.warning} />
+                      </Box>
+                      <Text size="xl" bold className="font-tabular" style={{ color: colors.text }}>
+                        {logStreak}
+                        <Text
+                          size="xs"
+                          className="font-mono font-normal"
+                          style={{ color: colors.textMuted }}
+                        >
+                          {" "}
+                          days
+                        </Text>
+                      </Text>
+                      <Text size="2xs" className="font-mono" style={{ color: colors.textMuted }}>
+                        {logStreak === 0
+                          ? "Log today to start"
+                          : logStreak === 1
+                            ? "Keep going"
+                            : "On fire"}
+                      </Text>
+                    </Box>
+                    <Box
+                      className="flex-1 gap-1 rounded-none border p-3"
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderWidth: borders.width,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Box className="flex-row items-center justify-between">
+                        <Text
+                          size="2xs"
+                          bold
+                          className="font-mono uppercase tracking-widest"
+                          style={{ color: colors.textMuted, letterSpacing: 0.06 }}
+                        >
+                          Logged
+                        </Text>
+                        <Feather name="check" size={12} color={colors.primary} />
+                      </Box>
+                      <Text size="xl" bold className="font-tabular" style={{ color: colors.text }}>
+                        {adherence.loggedDays}
+                        <Text
+                          size="xs"
+                          className="font-mono font-normal"
+                          style={{ color: colors.textMuted }}
+                        >
+                          {" "}
+                          / {RANGES.find((r) => r.id === range)?.days}
+                        </Text>
+                      </Text>
+                      <View
+                        className="mt-1 h-1.5 overflow-hidden rounded-none border"
+                        style={{
+                          backgroundColor: colors.surfaceAlt,
+                          borderWidth: borders.widthThin,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: `${Math.round((adherence.loggedDays / (RANGES.find((r) => r.id === range)?.days ?? 1)) * 100)}%`,
+                            height: "100%",
+                            backgroundColor: colors.primary,
+                          }}
+                        />
+                      </View>
+                    </Box>
+                    <Box
+                      className="flex-1 gap-1 rounded-none border p-3"
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderWidth: borders.width,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Box className="flex-row items-center justify-between">
+                        <Text
+                          size="2xs"
+                          bold
+                          className="font-mono uppercase tracking-widest"
+                          style={{ color: colors.textMuted, letterSpacing: 0.06 }}
+                        >
+                          On target
+                        </Text>
+                        <Feather name="target" size={12} color={colors.primary} />
+                      </Box>
+                      <Text size="xl" bold className="font-tabular" style={{ color: colors.text }}>
+                        {adherence.onTargetPct !== null ? `${adherence.onTargetPct}%` : "—"}
+                      </Text>
+                      {adherence.onTargetPct !== null ? (
+                        <View
+                          className="mt-1 h-1.5 overflow-hidden rounded-none border"
+                          style={{
+                            backgroundColor: colors.surfaceAlt,
+                            borderWidth: borders.widthThin,
+                            borderColor: colors.border,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: `${adherence.onTargetPct}%`,
+                              height: "100%",
+                              backgroundColor:
+                                adherence.onTargetPct >= 70 ? colors.primary : colors.warning,
+                            }}
+                          />
+                        </View>
+                      ) : (
+                        <Text size="2xs" className="font-mono" style={{ color: colors.textMuted }}>
+                          No data in range
+                        </Text>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box className="flex-row items-center gap-1.5 pt-1">
+                    <View
+                      style={{
+                        width: 6,
+                        height: 6,
+                        backgroundColor:
+                          adherence.onTargetPct !== null && adherence.onTargetPct >= 80
+                            ? colors.primary
+                            : colors.warning,
+                        borderWidth: borders.widthThin,
+                        borderColor: colors.border,
+                      }}
+                    />
+                    <Text
+                      size="2xs"
+                      className="font-mono uppercase tracking-widest"
+                      style={{ color: colors.textMuted }}
+                    >
+                      {adherence.onTargetPct !== null
+                        ? adherence.onTargetPct >= 80
+                          ? "Great adherence"
+                          : adherence.onTargetPct >= 50
+                            ? "Steady, aim for 80%"
+                            : "Log more to see pattern"
+                        : "Start logging to see adherence"}
+                    </Text>
+                  </Box>
+                </Box>
+              </Card>
+
+              {/* Body weight */}
+              <Card variant="elevated" className="p-4">
+                <Box className="flex-row items-center gap-2.5">
+                  <Box
+                    className="h-9 w-9 items-center justify-center rounded-none border"
+                    style={{
+                      borderWidth: borders.width,
+                      borderColor: colors.border,
+                      backgroundColor: colors.weight ?? colors.primary,
+                    }}
+                  >
+                    <Feather name="activity" size={18} color={colors.onPrimary} />
+                  </Box>
+                  <Box className="min-w-0 flex-1">
+                    <Text size="md" bold className="" style={{ color: colors.text }}>
+                      Body weight
+                    </Text>
+                    {latest ? (
+                      <Box className="flex-row items-center gap-1.5">
+                        <Text size="xs" className="" style={{ color: colors.textMuted }}>
+                          {formatDisplayDate(latest.date)}
+                        </Text>
+                        {weightDelta !== null && weightDelta !== 0 ? (
+                          <Box className="flex-row items-center gap-0.5">
+                            <Feather
+                              name={weightDelta < 0 ? "arrow-down" : "arrow-up"}
+                              size={11}
+                              color={weightDelta < 0 ? colors.primary : colors.danger}
+                            />
+                            <Text
+                              size="xs"
+                              bold
+                              className="font-tabular"
+                              style={{ color: weightDelta < 0 ? colors.primary : colors.danger }}
+                            >
+                              {formatWeight(Math.abs(weightDelta), settings.units)}
+                            </Text>
+                          </Box>
+                        ) : null}
+                      </Box>
+                    ) : (
+                      <Text size="xs" className="" style={{ color: colors.textMuted }}>
+                        Not logged yet
+                      </Text>
+                    )}
+                  </Box>
+                  <Text size="lg" bold className="font-tabular" style={{ color: colors.text }}>
+                    {latest ? formatWeight(latest.weight_kg, settings.units) : "Not set"}
+                  </Text>
+                </Box>
+
+                {latest && (bmi !== null || goalDelta !== null) ? (
+                  <Box className="mt-2 flex-row flex-wrap gap-x-4 gap-y-1">
+                    {bmi !== null ? (
+                      <Box className="flex-row items-center gap-1">
+                        <Feather name="user" size={13} color={colors.textMuted} />
+                        <Text
+                          size="xs"
+                          bold
+                          className="font-tabular"
+                          style={{ color: colors.text }}
+                        >
+                          BMI {bmi}
+                        </Text>
+                      </Box>
+                    ) : null}
+                    {goalDelta !== null ? (
+                      <Text size="xs" bold className="font-tabular" style={{ color: colors.text }}>
+                        {goalDelta <= 0.05
+                          ? "At goal weight"
+                          : `${formatWeight(Math.abs(goalDelta), settings.units)} to goal`}
+                      </Text>
+                    ) : null}
+                  </Box>
+                ) : null}
+
+                {goalProgress !== null ? (
+                  <Box className="mt-3">
+                    <Box className="mb-1 flex-row items-center justify-between">
+                      <Text size="xs" bold className="" style={{ color: colors.text }}>
+                        {goalProgress >= 1 ? "Goal reached" : "Goal progress"}
+                      </Text>
+                      {goalProgress < 1 ? (
+                        <Text
+                          size="xs"
+                          bold
+                          className="font-tabular"
+                          style={{ color: colors.text }}
+                        >
+                          {Math.round(goalProgress * 100)}%
+                        </Text>
+                      ) : null}
+                    </Box>
+                    <View
+                      className="h-2 overflow-hidden rounded-none border"
+                      style={{
+                        backgroundColor: colors.surfaceAlt,
+                        borderWidth: borders.widthThin,
+                        borderColor: colors.border,
+                      }}
+                      accessibilityRole="progressbar"
+                      accessibilityLabel="Goal progress"
+                      accessibilityValue={{
+                        min: 0,
+                        max: 100,
+                        now: Math.round(goalProgress * 100),
+                      }}
+                    >
+                      <View
+                        className="h-full rounded-none"
+                        style={{
+                          width: `${Math.round(goalProgress * 100)}%`,
+                          backgroundColor: colors.primary,
+                        }}
+                      />
+                    </View>
+                  </Box>
+                ) : null}
+
+                <View className="mt-3">
+                  {weightChartData.length > 0 ? (
+                    <TrendChart
+                      data={weightChartData}
+                      color={colors.weight ?? colors.primary}
+                      rangeStart={fromKey}
+                      rangeEnd={toDateKey()}
+                      formatValue={(value) => formatWeight(value, settings.units)}
+                      formatDate={(dateKey) => formatAxisDate(dateKey, range)}
+                      height={CHART_HEIGHT}
+                      onPointPress={onWeightPointPress}
+                      accessibilityLabel={`Body weight trend, ${formatWeight(weightChartData[0].value, settings.units)} to ${formatWeight(weightChartData[weightChartData.length - 1].value, settings.units)}`}
+                    />
+                  ) : (
+                    weightEmptyState
+                  )}
+                </View>
+
+                {selectedWeight ? (
+                  <Box
+                    className="mt-3 flex-row flex-wrap items-center gap-2 rounded-none border px-3 py-2.5"
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderWidth: borders.width,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Feather name="map-pin" size={15} color={colors.primary} />
+                    <Box className="min-w-[120px] flex-1">
+                      <Text size="xs" bold className="" style={{ color: colors.text }}>
+                        {formatDisplayDate(selectedWeight.date)}
+                      </Text>
+                      <Text size="xs" className="font-tabular" style={{ color: colors.textMuted }}>
+                        {formatWeight(selectedWeight.weight_kg, settings.units)}
+                        {selectedWeight.note ? ` · ${selectedWeight.note}` : ""}
+                      </Text>
+                    </Box>
+                    <Box className="flex-row items-center gap-1.5">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        action="secondary"
+                        onPress={() => {
+                          setEditWeightDate(selectedWeight.date)
+                          setLogWeightOpen(true)
+                        }}
+                        accessibilityLabel="Edit selected weight"
+                      >
+                        <ButtonText>Edit</ButtonText>
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        action="negative"
+                        onPress={() => onDeleteWeight(selectedWeight)}
+                        accessibilityLabel="Delete selected weight"
+                      >
+                        <ButtonText>Delete</ButtonText>
+                      </Button>
+                    </Box>
+                  </Box>
+                ) : null}
+
+                {weightChartData.length > 0 ? (
+                  <Box className="mt-3 flex-row gap-2">
+                    <Button
+                      size="sm"
+                      className="min-w-[140px] flex-1"
+                      onPress={openLogWeight}
+                      accessibilityLabel="Log weight"
+                    >
+                      <ButtonText>Log weight</ButtonText>
+                    </Button>
+                    {latest ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        action="secondary"
+                        className="w-20"
+                        onPress={onDeleteLatest}
+                        accessibilityLabel="Delete latest weight"
+                      >
+                        <ButtonText>Delete</ButtonText>
+                      </Button>
+                    ) : null}
+                  </Box>
+                ) : null}
+              </Card>
+
+              {/* Calories */}
+              <Card variant="elevated" className="p-4">
+                <Box className="flex-row items-center justify-between gap-3">
+                  <Box className="flex-row items-center gap-2.5">
+                    <Box
+                      className="h-9 w-9 items-center justify-center rounded-none border"
+                      style={{
+                        borderWidth: borders.width,
+                        borderColor: colors.border,
+                        backgroundColor: colors.primary,
+                      }}
+                    >
+                      <Feather name="zap" size={18} color={colors.onPrimary} />
+                    </Box>
+                    <Box>
+                      <Text size="md" bold className="" style={{ color: colors.text }}>
+                        Calories
+                      </Text>
+                      <Text size="xs" className="font-tabular" style={{ color: colors.textMuted }}>
+                        Daily average {avgKcal !== null ? `${avgKcal} kcal` : "No data"}
+                        {settings.calorie_goal > 0
+                          ? ` · goal ${Math.round(settings.calorie_goal)}`
+                          : ""}
+                      </Text>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <View className="mt-3">
+                  {calorieChartData.length > 0 ? (
+                    <TrendChart
+                      data={calorieChartData}
+                      color={colors.primary}
+                      goalValue={settings.calorie_goal > 0 ? settings.calorie_goal : undefined}
+                      variant="bars"
+                      rangeStart={fromKey}
+                      rangeEnd={toDateKey()}
+                      formatValue={(value) => `${Math.round(value)} kcal`}
+                      formatDate={(dateKey) => formatAxisDate(dateKey, range)}
+                      height={CHART_HEIGHT}
+                      onPointPress={setSelectedKcal}
+                      accessibilityLabel={`Calories per day, ${calorieChartData.length} days`}
+                    />
+                  ) : (
+                    caloriesEmptyState
+                  )}
+                </View>
+
+                {selectedKcal ? (
+                  <Text
+                    size="xs"
+                    bold
+                    className="font-tabular mt-2 px-1"
+                    style={{ color: colors.text }}
+                  >
+                    {formatDisplayDate(selectedKcal.date)}, {Math.round(selectedKcal.value)} kcal
+                    {settings.calorie_goal > 0
+                      ? selectedKcal.value > settings.calorie_goal
+                        ? ` · +${Math.round(selectedKcal.value - settings.calorie_goal)} over`
+                        : ` · ${Math.round(settings.calorie_goal - selectedKcal.value)} left`
+                      : ""}
+                  </Text>
+                ) : null}
+              </Card>
+
+              {/* Macros */}
+              <Card variant="elevated" className="p-4">
+                <Box className="flex-row items-center justify-between gap-3">
+                  <Box className="flex-row items-center gap-2.5">
+                    <Box
+                      className="h-9 w-9 items-center justify-center rounded-none border"
+                      style={{
+                        borderWidth: borders.width,
+                        borderColor: colors.border,
+                        backgroundColor: colors.breakfast,
+                      }}
+                    >
+                      <Feather name="pie-chart" size={18} color={colors.onPrimary} />
+                    </Box>
+                    <Box>
+                      <Text size="md" bold className="" style={{ color: colors.text }}>
+                        Macronutrients
+                      </Text>
+                      <Text size="xs" className="" style={{ color: colors.textMuted }}>
+                        Daily average breakdown
+                      </Text>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Box className="mt-3">
+                  <SegmentedControl
+                    value={macroMetric}
+                    options={MACRO_METRICS}
+                    onChange={setMacroMetric}
+                  />
+                </Box>
+
+                <View className="mt-3">
+                  {macroChartData.length > 0 ? (
+                    <TrendChart
+                      data={macroChartData}
+                      color={
+                        macroMetric === "protein"
+                          ? colors.breakfast
+                          : macroMetric === "carbs"
+                            ? colors.lunch
+                            : colors.dinner
+                      }
+                      goalValue={
+                        macroMetric === "protein" && settings.protein_goal > 0
+                          ? settings.protein_goal
+                          : macroMetric === "carbs" && settings.carbs_goal > 0
+                            ? settings.carbs_goal
+                            : macroMetric === "fat" && settings.fat_goal > 0
+                              ? settings.fat_goal
+                              : undefined
+                      }
+                      variant="bars"
+                      rangeStart={fromKey}
+                      rangeEnd={toDateKey()}
+                      formatValue={(value) => `${Math.round(value)}g`}
+                      formatDate={(dateKey) => formatAxisDate(dateKey, range)}
+                      height={CHART_HEIGHT}
+                      onPointPress={setSelectedMacro}
+                      accessibilityLabel={`${macroMetric} per day, ${macroChartData.length} days`}
+                    />
+                  ) : (
+                    <EmptyState
+                      icon="package"
+                      iconColor={colors.primary}
+                      title={`No macros logged ${range === "1w" ? "this week" : "in this range"} yet.`}
+                      variant="compact"
+                    />
+                  )}
+                </View>
+
+                {selectedMacro ? (
+                  <Text
+                    size="xs"
+                    bold
+                    className="font-tabular mt-2 px-1"
+                    style={{ color: colors.text }}
+                  >
+                    {formatDisplayDate(selectedMacro.date)}, {Math.round(selectedMacro.value)}g{" "}
+                    {macroMetric}
+                  </Text>
+                ) : null}
+
+                {avgMacros ? (
+                  <Box className="mt-3 border-t border-outline-100 pt-3">
+                    <Text size="2xs" bold className="mb-2" style={{ color: colors.textMuted }}>
+                      AVERAGE MACRO SPLIT
+                    </Text>
+                    <Box className="flex-row gap-2">
+                      <Box
+                        className="flex-1 items-center rounded-none border p-2.5"
+                        style={{
+                          borderWidth: borders.width,
+                          borderColor: colors.border,
+                          backgroundColor: `${colors.breakfast}15`,
+                        }}
+                      >
+                        <Text size="xs" bold style={{ color: colors.breakfast }}>
+                          Protein
+                        </Text>
+                        <Text
+                          size="sm"
+                          bold
+                          className="font-tabular"
+                          style={{ color: colors.text }}
+                        >
+                          {avgMacros.protein}g
+                        </Text>
+                        <Text
+                          size="2xs"
+                          className="font-tabular"
+                          style={{ color: colors.textMuted }}
+                        >
+                          {avgMacros.proteinPct}%
+                        </Text>
+                      </Box>
+                      <Box
+                        className="flex-1 items-center rounded-none border p-2.5"
+                        style={{
+                          borderWidth: borders.width,
+                          borderColor: colors.border,
+                          backgroundColor: `${colors.lunch}15`,
+                        }}
+                      >
+                        <Text size="xs" bold style={{ color: colors.lunch }}>
+                          Carbs
+                        </Text>
+                        <Text
+                          size="sm"
+                          bold
+                          className="font-tabular"
+                          style={{ color: colors.text }}
+                        >
+                          {avgMacros.carbs}g
+                        </Text>
+                        <Text
+                          size="2xs"
+                          className="font-tabular"
+                          style={{ color: colors.textMuted }}
+                        >
+                          {avgMacros.carbsPct}%
+                        </Text>
+                      </Box>
+                      <Box
+                        className="flex-1 items-center rounded-none border p-2.5"
+                        style={{
+                          borderWidth: borders.width,
+                          borderColor: colors.border,
+                          backgroundColor: `${colors.dinner}15`,
+                        }}
+                      >
+                        <Text size="xs" bold style={{ color: colors.dinner }}>
+                          Fat
+                        </Text>
+                        <Text
+                          size="sm"
+                          bold
+                          className="font-tabular"
+                          style={{ color: colors.text }}
+                        >
+                          {avgMacros.fat}g
+                        </Text>
+                        <Text
+                          size="2xs"
+                          className="font-tabular"
+                          style={{ color: colors.textMuted }}
+                        >
+                          {avgMacros.fatPct}%
+                        </Text>
+                      </Box>
+                    </Box>
+                  </Box>
+                ) : null}
+              </Card>
+
+              {/* Water */}
+              <Card variant="elevated" className="p-4">
+                <Box className="flex-row items-center gap-2.5">
+                  <Box
+                    className="h-9 w-9 items-center justify-center rounded-none border"
+                    style={{
+                      borderWidth: borders.width,
+                      borderColor: colors.border,
+                      backgroundColor: colors.water ?? colors.primary,
+                    }}
+                  >
+                    <Feather name="droplet" size={18} color={colors.onPrimary} />
+                  </Box>
+                  <Box className="min-w-0 flex-1">
+                    <Text size="md" bold className="" style={{ color: colors.text }}>
+                      Water
+                    </Text>
+                    <Text size="xs" className="font-tabular" style={{ color: colors.textMuted }}>
+                      Daily intake
+                      {settings.water_goal_ml > 0
+                        ? ` · goal ${formatWaterAmount(settings.water_goal_ml, settings.units)}`
+                        : ""}
+                    </Text>
+                  </Box>
+                </Box>
+
+                <View className="mt-3">
+                  {waterChartData.length > 0 ? (
+                    <TrendChart
+                      data={waterChartData}
+                      color={colors.water ?? colors.primary}
+                      goalValue={settings.water_goal_ml > 0 ? settings.water_goal_ml : undefined}
+                      variant="bars"
+                      rangeStart={fromKey}
+                      rangeEnd={toDateKey()}
+                      formatValue={(value) => formatWaterAmount(value, settings.units)}
+                      formatDate={(dateKey) => formatAxisDate(dateKey, range)}
+                      height={CHART_HEIGHT}
+                      onPointPress={setSelectedWater}
+                      accessibilityLabel={`Water per day, ${waterChartData.length} days`}
+                    />
+                  ) : (
+                    <EmptyState
+                      icon="droplet"
+                      iconColor={colors.water ?? colors.primary}
+                      title={`No water logged ${range === "1w" ? "this week" : "in this range"} yet.`}
+                      variant="compact"
+                    />
+                  )}
+                </View>
+
+                {selectedWater ? (
+                  <Text
+                    size="xs"
+                    bold
+                    className="font-tabular mt-2 px-1"
+                    style={{ color: colors.text }}
+                  >
+                    {formatDisplayDate(selectedWater.date)},{" "}
+                    {formatWaterAmount(selectedWater.value, settings.units)}
+                    {settings.water_goal_ml > 0
+                      ? selectedWater.value > settings.water_goal_ml
+                        ? " · over goal"
+                        : " · under goal"
+                      : ""}
+                  </Text>
+                ) : null}
+              </Card>
+            </Box>
+          )}
+        </ScrollView>
+      </PageContainer>
+
+      <LogWeightModal
+        visible={logWeightOpen}
+        initialDateKey={editWeightDate ?? undefined}
+        onClose={closeLogWeight}
+        onSaved={closeLogWeight}
+      />
+    </Box>
+  )
+}

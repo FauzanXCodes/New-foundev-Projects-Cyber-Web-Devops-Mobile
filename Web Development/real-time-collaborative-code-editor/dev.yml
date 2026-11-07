@@ -1,0 +1,27 @@
+server:
+  build: .
+  ports:
+   - "80:80"
+   - "9000:9000"
+   - "9001:9001"
+  links:
+   - "db"
+   - "mongo"
+  volumes:
+   - ./data:/app/data
+   - ./config:/app/config
+   - ./server:/app/server
+   - ./client:/app/client
+  environment:
+    NODE_ENV: docker-local
+    PORT: 80
+db:
+  image: tutum/mysql:5.5
+  ports:
+   - "3306:3306"
+  environment:
+    MYSQL_PASS: "6gdP7R3adDYNehj"
+mongo:
+  image: dockerfile/mongodb
+  ports:
+    - "27017:27017"

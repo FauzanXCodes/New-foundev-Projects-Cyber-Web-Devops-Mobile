@@ -1,0 +1,107 @@
+# C³ CELERITY - Quick Start (Docker Hub)
+# Use this file for quick deployment without building from source
+# Run: docker compose -f docker-compose.hub.yml up -d
+
+services:
+  # Redis - caching
+  redis:
+    image: redis:7-alpine
+    container_name: hysteria-redis
+    restart: always
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - hysteria-net
+
+  # MongoDB
+  mongo:
+    image: mongo:7
+    container_name: hysteria-mongo
+    restart: always
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: hysteria
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-hysteria}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - hysteria-net
+
+  # Hysteria Backend (pre-built image from Docker Hub)
+  #
+  # The image tag is pinned via PANEL_TAG so the UI updater can move between
+  # released versions (and roll back) by rewriting PANEL_TAG in .env and
+  # recreating this service. Defaults to `latest` when unset.
+  backend:
+    image: clickdevtech/hysteria-panel:${PANEL_TAG:-latest}
+    container_name: hysteria-backend
+    restart: always
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    volumes:
+      - ./logs:/app/logs
+      - ./greenlock.d:/app/greenlock.d
+      - ./backups:/app/backups
+      # Access-logs ingest spool (batches not yet forwarded to ClickHouse) must survive
+      # container rebuilds.
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://${MONGO_USER:-hysteria}:${MONGO_PASSWORD}@mongo:27017/hysteria?authSource=admin
+      REDIS_URL: redis://redis:6379
+      # In-cluster URL of the updater sidecar. UPDATER_SECRET comes from .env.
+      UPDATER_URL: http://updater:8484
+    networks:
+      - hysteria-net
+
+  # Panel updater sidecar (hub mode: pull pre-built image tag).
+  #
+  # This is the ONLY container with access to the Docker socket. On request from
+  # the panel (HMAC-signed) it rewrites PANEL_TAG in .env, pulls the requested
+  # image tag and recreates the backend. The project directory is mounted at the
+  # SAME absolute path it has on the host so that the relative bind mounts above
+  # (./logs, ./greenlock.d, ./backups, ./data) resolve correctly when
+  # `docker compose up` runs from inside this container.
+  #
+  # Disabled unless UPDATER_SECRET (>=32 chars) is set in .env.
+  updater:
+    image: clickdevtech/celerity-updater:latest
+    container_name: hysteria-updater
+    restart: always
+    environment:
+      UPDATE_MODE: hub
+      PROJECT_DIR: ${PWD}
+      COMPOSE_FILE: docker-compose.hub.yml
+      SERVICE: backend
+      UPDATER_SECRET: ${UPDATER_SECRET:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+    working_dir: ${PWD}
+    networks:
+      - hysteria-net
+
+networks:
+  hysteria-net:
+    driver: bridge
+
+volumes:
+  mongo_data:

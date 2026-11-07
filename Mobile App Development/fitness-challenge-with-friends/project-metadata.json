@@ -1,0 +1,14 @@
+﻿{
+    "id":  "fitness-challenge-with-friends",
+    "name":  "Fitness Challenge with Friends",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/UsernamedJu/rally",
+    "stack":  "Flutter; Firebase Realtime",
+    "goal":  "Create challenges, leaderboards, daily targets and push nudges.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "app.config.ts",
+    "expectedFileCount":  59,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  113
+}

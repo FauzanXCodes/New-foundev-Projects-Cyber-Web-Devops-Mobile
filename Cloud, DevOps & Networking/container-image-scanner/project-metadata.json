@@ -1,0 +1,14 @@
+﻿{
+    "id":  "container-image-scanner",
+    "name":  "Container Image Scanner",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/deepfence/SecretScanner",
+    "stack":  "Trivy/Grype; Node; React",
+    "goal":  "Scan images for CVEs, rank by severity, track fix status across builds.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "main.go",
+    "expectedFileCount":  20,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  59
+}

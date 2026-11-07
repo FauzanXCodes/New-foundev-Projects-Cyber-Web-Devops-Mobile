@@ -1,0 +1,14 @@
+﻿{
+    "id":  "mini-dns-server",
+    "name":  "Mini DNS Server",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/alexsilva/MINI-DNS-Server",
+    "stack":  "Python; dnslib",
+    "goal":  "Resolve from a local zone file, forward upstream, cache with TTL and log queries.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "setup.py",
+    "expectedFileCount":  7,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  12
+}

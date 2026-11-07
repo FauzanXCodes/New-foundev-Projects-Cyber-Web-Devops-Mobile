@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The workflow only reads the repository; never expose a writable token to
+# third-party actions or package install scripts.
+permissions:
+  contents: read
+
+# A newer push supersedes any in-flight run for the same ref; let runs on
+# main finish so its history stays complete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # Prettier, ESLint and tsc verdicts do not depend on the Node major, so
+  # they run once. The lint script carries --max-warnings, which enforces
+  # the documented warning baseline as a ratchet.
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # The dev/build hooks run this script on every developer machine, but the
+      # matrix job below calls vite build directly and never triggers it. The
+      # dry run covers what actually breaks - the deep import of emoji-mart
+      # internals and the sheet URL it derives - without fetching 2.5MB from a
+      # CDN on every pipeline run.
+      - name: Check the emoji sheet script
+        run: node scripts/download-emoji-sheet.mjs --dry-run
+
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      # vite build directly: the quality job already owns the tsc gate that
+      # the build script would repeat, and skipping the prebuild hook keeps
+      # CI off the emoji CDN (the sheet is a picker asset, not build input).
+      - name: Build
+        run: pnpm exec vite build
+
+  # The Playwright suite runs against the production build served by
+  # `vite preview` (see playwright.config.ts), so the job builds on its own
+  # instead of shipping dist/ over from the matrix job; it is independent of
+  # the other two jobs and adds no wall-clock time to the pipeline.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only the browser the config declares; --with-deps adds the system
+      # libraries Chromium needs on the runner image.
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      # vite build directly, for the same reasons as in the matrix job.
+      - name: Build
+        run: pnpm exec vite build
+
+      - name: Run the end-to-end tests
+        run: pnpm exec playwright test
+
+      # The HTML report carries the traces and screenshots of failed tests;
+      # a green run has nothing worth keeping.
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

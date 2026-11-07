@@ -1,0 +1,14 @@
+﻿{
+    "id":  "event-ticketing-and-check-in-app",
+    "name":  "Event Ticketing \u0026 Check-in App",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/anubhavxdev/Event-management-system-main",
+    "stack":  "React Native; Supabase",
+    "goal":  "Ticket QR generation, offline scanner app and attendance report.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "Frontendd/index.html",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  175
+}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "cloud-cost-estimator",
+    "name":  "Cloud Cost Estimator",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/lorenzodarioben-lgtm/cloud-cost-calculator",
+    "stack":  "React; Node",
+    "goal":  "Usage inputs → compute/storage/egress cost model, comparison across providers, budget alerts.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "sw.js",
+    "expectedFileCount":  51,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  73
+}

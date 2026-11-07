@@ -1,0 +1,1178 @@
+<!-- Stats Hint -->
+<div class="hint mb-1" style="color: var(--text-muted); font-size: 13px;">
+    <i class="ti ti-info-circle"></i> <%= t('stats.hint') || 'Данные обновляются каждые 5 минут. Выберите период для просмотра истории.' %>
+</div>
+
+<!-- Stats Summary -->
+<div class="stats-grid stats-summary-grid">
+    <div class="stat-card stat-online-now">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-world"></i></span>
+            <span class="stat-trend" id="onlineTrend">—</span>
+        </div>
+        <div class="stat-value" id="currentOnline"><%= summary.current.online %></div>
+        <div class="stat-label"><%= t('stats.onlineNow') %></div>
+    </div>
+    
+    <div class="stat-card stat-peak">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-trending-up"></i></span>
+            <span class="stat-trend"><%= t('stats.last24h') %></span>
+        </div>
+        <div class="stat-value"><%= summary.peak24h %></div>
+        <div class="stat-label"><%= t('stats.peakOnline') %></div>
+    </div>
+    
+    <div class="stat-card stat-traffic-24h">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-chart-bar"></i></span>
+            <span class="stat-trend"><%= t('stats.last24h') %></span>
+        </div>
+        <div class="stat-value"><%= formatTraffic(summary.traffic24h.total) %></div>
+        <div class="stat-label"><i class="ti ti-arrow-up" style="color:var(--success)"></i> <%= formatTraffic(summary.traffic24h.tx) %> / <i class="ti ti-arrow-down" style="color:var(--info)"></i> <%= formatTraffic(summary.traffic24h.rx) %></div>
+    </div>
+    
+    <div class="stat-card stat-nodes">
+        <div class="stat-header">
+            <span class="stat-icon"><i class="ti ti-server"></i></span>
+            <span class="stat-trend"><%= t('stats.active') %></span>
+        </div>
+        <div class="stat-value"><%= summary.current.nodesOnline %><span class="stat-small">/<%= summary.current.nodesTotal %></span></div>
+        <div class="stat-label"><%= t('stats.nodesOnline') %></div>
+    </div>
+</div>
+
+<!-- Period Selector -->
+<div class="period-selector">
+    <button class="period-btn active" data-period="1h">1<%= t('stats.h') %></button>
+    <button class="period-btn" data-period="6h">6<%= t('stats.h') %></button>
+    <button class="period-btn" data-period="24h">24<%= t('stats.h') %></button>
+    <button class="period-btn" data-period="7d">7<%= t('stats.d') %></button>
+    <button class="period-btn" data-period="30d">30<%= t('stats.d') %></button>
+</div>
+
+<!-- Charts Grid -->
+<div class="charts-grid">
+    <!-- Online Users Chart -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2><i class="ti ti-world"></i> <%= t('stats.onlineConnections') %></h2>
+            <div class="chart-legend" id="onlineLegend"></div>
+        </div>
+        <div class="card-body chart-body">
+            <canvas id="onlineChart"></canvas>
+        </div>
+    </div>
+    
+    <!-- Traffic Chart -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2><i class="ti ti-chart-bar"></i> <%= t('stats.traffic') %></h2>
+            <div class="traffic-totals" id="trafficTotals"></div>
+        </div>
+        <div class="card-body chart-body">
+            <canvas id="trafficChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Nodes Online Chart -->
+<div class="card chart-card chart-card-wide mt-2">
+    <div class="card-header">
+        <h2><i class="ti ti-server"></i> <%= t('stats.nodesUsage') %></h2>
+        <div class="header-actions">
+            <select id="nodeSelector" class="filter-select">
+                <option value="all"><%= t('stats.allNodes') %></option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body chart-body chart-body-tall">
+        <canvas id="nodesChart"></canvas>
+    </div>
+</div>
+
+<!-- Nodes Traffic Chart -->
+<div class="card chart-card chart-card-wide mt-2">
+    <div class="card-header">
+        <h2><i class="ti ti-arrows-transfer-down"></i> <%= t('stats.nodesTraffic') %></h2>
+        <div class="header-actions">
+            <select id="nodeTrafficSelector" class="filter-select">
+                <option value="all"><%= t('stats.allNodes') %></option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body chart-body chart-body-tall">
+        <canvas id="nodesTrafficChart"></canvas>
+    </div>
+</div>
+
+<!-- Nodes Table -->
+<div class="card mt-2">
+    <div class="card-header">
+        <h2><i class="ti ti-table"></i> <%= t('stats.nodesStats') %></h2>
+    </div>
+    <div class="card-body no-padding">
+        <div class="table-wrapper">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><%= t('stats.node') %></th>
+                        <th><%= t('stats.currentOnline') %></th>
+                        <th><%= t('stats.avgOnline') %></th>
+                        <th><%= t('stats.peakOnline') %></th>
+                        <th><%= t('stats.tx') %></th>
+                        <th><%= t('stats.rx') %></th>
+                        <th><%= t('common.status') %></th>
+                    </tr>
+                </thead>
+                <tbody id="nodesTableBody">
+                    <tr><td colspan="7" class="text-center text-muted"><%= t('common.loading') %></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Server Load Section -->
+<div class="charts-grid mt-2">
+    <!-- CPU + Load Chart -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2><i class="ti ti-cpu"></i> <%= t('stats.serverCpu') %></h2>
+            <div class="chart-legend" id="hostCpuLegend"></div>
+        </div>
+        <div class="card-body chart-body">
+            <canvas id="hostCpuChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Memory + RSS Chart -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2><i class="ti ti-database"></i> <%= t('stats.serverMemory') %></h2>
+            <div class="chart-legend" id="hostMemLegend"></div>
+        </div>
+        <div class="card-body chart-body">
+            <canvas id="hostMemChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Disk usage Chart -->
+    <div class="card chart-card">
+        <div class="card-header">
+            <h2><i class="ti ti-server-2"></i> <%= t('stats.serverDisk') %></h2>
+            <div class="chart-legend" id="hostDiskLegend"></div>
+        </div>
+        <div class="card-body chart-body">
+            <canvas id="hostDiskChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Requests per minute Chart -->
+<div class="card chart-card chart-card-wide mt-2">
+    <div class="card-header">
+        <h2><i class="ti ti-activity"></i> <%= t('stats.serverRpm') %></h2>
+        <div class="chart-legend" id="hostRpmLegend"></div>
+    </div>
+    <div class="card-body chart-body">
+        <canvas id="hostRpmChart"></canvas>
+    </div>
+</div>
+
+<!-- VPN Clients Section -->
+<div class="card mt-2" id="clientsCard">
+    <div class="card-header">
+        <h2><i class="ti ti-device-mobile"></i> <%= t('stats.clientsTitle') %></h2>
+        <div class="header-actions">
+            <span class="stat-trend text-muted" id="clientsTotal"></span>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="text-muted" style="font-size:13px; margin-bottom:16px;"><%= t('stats.clientsDesc') %></p>
+        <div class="clients-layout">
+            <div class="clients-chart-wrap">
+                <canvas id="clientsChart"></canvas>
+            </div>
+            <div class="clients-table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th><%= t('stats.clientName') %></th>
+                            <th class="text-right"><%= t('stats.uniqueUsers') %></th>
+                            <th class="text-right"><%= t('stats.percentage') %></th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientsTableBody">
+                        <tr><td colspan="3" class="text-center text-muted"><%= t('common.loading') %></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<style>
+.stats-summary-grid {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.stat-small {
+    font-size: 0.5em;
+    color: var(--text-muted);
+}
+
+.period-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    background: var(--bg-secondary);
+    padding: 8px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    width: fit-content;
+}
+
+.period-btn {
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.period-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.period-btn.active {
+    background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+}
+
+.chart-card {
+    overflow: visible;
+}
+
+.chart-card-wide {
+    grid-column: 1 / -1;
+}
+
+.chart-body {
+    height: 300px;
+    position: relative;
+}
+
+.chart-body-tall {
+    height: 400px;
+}
+
+.chart-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.traffic-totals {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.traffic-totals .up {
+    color: var(--success);
+}
+
+.traffic-totals .down {
+    color: var(--info);
+}
+
+#nodesTableBody .node-name {
+    font-weight: 600;
+}
+
+#nodesTableBody .value-highlight,
+#clientsTableBody .value-highlight {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .stats-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .stats-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .period-selector {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+    
+    .period-btn {
+        flex: 1;
+        min-width: 50px;
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .chart-body {
+        height: 250px;
+    }
+    
+    .chart-body-tall {
+        height: 300px;
+    }
+    
+    .traffic-totals {
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-summary-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.clients-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+.clients-chart-wrap {
+    width: 260px;
+    height: 260px;
+    position: relative;
+}
+
+.clients-table-wrap .table th.text-right,
+.clients-table-wrap .table td.text-right {
+    text-align: right;
+}
+
+.client-color-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .clients-layout {
+        grid-template-columns: 1fr;
+    }
+    .clients-chart-wrap {
+        width: 220px;
+        height: 220px;
+        margin: 0 auto;
+    }
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+<script>
+// i18n
+const i18n = {
+    online: <%- JSON.stringify(t('stats.online')) %>,
+    nodesOnline: <%- JSON.stringify(t('stats.nodesOnline')) %>,
+    upload: <%- JSON.stringify(t('stats.upload')) %>,
+    download: <%- JSON.stringify(t('stats.download')) %>,
+    connections: <%- JSON.stringify(t('common.connections')) %>,
+    allNodes: <%- JSON.stringify(t('stats.allNodes')) %>,
+    noData: <%- JSON.stringify(t('stats.noData')) %>,
+    hourChange: <%- JSON.stringify(t('stats.hourChange')) %>,
+    clientsUniqueUsers: <%- JSON.stringify(t('stats.uniqueUsers')) %>,
+    clientsNoData: <%- JSON.stringify(t('stats.clientsNoData')) %>,
+    serverCpu: <%- JSON.stringify(t('stats.serverCpu')) %>,
+    serverLoad: <%- JSON.stringify(t('stats.serverLoad')) %>,
+    serverMemory: <%- JSON.stringify(t('stats.serverMemory')) %>,
+    serverRss: <%- JSON.stringify(t('stats.serverRss')) %>,
+    serverRpm: <%- JSON.stringify(t('stats.serverRpm')) %>,
+    serverDisk: <%- JSON.stringify(t('stats.serverDisk')) %>,
+    serverDiskFree: <%- JSON.stringify(t('stats.serverDiskFree')) %>,
+};
+
+// Last fetched nodes data -- stored so metric toggle doesn't require a refetch
+let _lastNodesData = null;
+
+// Charts instances
+let onlineChart = null;
+let trafficChart = null;
+let nodesChart = null;
+let nodesTrafficChart = null;
+let clientsChart = null;
+let hostCpuChart = null;
+let hostMemChart = null;
+let hostRpmChart = null;
+let hostDiskChart = null;
+
+// Current period
+let currentPeriod = '1h';
+
+// Chart colors
+const colors = {
+    online: { bg: 'rgba(99, 102, 241, 0.2)', border: '#6366f1' },
+    nodes: { bg: 'rgba(34, 197, 94, 0.2)', border: '#22c55e' },
+    upload: { bg: 'rgba(34, 197, 94, 0.3)', border: '#22c55e' },
+    download: { bg: 'rgba(59, 130, 246, 0.3)', border: '#3b82f6' },
+    cpu:      { bg: 'rgba(99, 102, 241, 0.15)', border: '#6366f1' },
+    load:     { bg: 'rgba(245, 158, 11, 0.0)',  border: '#f59e0b' },
+    memHost:  { bg: 'rgba(139, 92, 246, 0.15)', border: '#8b5cf6' },
+    memRss:   { bg: 'rgba(20, 184, 166, 0.0)',  border: '#14b8a6' },
+    rpm:      { bg: 'rgba(34, 197, 94, 0.2)',   border: '#22c55e' },
+    disk:     { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b' },
+    diskFree: { bg: 'rgba(6, 182, 212, 0.0)',   border: '#06b6d4' },
+    nodeColors: [
+        '#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6',
+        '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
+    ]
+};
+
+// Chart defaults
+Chart.defaults.color = '#a1a1aa';
+Chart.defaults.borderColor = '#27272a';
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    initCharts();
+    loadData(currentPeriod);
+    
+    // Period selector
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentPeriod = btn.dataset.period;
+            loadData(currentPeriod);
+        });
+    });
+    
+    // Auto-refresh every minute
+    setInterval(() => loadData(currentPeriod), 60000);
+});
+
+function initCharts() {
+    // Online Chart
+    const onlineCtx = document.getElementById('onlineChart').getContext('2d');
+    onlineChart = new Chart(onlineCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: i18n.online,
+                data: [],
+                borderColor: colors.online.border,
+                backgroundColor: colors.online.bg,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+            }]
+        },
+        options: getChartOptions('online')
+    });
+    
+    // Traffic Chart
+    const trafficCtx = document.getElementById('trafficChart').getContext('2d');
+    trafficChart = new Chart(trafficCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: i18n.upload,
+                    data: [],
+                    backgroundColor: colors.upload.bg,
+                    borderColor: colors.upload.border,
+                    borderWidth: 1,
+                    borderRadius: 4,
+                },
+                {
+                    label: i18n.download,
+                    data: [],
+                    backgroundColor: colors.download.bg,
+                    borderColor: colors.download.border,
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }
+            ]
+        },
+        options: getChartOptions('traffic')
+    });
+    
+    // Nodes Online Chart
+    const nodesCtx = document.getElementById('nodesChart').getContext('2d');
+    nodesChart = new Chart(nodesCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: []
+        },
+        options: getChartOptions('nodes')
+    });
+
+    // Nodes Traffic Chart
+    const nodesTrafficCtx = document.getElementById('nodesTrafficChart').getContext('2d');
+    nodesTrafficChart = new Chart(nodesTrafficCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: []
+        },
+        options: getChartOptions('nodesTraffic')
+    });
+
+    // Host CPU + Load1 (dual axis)
+    const hostCpuCtx = document.getElementById('hostCpuChart').getContext('2d');
+    hostCpuChart = new Chart(hostCpuCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: i18n.serverCpu,
+                    data: [],
+                    borderColor: colors.cpu.border,
+                    backgroundColor: colors.cpu.bg,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    yAxisID: 'y',
+                },
+                {
+                    label: i18n.serverLoad,
+                    data: [],
+                    borderColor: colors.load.border,
+                    backgroundColor: 'transparent',
+                    borderDash: [4, 4],
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    yAxisID: 'y1',
+                },
+            ],
+        },
+        options: getHostChartOptions('cpu'),
+    });
+
+    // Host Memory + RSS (dual axis)
+    const hostMemCtx = document.getElementById('hostMemChart').getContext('2d');
+    hostMemChart = new Chart(hostMemCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: i18n.serverMemory,
+                    data: [],
+                    borderColor: colors.memHost.border,
+                    backgroundColor: colors.memHost.bg,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    yAxisID: 'y',
+                },
+                {
+                    label: i18n.serverRss,
+                    data: [],
+                    borderColor: colors.memRss.border,
+                    backgroundColor: 'transparent',
+                    borderDash: [4, 4],
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    yAxisID: 'y1',
+                },
+            ],
+        },
+        options: getHostChartOptions('mem'),
+    });
+
+    // Host RPM
+    const hostRpmCtx = document.getElementById('hostRpmChart').getContext('2d');
+    hostRpmChart = new Chart(hostRpmCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: i18n.serverRpm,
+                data: [],
+                borderColor: colors.rpm.border,
+                backgroundColor: colors.rpm.bg,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+            }],
+        },
+        options: getChartOptions('online'),
+    });
+
+    // Host Disk
+    const hostDiskCtx = document.getElementById('hostDiskChart').getContext('2d');
+    hostDiskChart = new Chart(hostDiskCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: i18n.serverDisk,
+                    data: [],
+                    borderColor: colors.disk.border,
+                    backgroundColor: colors.disk.bg,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    yAxisID: 'y',
+                },
+                {
+                    label: i18n.serverDiskFree,
+                    data: [],
+                    borderColor: colors.diskFree.border,
+                    backgroundColor: colors.diskFree.bg,
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    yAxisID: 'y1',
+                },
+            ],
+        },
+        options: getHostChartOptions('mem'),
+    });
+
+    // VPN Clients Donut Chart
+    const clientsCtx = document.getElementById('clientsChart').getContext('2d');
+    clientsChart = new Chart(clientsCtx, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1f1f23',
+                    titleColor: '#fafafa',
+                    bodyColor: '#a1a1aa',
+                    borderColor: '#27272a',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: ctx => ` ${ctx.parsed} ${i18n.clientsUniqueUsers}`,
+                    }
+                }
+            },
+            cutout: '65%',
+        }
+    });
+}
+
+function getChartOptions(type) {
+    const baseOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
+        plugins: {
+            legend: {
+                display: type === 'nodes' || type === 'nodesTraffic',
+                position: 'top',
+                labels: {
+                    usePointStyle: true,
+                    padding: 20,
+                }
+            },
+            tooltip: {
+                backgroundColor: '#1f1f23',
+                titleColor: '#fafafa',
+                bodyColor: '#a1a1aa',
+                borderColor: '#27272a',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 8,
+                displayColors: true,
+                callbacks: {}
+            }
+        },
+        scales: {
+            x: {
+                type: 'time',
+                time: {
+                    displayFormats: {
+                        minute: 'HH:mm',
+                        hour: 'HH:mm',
+                        day: 'dd MMM'
+                    }
+                },
+                grid: {
+                    display: false,
+                },
+                ticks: {
+                    maxTicksLimit: 10,
+                }
+            },
+            y: {
+                beginAtZero: true,
+                grid: {
+                    color: '#27272a',
+                },
+            }
+        }
+    };
+    
+    if (type === 'traffic') {
+        baseOptions.plugins.tooltip.callbacks.label = function(context) {
+            const value = context.raw;
+            return context.dataset.label + ': ' + formatBytes(value);
+        };
+        baseOptions.scales.y.ticks = {
+            callback: function(value) {
+                return formatBytes(value);
+            }
+        };
+    }
+    
+    return baseOptions;
+}
+
+function getHostChartOptions(type) {
+    const opts = getChartOptions('online');
+    opts.plugins.legend.display = true;
+
+    opts.scales.y = {
+        beginAtZero: true,
+        position: 'left',
+        grid: { color: '#27272a' },
+        ticks: { callback: v => v + '%' },
+        min: 0, max: 100,
+    };
+    opts.scales.y1 = {
+        beginAtZero: true,
+        position: 'right',
+        grid: { drawOnChartArea: false },
+    };
+
+    if (type === 'cpu') {
+        opts.plugins.tooltip.callbacks.label = ctx => {
+            if (ctx.dataset.yAxisID === 'y1') return `${ctx.dataset.label}: ${ctx.raw.toFixed(2)}`;
+            return `${ctx.dataset.label}: ${ctx.raw}%`;
+        };
+    } else if (type === 'mem') {
+        opts.scales.y1.ticks = { callback: v => formatBytes(v) };
+        opts.plugins.tooltip.callbacks.label = ctx => {
+            if (ctx.dataset.yAxisID === 'y1') return `${ctx.dataset.label}: ${formatBytes(ctx.raw)}`;
+            return `${ctx.dataset.label}: ${ctx.raw}%`;
+        };
+    }
+
+    return opts;
+}
+
+// Maps period selector value to days count for the clients API
+function periodToDays(period) {
+    if (period === '7d') return 7;
+    if (period === '30d') return 30;
+    return 1; // 1h, 6h, 24h all map to today only
+}
+
+async function loadData(period) {
+    try {
+        const days = periodToDays(period);
+        const [onlineData, trafficData, nodesData, clientsData, hostData] = await Promise.all([
+            fetch(`/panel/stats/api/online?period=${period}`, { credentials: 'include' }).then(r => r.json()),
+            fetch(`/panel/stats/api/traffic?period=${period}`, { credentials: 'include' }).then(r => r.json()),
+            fetch(`/panel/stats/api/nodes?period=${period}`, { credentials: 'include' }).then(r => r.json()),
+            fetch(`/panel/stats/api/clients?days=${days}`, { credentials: 'include' }).then(r => r.json()),
+            fetch(`/panel/stats/api/host?period=${period}`, { credentials: 'include' }).then(r => r.json()),
+        ]);
+        
+        // Cache nodes response so metric toggle re-renders without a refetch
+        _lastNodesData = nodesData;
+
+        updateOnlineChart(onlineData);
+        updateTrafficChart(trafficData);
+        updateNodesChart(nodesData);
+        updateNodesTable(nodesData);
+        updateClientsSection(clientsData);
+        updateHostCharts(hostData);
+        updateTrend();
+        
+    } catch (error) {
+        console.error('Failed to load stats:', error);
+        showToast('Error loading stats', 'error');
+    }
+}
+
+function updateHostCharts(data) {
+    if (!data || !data.labels || data.labels.length === 0) return;
+
+    const labels = data.labels.map(l => new Date(l));
+    const ds = data.datasets || {};
+
+    // CPU + Load
+    hostCpuChart.data.labels = labels;
+    hostCpuChart.data.datasets[0].data = ds.cpuPct || [];
+    hostCpuChart.data.datasets[1].data = ds.load1 || [];
+    hostCpuChart.update('none');
+
+    const lastCpu  = (ds.cpuPct || []).slice(-1)[0] ?? 0;
+    const maxCpu   = ds.cpuPct && ds.cpuPct.length ? Math.max(...ds.cpuPct) : 0;
+    const lastLoad = (ds.load1 || []).slice(-1)[0] ?? 0;
+    document.getElementById('hostCpuLegend').innerHTML = `
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.cpu.border}"></span>
+            ${i18n.serverCpu}: ${lastCpu}%
+        </span>
+        <span class="legend-item" style="color: var(--text-muted)">Max: ${maxCpu}%</span>
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.load.border}"></span>
+            ${i18n.serverLoad}: ${Number(lastLoad).toFixed(2)}
+        </span>
+    `;
+
+    // Memory + RSS
+    hostMemChart.data.labels = labels;
+    hostMemChart.data.datasets[0].data = ds.memPct || [];
+    hostMemChart.data.datasets[1].data = ds.rss || [];
+    hostMemChart.update('none');
+
+    const lastMem  = (ds.memPct || []).slice(-1)[0] ?? 0;
+    const lastRss  = (ds.rss    || []).slice(-1)[0] ?? 0;
+    document.getElementById('hostMemLegend').innerHTML = `
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.memHost.border}"></span>
+            ${i18n.serverMemory}: ${lastMem}%
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.memRss.border}"></span>
+            ${i18n.serverRss}: ${formatBytes(lastRss)}
+        </span>
+    `;
+
+    // RPM
+    hostRpmChart.data.labels = labels;
+    hostRpmChart.data.datasets[0].data = ds.rpm || [];
+    hostRpmChart.update('none');
+
+    const lastRpm = (ds.rpm || []).slice(-1)[0] ?? 0;
+    const maxRpm  = ds.rpm && ds.rpm.length ? Math.max(...ds.rpm) : 0;
+    document.getElementById('hostRpmLegend').innerHTML = `
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.rpm.border}"></span>
+            ${i18n.serverRpm}: ${lastRpm}
+        </span>
+        <span class="legend-item" style="color: var(--text-muted)">Max: ${maxRpm}</span>
+    `;
+
+    // Disk usage + free
+    hostDiskChart.data.labels = labels;
+    hostDiskChart.data.datasets[0].data = ds.diskPct || [];
+    hostDiskChart.data.datasets[1].data = ds.diskFree || [];
+    hostDiskChart.update('none');
+
+    const lastDiskPct  = (ds.diskPct  || []).slice(-1)[0] ?? 0;
+    const lastDiskFree = (ds.diskFree || []).slice(-1)[0] ?? 0;
+    document.getElementById('hostDiskLegend').innerHTML = `
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.disk.border}"></span>
+            ${i18n.serverDisk}: ${lastDiskPct}%
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.diskFree.border}"></span>
+            ${i18n.serverDiskFree}: ${formatBytes(lastDiskFree)}
+        </span>
+    `;
+}
+
+function updateOnlineChart(data) {
+    if (!data.labels || data.labels.length === 0) {
+        return;
+    }
+    
+    onlineChart.data.labels = data.labels.map(l => new Date(l));
+    onlineChart.data.datasets[0].data = data.datasets.online;
+    onlineChart.update('none');
+    
+    // Update legend
+    const latest = data.datasets.online[data.datasets.online.length - 1] || 0;
+    const max = Math.max(...data.datasets.online);
+    document.getElementById('onlineLegend').innerHTML = `
+        <span class="legend-item">
+            <span class="legend-dot" style="background: ${colors.online.border}"></span>
+            ${i18n.online}: ${latest}
+        </span>
+        <span class="legend-item" style="color: var(--text-muted)">
+            Max: ${max}
+        </span>
+    `;
+}
+
+function updateTrafficChart(data) {
+    if (!data.labels || data.labels.length === 0) {
+        return;
+    }
+    
+    trafficChart.data.labels = data.labels.map(l => new Date(l));
+    trafficChart.data.datasets[0].data = data.datasets.tx;
+    trafficChart.data.datasets[1].data = data.datasets.rx;
+    trafficChart.update('none');
+    
+    // Update totals
+    document.getElementById('trafficTotals').innerHTML = `
+        <span class="up"><i class="ti ti-arrow-up"></i> ${formatBytes(data.totals.tx)}</span>
+        <span class="down"><i class="ti ti-arrow-down"></i> ${formatBytes(data.totals.rx)}</span>
+    `;
+}
+
+function updateNodesChart(data) {
+    if (!data.labels || data.labels.length === 0 || !data.nodes) {
+        return;
+    }
+
+    const labels = data.labels.map(l => new Date(l));
+
+    // Online chart
+    nodesChart.data.labels = labels;
+    nodesChart.data.datasets = data.nodes.map((node, i) => ({
+        label: node.name,
+        data: node.data.map(d => d.online),
+        borderColor: colors.nodeColors[i % colors.nodeColors.length],
+        backgroundColor: 'transparent',
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+    }));
+    nodesChart.update('none');
+
+    // Traffic chart
+    nodesTrafficChart.data.labels = labels;
+    nodesTrafficChart.data.datasets = data.nodes.map((node, i) => ({
+        label: node.name,
+        data: node.data.map(d => (d.tx || 0) + (d.rx || 0)),
+        borderColor: colors.nodeColors[i % colors.nodeColors.length],
+        backgroundColor: 'transparent',
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+    }));
+    nodesTrafficChart.options.scales.y.ticks = { callback: v => formatBytes(v) };
+    nodesTrafficChart.options.plugins.tooltip.callbacks.label = ctx => `${ctx.dataset.label}: ${formatBytes(ctx.raw)}`;
+    nodesTrafficChart.update('none');
+
+    // Populate both selectors
+    [document.getElementById('nodeSelector'), document.getElementById('nodeTrafficSelector')].forEach(sel => {
+        if (!sel) return;
+        sel.innerHTML = `<option value="all">${i18n.allNodes}</option>`;
+        data.nodes.forEach((node, i) => {
+            sel.innerHTML += `<option value="${i}">${node.name}</option>`;
+        });
+    });
+}
+
+function updateNodesTable(data) {
+    const tbody = document.getElementById('nodesTableBody');
+    
+    if (!data.nodes || data.nodes.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${i18n.noData}</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = data.nodes.map(node => {
+        const onlineValues = node.data.map(d => d.online);
+        const current = onlineValues[onlineValues.length - 1] || 0;
+        const avg = Math.round(onlineValues.reduce((a, b) => a + b, 0) / onlineValues.length);
+        const peak = Math.max(...onlineValues);
+        const lastStatus = node.data[node.data.length - 1]?.status || 'offline';
+        // Totals come from pre-aggregated fields; fall back to summing data array for old snapshots
+        const totalTx = node.totalTx != null ? node.totalTx : node.data.reduce((s, d) => s + (d.tx || 0), 0);
+        const totalRx = node.totalRx != null ? node.totalRx : node.data.reduce((s, d) => s + (d.rx || 0), 0);
+        
+        return `
+            <tr>
+                <td class="node-name">${node.name}</td>
+                <td class="value-highlight">${current}</td>
+                <td>${avg}</td>
+                <td>${peak}</td>
+                <td style="color:var(--success)">${formatBytes(totalTx)}</td>
+                <td style="color:var(--accent)">${formatBytes(totalRx)}</td>
+                <td>
+                    <span class="status-indicator status-${lastStatus}">
+                        <span class="status-dot"></span>
+                        ${lastStatus}
+                    </span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function updateClientsSection(data) {
+    const tbody = document.getElementById('clientsTableBody');
+    const totalEl = document.getElementById('clientsTotal');
+
+    if (!data || !data.totals || data.total === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">${i18n.clientsNoData}</td></tr>`;
+        if (totalEl) totalEl.textContent = '';
+        if (clientsChart) {
+            clientsChart.data.labels = [];
+            clientsChart.data.datasets[0].data = [];
+            clientsChart.data.datasets[0].backgroundColor = [];
+            clientsChart.update('none');
+        }
+        return;
+    }
+
+    // Sort clients by count descending, skip zeros
+    const entries = Object.entries(data.totals)
+        .filter(([, v]) => v > 0)
+        .sort((a, b) => b[1] - a[1]);
+
+    const chartColors = colors.nodeColors;
+
+    // Update donut chart
+    if (clientsChart) {
+        clientsChart.data.labels = entries.map(([name]) => name);
+        clientsChart.data.datasets[0].data = entries.map(([, v]) => v);
+        clientsChart.data.datasets[0].backgroundColor = entries.map((_, i) => chartColors[i % chartColors.length]);
+        clientsChart.update('none');
+    }
+
+    // Update total label
+    if (totalEl) totalEl.textContent = `${data.total} ${i18n.clientsUniqueUsers}`;
+
+    // Update table
+    tbody.innerHTML = entries.map(([name, count], i) => {
+        const pct = data.total > 0 ? ((count / data.total) * 100).toFixed(1) : '0.0';
+        const color = chartColors[i % chartColors.length];
+        return `
+            <tr>
+                <td><span class="client-color-dot" style="background:${color}"></span>${name}</td>
+                <td class="text-right value-highlight">${count}</td>
+                <td class="text-right text-muted">${pct}%</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function updateTrend() {
+    try {
+        const res = await fetch('/panel/stats/api/summary', { credentials: 'include' });
+        const data = await res.json();
+        
+        const trend = data.trends?.hourly || 0;
+        const trendEl = document.getElementById('onlineTrend');
+        
+        if (trend > 0) {
+            trendEl.innerHTML = `<span style="color: var(--success)"><i class="ti ti-trending-up"></i> ${trend}%</span>`;
+        } else if (trend < 0) {
+            trendEl.innerHTML = `<span style="color: var(--danger)"><i class="ti ti-trending-down"></i> ${Math.abs(trend)}%</span>`;
+        } else {
+            trendEl.textContent = '—';
+        }
+        
+        document.getElementById('currentOnline').textContent = data.current?.online || 0;
+        
+    } catch (e) {
+        console.error('Failed to update trend:', e);
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function filterChart(chart, allDatasets, selectedIdx) {
+    if (selectedIdx === 'all') {
+        chart.data.datasets = allDatasets;
+    } else {
+        const i = parseInt(selectedIdx);
+        chart.data.datasets = allDatasets[i] ? [allDatasets[i]] : [];
+    }
+    chart.update('none');
+}
+
+document.getElementById('nodeSelector')?.addEventListener('change', function() {
+    if (!_lastNodesData) return;
+    const all = _lastNodesData.nodes.map((node, i) => ({
+        label: node.name,
+        data: node.data.map(d => d.online),
+        borderColor: colors.nodeColors[i % colors.nodeColors.length],
+        backgroundColor: 'transparent',
+        tension: 0.4, pointRadius: 0, pointHoverRadius: 4,
+    }));
+    filterChart(nodesChart, all, this.value);
+});
+
+document.getElementById('nodeTrafficSelector')?.addEventListener('change', function() {
+    if (!_lastNodesData) return;
+    const all = _lastNodesData.nodes.map((node, i) => ({
+        label: node.name,
+        data: node.data.map(d => (d.tx || 0) + (d.rx || 0)),
+        borderColor: colors.nodeColors[i % colors.nodeColors.length],
+        backgroundColor: 'transparent',
+        tension: 0.4, pointRadius: 0, pointHoverRadius: 4,
+    }));
+    filterChart(nodesTrafficChart, all, this.value);
+});
+
+</script>
+

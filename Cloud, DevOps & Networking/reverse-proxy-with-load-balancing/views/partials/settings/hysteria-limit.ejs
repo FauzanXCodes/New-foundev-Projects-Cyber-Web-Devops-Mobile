@@ -1,0 +1,26 @@
+<%# ==================== SECTION: HYSTERIA IP DEVICE LIMIT ==================== %>
+<div class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h2><i class="ti ti-router"></i> <%= t('settings.hyLimitTitle') %></h2>
+        <p class="hint" style="margin: 0"><%= t('settings.hyLimitDesc') %></p>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="/panel/settings" id="hyLimitForm">
+            <input type="hidden" name="_hyLimitSettings" value="1">
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="deviceGracePeriod"><%= t('settings.gracePeriod') %></label>
+                <input type="number" name="deviceGracePeriod" id="deviceGracePeriod"
+                       value="<%= settings?.deviceGracePeriod ?? 15 %>" min="1" max="60"
+                       style="max-width: 160px;">
+                <small class="hint"><%= t('settings.gracePeriodHint') %></small>
+            </div>
+
+            <div class="settings-save-bar">
+                <button type="submit" class="btn btn-primary">
+                    <i class="ti ti-device-floppy"></i> <%= t('common.save') %>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

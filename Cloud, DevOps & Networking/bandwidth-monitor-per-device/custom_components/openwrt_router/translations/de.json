@@ -1,0 +1,201 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "title": "Router-Optionen",
+        "data": {
+          "topology_port_debug": "Port-Zuordnungs-Debugdaten im Topology-Snapshot"
+        },
+        "data_description": {
+          "topology_port_debug": "Rohe Port-Zuordnungsdaten (FDB/DHCP/ARP-Treffer und Zuordnungsgründe) im Topology-Snapshot-Endpoint mitliefern. HA-Diagnostics bleiben immer redacted."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit OpenWrt-Router verbinden",
+        "description": "Gib die Verbindungsdaten deines OpenWrt-Routers ein. Auf dem Router müssen rpcd und uhttpd laufen.",
+        "data": {
+          "host": "Host / IP-Adresse",
+          "port": "Port",
+          "protocol": "Protokoll",
+          "username": "Benutzername",
+          "password": "Passwort"
+        },
+        "data_description": {
+          "host": "Hostname oder IP-Adresse des Routers (z. B. 192.168.1.1)",
+          "port": "Port — 443 für HTTPS, 80 für HTTP",
+          "protocol": "Verbindungsprotokoll (HTTPS Self-Signed wird für die meisten OpenWrt-Router empfohlen)",
+          "username": "rpcd-Benutzername, üblicherweise 'root'",
+          "password": "Router-Passwort"
+        }
+      },
+      "checklist": {
+        "title": "Router-Konfiguration prüfen — {host}",
+        "description": "**Modell:** {model}\n\n**ubus-Berechtigungen:**\n\n{checklist}\n\n---\n\n{status}\n\nKlicke **Weiter** um fortzufahren (auch bei fehlenden Berechtigungen möglich).",
+        "data": {
+          "deploy_acl": "Berechtigungen automatisch einrichten (ACL via ubus deployen + rpcd neu starten)"
+        },
+        "data_description": {
+          "deploy_acl": "Schreibt die rpcd-ACL-Datei via ubus auf den Router und startet rpcd neu. Blockiert der Router den ubus-Dateizugriff, wird ein SSH-Fallback mit denselben Zugangsdaten versucht. Danach werden die Berechtigungen erneut geprüft."
+        }
+      },
+      "reauth_rpcd_setup": {
+        "title": "rpcd antwortet nicht auf {host}",
+        "description": "Der Router **{host}** blockiert die Anmeldung — rpcd ist möglicherweise nicht konfiguriert.\n\nPer SSH auf dem Router ausführen:\n\n`opkg update && opkg install rpcd rpcd-mod-rpcsys && uci set rpcd.@rpcd[0].socket='/var/run/ubus/ubus.sock' && uci set rpcd.@rpcd[0].timeout=30 && uci commit rpcd && service rpcd restart`\n\nDanach auf **Senden** klicken, um es erneut zu versuchen."
+      },
+      "reauth_cannot_connect": {
+        "title": "Router nicht erreichbar: {host}",
+        "description": "**{host}** ist nicht erreichbar. Stelle sicher, dass der Router eingeschaltet und im Netzwerk erreichbar ist.\n\nKlicke **Senden**, um es erneut zu versuchen."
+      },
+      "reauth_confirm": {
+        "title": "Neu am OpenWrt-Router anmelden",
+        "description": "Die Zugangsdaten für **{host}** (Benutzer: {username}) sind nicht mehr gültig. Bitte gib das neue Passwort ein.",
+        "data": {
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Router nicht möglich. Prüfe Host, Port und Protokoll und stelle sicher, dass der Router erreichbar ist.",
+      "invalid_auth": "Authentifizierung fehlgeschlagen. Prüfe Benutzername und Passwort.",
+      "invalid_host": "Ungültige Host-Adresse. Verwende eine gültige IP-Adresse oder einen gültigen Hostnamen.",
+      "timeout": "Zeitüberschreitung bei der Verbindung. Der Router ist möglicherweise nicht erreichbar oder überlastet.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten. Details stehen im Home-Assistant-Log.",
+      "rpcd_setup_required": "rpcd ist auf diesem Router nicht konfiguriert. Per SSH auf dem Router ausführen: opkg update && opkg install rpcd rpcd-mod-rpcsys && uci set rpcd.@rpcd[0].socket='/var/run/ubus/ubus.sock' && uci set rpcd.@rpcd[0].timeout=30 && uci commit rpcd && service rpcd restart",
+      "acl_deploy_failed": "Automatisches ACL-Deployment fehlgeschlagen — der Router hat ubus file/write abgelehnt und auch der SSH-Fallback war nicht erfolgreich. Bitte die ACL manuell mit den oben gezeigten SSH-Befehlen einspielen und erneut prüfen.",
+      "acl_deploy_no_change": "Die ACL-Datei wurde geschrieben, aber die Berechtigungen haben sich nach erneuter Prüfung nicht geändert. Möglicherweise ist rpcd noch nicht fertig neu gestartet oder es fehlen Pakete — siehe Installationsbefehle oben, dann erneut versuchen.",
+      "acl_already_current": "Die ACL-Datei auf dem Router ist bereits aktuell — die fehlenden Berechtigungen haben eine andere Ursache (fehlende Pakete oder ausstehender rpcd-Neustart). Siehe Installationsbefehle oben."
+    },
+    "abort": {
+      "already_configured": "Dieser Router ist bereits konfiguriert.",
+      "reauth_successful": "Die Neuanmeldung war erfolgreich."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Verbindungsstatus"
+      },
+      "wan_connectivity": {
+        "name": "WAN-Verbindung"
+      }
+    },
+    "sensor": {
+      "router_status": {
+        "name": "Router-Status",
+        "state": {
+          "online": "Online",
+          "offline": "Offline",
+          "auth_error": "Authentifizierungsfehler",
+          "timeout": "Zeitüberschreitung",
+          "response_error": "Ungültige Antwort"
+        }
+      },
+      "uptime": {
+        "name": "Laufzeit"
+      },
+      "wan_status": {
+        "name": "WAN-Status"
+      },
+      "client_count": {
+        "name": "Verbundene Clients"
+      },
+      "cpu_load": {
+        "name": "CPU-Last"
+      },
+      "memory_usage": {
+        "name": "Speicherauslastung"
+      },
+      "memory_total": {
+        "name": "Speicher gesamt"
+      },
+      "memory_used": {
+        "name": "Speicher belegt"
+      },
+      "memory_free": {
+        "name": "Speicher frei"
+      },
+      "wan_ip": {
+        "name": "WAN-IP-Adresse"
+      },
+      "wan_rx": {
+        "name": "WAN-Download"
+      },
+      "wan_tx": {
+        "name": "WAN-Upload"
+      },
+      "firmware": {
+        "name": "Firmware-Version"
+      },
+      "update_status": {
+        "name": "Update-Status"
+      },
+      "platform_architecture": {
+        "name": "Plattform-Architektur"
+      },
+      "cpu_load_5min": {
+        "name": "CPU-Last (5 Minuten)"
+      },
+      "cpu_load_15min": {
+        "name": "CPU-Last (15 Minuten)"
+      },
+      "memory_cached": {
+        "name": "Speicher gecacht"
+      },
+      "memory_shared": {
+        "name": "Speicher geteilt"
+      },
+      "memory_buffered": {
+        "name": "Speicher gepuffert"
+      },
+      "disk_total": {
+        "name": "Speicherplatz gesamt"
+      },
+      "disk_used": {
+        "name": "Speicherplatz belegt"
+      },
+      "disk_free": {
+        "name": "Speicherplatz frei"
+      },
+      "disk_usage": {
+        "name": "Speicherplatz-Auslastung"
+      },
+      "tmpfs_total": {
+        "name": "Temporärer Speicher gesamt"
+      },
+      "tmpfs_used": {
+        "name": "Temporärer Speicher belegt"
+      },
+      "tmpfs_free": {
+        "name": "Temporärer Speicher frei"
+      },
+      "tmpfs_usage": {
+        "name": "Auslastung temporärer Speicher"
+      },
+      "active_connections": {
+        "name": "Aktive Netzwerkverbindungen"
+      },
+      "network_topology": {
+        "name": "Netzwerk-Topologie"
+      }
+    },
+    "switch": {},
+    "button": {
+      "reload_wifi": {
+        "name": "WLAN neu laden"
+      },
+      "check_updates": {
+        "name": "Nach Updates suchen"
+      },
+      "perform_updates": {
+        "name": "Updates installieren"
+      },
+      "reboot": {
+        "name": "Router neu starten"
+      }
+    }
+  }
+}

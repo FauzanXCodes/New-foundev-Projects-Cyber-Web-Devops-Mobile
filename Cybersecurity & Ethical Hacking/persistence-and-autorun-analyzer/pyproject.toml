@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iocx-registry-keys"
+version = "1.1.0"
+description = "High-performance iocx plugin for detecting Windows Registry keys, values, and persistence locations."
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "MalX Labs" }
+]
+
+dependencies = [
+    "iocx>=0.4.0"
+]
+
+keywords = [
+    "iocx",
+    "iocx-plugin",
+    "registry",
+    "windows-registry",
+    "registry-keys",
+    "registry-values",
+    "registry-persistence",
+    "autorun",
+    "persistence",
+    "malware-analysis",
+    "dfir",
+    "ioc-extraction",
+    "security",
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://iocx.dev"
+Repository = "https://github.com/iocx-dev/iocx-registry-keys"
+
+[project.entry-points."iocx.plugins"]
+registry-keys = "iocx_registry_keys.plugin:Plugin"
+registry-keys-scoring = "iocx_registry_keys.enricher:Plugin"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

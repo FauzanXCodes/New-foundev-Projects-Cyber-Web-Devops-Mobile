@@ -1,0 +1,17 @@
+{
+  "name": "Cloud Cost Calculator",
+  "short_name": "Cloud Costs",
+  "description": "A dependency-free FinOps planning workbench using curated sample AWS pricing.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b1119",
+  "theme_color": "#0b1119",
+  "icons": [
+    {
+      "src": "icons/cloud-cost-calculator.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

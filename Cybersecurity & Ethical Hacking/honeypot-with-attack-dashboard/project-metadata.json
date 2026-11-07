@@ -1,0 +1,14 @@
+﻿{
+    "id":  "honeypot-with-attack-dashboard",
+    "name":  "Honeypot with Attack Dashboard",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/mu7un3/Honeypot",
+    "stack":  "Python; Flask; SQLite",
+    "goal":  "Fake SSH/HTTP service, log credentials/requests, live map of attacker IPs.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "honeypot-analytics/eslint.config.mjs",
+    "expectedFileCount":  22,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  56
+}

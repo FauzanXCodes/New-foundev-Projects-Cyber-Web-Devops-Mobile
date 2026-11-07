@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2
+
+    - name: Set up Python
+      uses: actions/setup-python@d09bd5e6005b175076f227b13d9730d56e9dcfcb
+      with:
+        python-version: "3.12"
+
+    - name: Install package
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+
+    - name: Install dev tools
+      run: |
+        pip install pytest coverage pip-audit bandit
+
+    - name: Run tests
+      run: pytest -q
+
+    - name: Security scan (pip-audit)
+      run: pip-audit --skip-editable || true
+
+    - name: Security scan (Bandit)
+      run: bandit -r iocx -lll

@@ -1,0 +1,589 @@
+<% if (message) { %>
+<div class="alert alert-success"><%= message %></div>
+<% } %>
+<% if (error) { %>
+<div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<style>
+/* Page-local tweaks: tab-content visibility only.
+ * All component styles live in style.css under "Glass surfaces, settings page".
+ */
+.tab-content { display: none; }
+.tab-content.active {
+    display: block;
+    animation: fadeUp 0.28s ease-out both;
+}
+</style>
+
+<div class="settings-page">
+    <%
+        const settingsTabs = [
+            { id: 'system',       icon: 'ti-settings',        label: t('settings.tabSystem')       || 'Система',       desc: t('settings.tabSystemDesc')       || 'Производительность, кэш, лимиты и SSH-пул.' },
+            { id: 'subscription', icon: 'ti-link',            label: t('settings.tabSubscription') || 'Подписка',      desc: t('settings.tabSubscriptionDesc') || 'Внешний вид, кнопки и поведение клиентских приложений.' },
+            { id: 'security',     icon: 'ti-shield-lock',     label: t('settings.tabSecurity')     || 'Безопасность',  desc: t('settings.tabSecurityDesc')     || 'Администратор, 2FA, API-ключи, MCP и вебхуки.' },
+            { id: 'backup',       icon: 'ti-database-export', label: t('settings.tabBackup')       || 'Бэкапы',        desc: t('settings.tabBackupDesc')       || 'Локальные и S3 бэкапы, расписание, восстановление.' },
+            { id: 'accessLogs',   icon: 'ti-list-search',     label: t('settings.tabAccessLogs')   || 'Access-логи',   desc: t('settings.tabAccessLogsDesc')   || 'Сбор и аналитика access-логов Xray. Выключено по умолчанию.' },
+            { id: 'probes',       icon: 'ti-radar',           label: t('settings.tabProbes')       || 'Проберы',       desc: t('settings.tabProbesDesc')       || 'Внешние диагностические агенты: реальные подключения к нодам со стороны.' },
+            { id: 'maintenance',  icon: 'ti-tool',            label: t('settings.tabMaintenance')  || 'Обслуживание',  desc: t('settings.tabMaintenanceDesc')  || 'Обслуживание, кэш, сброс счётчиков и опасные операции.' },
+            { id: 'migration',    icon: 'ti-transfer-in',     label: t('settings.tabMigration')    || 'Миграция',      desc: t('settings.tabMigrationDesc')    || 'Бесшовный импорт из Marzban — старые ссылки продолжают работать.' },
+        ];
+    %>
+
+    <div class="settings-tabbar">
+        <div class="settings-tabs" role="tablist">
+            <% settingsTabs.forEach((tab, idx) => { %>
+            <button class="settings-tab <%= idx === 0 ? 'active' : '' %>"
+                    data-tab="<%= tab.id %>"
+                    data-desc="<%= tab.desc %>"
+                    data-label="<%= tab.label %>"
+                    data-icon="<%= tab.icon %>"
+                    role="tab"
+                    aria-selected="<%= idx === 0 ? 'true' : 'false' %>">
+                <i class="ti <%= tab.icon %>"></i>
+                <span><%= tab.label %></span>
+            </button>
+            <% }) %>
+        </div>
+    </div>
+
+    <div class="settings-tab-caption" id="settingsTabCaption">
+        <div class="stc-icon"><i class="ti <%= settingsTabs[0].icon %>" id="stcIcon"></i></div>
+        <div class="stc-text">
+            <h2 class="stc-title" id="stcTitle"><%= settingsTabs[0].label %></h2>
+            <p class="stc-desc" id="stcDesc"><%= settingsTabs[0].desc %></p>
+        </div>
+        <span class="stc-version" title="Celerity v<%= appVersion %>">
+            <i class="ti ti-rocket"></i> v<%= appVersion %>
+        </span>
+    </div>
+
+    <%- include('partials/settings/system') %>
+
+    <%- include('partials/settings/subscription') %>
+
+    <%- include('partials/settings/security') %>
+
+    <%- include('partials/settings/backup') %>
+
+    <%- include('partials/settings/access-logs') %>
+
+    <%- include('partials/settings/probes') %>
+
+    <%- include('partials/settings/maintenance') %>
+
+    <%- include('partials/settings/migration') %>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script defer src="/js/backup-actions.js"></script>
+<script>
+const i18n = {
+    resetConfirm: <%- JSON.stringify(t("settings.resetConfirm")) %>,
+    resetConfirmFinal: <%- JSON.stringify(t("settings.resetConfirmFinal")) %>,
+    resetting: <%- JSON.stringify(t("settings.resetting")) %>,
+    resetAllTraffic: <%- JSON.stringify(t("settings.resetAllTraffic")) %>,
+    trafficReset: <%- JSON.stringify(t("settings.trafficReset")) %>,
+    error: <%- JSON.stringify(t("common.error")) %>,
+    flushCacheConfirm: <%- JSON.stringify(t("settings.flushCacheConfirm")) %>,
+    flushing: <%- JSON.stringify(t("settings.flushing")) %>,
+    flushCacheBtn: <%- JSON.stringify(t("settings.flushCacheBtn")) %>,
+    cacheFlushed: <%- JSON.stringify(t("settings.cacheFlushed")) %>,
+    resetStatsConfirm: <%- JSON.stringify(t("settings.resetStatsConfirm") || "Удалить всю историю статистики?") %>,
+    resetStatsBtn: <%- JSON.stringify(t("settings.resetStatsBtn") || "Очистить статистику") %>,
+    statsReset: <%- JSON.stringify(t("settings.statsReset") || "Статистика очищена ({count} записей)") %>,
+    testS3: <%- JSON.stringify(t("settings.testS3")) %>,
+    testingS3: <%- JSON.stringify(t("settings.testingS3")) %>,
+    s3TestSuccess: <%- JSON.stringify(t("settings.s3TestSuccess")) %>,
+    s3TestError: <%- JSON.stringify(t("settings.s3TestError")) %>,
+    createBackupNow: <%- JSON.stringify(t("settings.createBackupNow")) %>,
+    creatingBackup: <%- JSON.stringify(t("settings.creatingBackup")) %>,
+    backupCreated: <%- JSON.stringify(t("settings.backupCreated")) %>,
+    backupError: <%- JSON.stringify(t("settings.backupError")) %>,
+    backupDownloaded: <%- JSON.stringify(t("dashboard.backupDownloaded") || "Backup downloaded") %>,
+    restoreUploadConfirm: <%- JSON.stringify(t("dashboard.restoreConfirm") || "Restore database from \"{filename}\"?") %>,
+    restoringDb: <%- JSON.stringify(t("dashboard.restoringDb") || "Restoring DB...") %>,
+    dbRestored: <%- JSON.stringify(t("dashboard.dbRestored") || "Database restored! Reloading...") %>,
+    s3UploadFailed: <%- JSON.stringify(t("settings.s3UploadFailed") || "S3 upload failed: {error}") %>,
+    restoreConfirm: <%- JSON.stringify(t("settings.restoreConfirm") || "Восстановить из этого бэкапа? Текущие данные будут заменены!") %>,
+    restoring: <%- JSON.stringify(t("settings.restoring") || "Восстановление...") %>,
+    restored: <%- JSON.stringify(t("settings.restored") || "✓ База данных восстановлена! Перезагрузка...") %>,
+    restoreError: <%- JSON.stringify(t("settings.restoreError") || "Ошибка восстановления") %>,
+    noBackups: <%- JSON.stringify(t("settings.noBackups") || "Нет доступных бэкапов") %>,
+    localBackups: <%- JSON.stringify(t("settings.localBackups") || "Локальные") %>,
+    s3Backups: <%- JSON.stringify(t("settings.s3Backups") || "S3") %>,
+    restoreBtn: <%- JSON.stringify(t("settings.restoreBtn") || t("common.restore") || "Восстановить") %>,
+    downloadBtn: <%- JSON.stringify(t("settings.downloadBtn") || t("common.download") || "Скачать") %>,
+    loading: <%- JSON.stringify(t("common.loading") || "Загрузка...") %>,
+    downloadError: <%- JSON.stringify(t("settings.downloadError") || "Ошибка скачивания") %>
+};
+
+// ==================== TABS ====================
+(function () {
+    const captionIcon  = document.getElementById('stcIcon');
+    const captionTitle = document.getElementById('stcTitle');
+    const captionDesc  = document.getElementById('stcDesc');
+    let backupsListLoaded = false;
+
+    function ensureBackupsListLoaded(tabId) {
+        if (tabId !== 'backup' || backupsListLoaded) return;
+        backupsListLoaded = true;
+        loadBackupsList();
+    }
+
+    function activateTab(tab, opts) {
+        if (!tab) return;
+        const persist = !opts || opts.persist !== false;
+
+        document.querySelectorAll('.settings-tab').forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+        });
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+        tab.classList.add('active');
+        tab.setAttribute('aria-selected', 'true');
+
+        const pane = document.getElementById('tab-' + tab.dataset.tab);
+        if (pane) pane.classList.add('active');
+
+        if (captionIcon)  captionIcon.className  = 'ti ' + (tab.dataset.icon || '');
+        if (captionTitle) captionTitle.textContent = tab.dataset.label || '';
+        if (captionDesc)  captionDesc.textContent  = tab.dataset.desc  || '';
+
+        if (persist) localStorage.setItem('settings-tab', tab.dataset.tab);
+
+        // Smooth-scroll the active tab pill into view inside the tabbar only
+        // if it is partially off-screen. `inline:'nearest'` avoids forcing a
+        // horizontal page scroll when the tabbar already contains the pill —
+        // `inline:'center'` here would propagate the scroll up to the page
+        // root and shift the whole layout sideways when the tabbar barely
+        // overflows.
+        try {
+            tab.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+        } catch (_) {}
+
+        ensureBackupsListLoaded(tab.dataset.tab);
+    }
+
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', () => activateTab(tab));
+    });
+
+    // Restore tab from query string or localStorage (no scroll-jump on first paint)
+    const queryTab = new URLSearchParams(window.location.search).get('tab');
+    const savedTab = queryTab || localStorage.getItem('settings-tab');
+    if (savedTab) {
+        const tab = document.querySelector(`.settings-tab[data-tab="${savedTab}"]`);
+        if (tab && !tab.classList.contains('active')) activateTab(tab, { persist: false });
+    }
+
+    ensureBackupsListLoaded(document.querySelector('.settings-tab.active')?.dataset.tab);
+})();
+
+// ==================== BACKUP ====================
+document.getElementById('backupEnabled')?.addEventListener('change', function() {
+    document.getElementById('backupSettings').style.display = this.checked ? '' : 'none';
+});
+
+document.getElementById('s3Enabled')?.addEventListener('change', function() {
+    document.getElementById('s3Settings').style.display = this.checked ? '' : 'none';
+});
+
+async function testS3Connection() {
+    const btn = document.getElementById('testS3Btn');
+    const result = document.getElementById('s3TestResult');
+    
+    btn.disabled = true;
+    btn.textContent = i18n.testingS3;
+    result.textContent = '';
+    
+    try {
+        const res = await fetch('/panel/settings/test-s3', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                endpoint: document.getElementById('backup.s3.endpoint').value,
+                region: document.getElementById('backup.s3.region').value,
+                bucket: document.getElementById('backup.s3.bucket').value,
+                prefix: document.getElementById('backup.s3.prefix').value,
+                accessKeyId: document.getElementById('backup.s3.accessKeyId').value,
+                secretAccessKey: document.getElementById('backup.s3.secretAccessKey').value,
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            result.textContent = i18n.s3TestSuccess;
+            result.style.color = 'var(--success)';
+        } else {
+            result.textContent = i18n.s3TestError.replace('{error}', data.error);
+            result.style.color = 'var(--danger)';
+        }
+    } catch (e) {
+        result.textContent = i18n.s3TestError.replace('{error}', e.message);
+        result.style.color = 'var(--danger)';
+    }
+    
+    btn.disabled = false;
+    btn.textContent = i18n.testS3;
+}
+
+async function createBackupNow() {
+    const btn = document.getElementById('createBackupBtn');
+    btn.disabled = true;
+    btn.textContent = i18n.creatingBackup;
+    
+    try {
+        const res = await fetch('/panel/settings/create-backup', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            const message = i18n.backupCreated.replace('{filename}', data.filename).replace('{size}', data.size);
+            if (data.s3?.enabled && !data.s3.success) {
+                showToast(message + '. ' + i18n.s3UploadFailed.replace('{error}', data.s3.error || 'unknown'), 'warning');
+            } else {
+                showToast(message, 'success');
+            }
+            document.getElementById('lastBackupTime').textContent = new Date().toLocaleString();
+            loadBackupsList();
+        } else {
+            showToast(i18n.backupError + ': ' + (data.error || 'unknown'), 'error');
+        }
+    } catch (e) {
+        showToast(i18n.backupError + ': ' + e.message, 'error');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = i18n.createBackupNow;
+}
+
+async function downloadBackupDb() {
+    return window.CelerityBackupActions.downloadBackup({
+        i18n,
+        showToast,
+        onSuccess: () => loadBackupsList(),
+    });
+}
+
+async function restoreBackupFile(input) {
+    return window.CelerityBackupActions.restoreBackupFromFile(input, {
+        i18n,
+        showToast,
+        reloadDelay: 1500,
+    });
+}
+
+async function loadBackupsList() {
+    const container = document.getElementById('backupsList');
+    const btn = document.getElementById('refreshBackupsBtn');
+    
+    btn.disabled = true;
+    container.innerHTML = `<p style="color: var(--text-muted);"><i class="ti ti-loader-2"></i> ${i18n.loading}</p>`;
+    
+    try {
+        const [localRes, s3Res] = await Promise.all([
+            fetch('/panel/settings/backups', { credentials: 'include' }),
+            fetch('/panel/settings/backups-s3', { credentials: 'include' })
+        ]);
+        
+        const localData = await localRes.json();
+        const s3Data = await s3Res.json();
+        
+        const localBackups = (localData.backups || []).map(b => ({ ...b, source: 'local' }));
+        const s3Backups = s3Data.backups || [];
+        
+        if (localBackups.length === 0 && s3Backups.length === 0) {
+            container.innerHTML = `<p style="color: var(--text-muted);">${i18n.noBackups}</p>`;
+            btn.disabled = false;
+            return;
+        }
+        
+        let html = '';
+        
+        if (localBackups.length > 0) {
+            html += `<div style="margin-bottom: 0.75rem; font-weight: 600;"><i class="ti ti-device-floppy"></i> ${i18n.localBackups} (${localBackups.length})</div>`;
+            html += '<div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">';
+            for (const b of localBackups) {
+                const date = new Date(b.created).toLocaleString();
+                const dlUrl = `/panel/settings/backups/download?name=${encodeURIComponent(b.name)}`;
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 6px;">
+                        <div>
+                            <div style="font-size: 13px; font-weight: 500;">${b.name}</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">${date} • ${b.sizeMB} MB</div>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <a class="btn btn-sm" href="${dlUrl}" download style="padding: 4px 10px; font-size: 11px;">
+                                <i class="ti ti-download"></i> ${i18n.downloadBtn}
+                            </a>
+                            <button class="btn btn-warning btn-sm" onclick="restoreBackup('local', '${b.name}')" style="padding: 4px 10px; font-size: 11px;">
+                                ${i18n.restoreBtn}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+        }
+        
+        if (s3Backups.length > 0) {
+            html += `<div style="margin-bottom: 0.75rem; font-weight: 600;"><i class="ti ti-cloud"></i> ${i18n.s3Backups} (${s3Backups.length})</div>`;
+            html += '<div style="display: flex; flex-direction: column; gap: 0.5rem;">';
+            for (const b of s3Backups) {
+                const date = new Date(b.created).toLocaleString();
+                const dlUrl = `/panel/settings/backups-s3/download?key=${encodeURIComponent(b.key)}`;
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: 6px;">
+                        <div>
+                            <div style="font-size: 13px; font-weight: 500;">${b.name}</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">${date} • ${b.sizeMB} MB</div>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <a class="btn btn-sm" href="${dlUrl}" download style="padding: 4px 10px; font-size: 11px;">
+                                <i class="ti ti-download"></i> ${i18n.downloadBtn}
+                            </a>
+                            <button class="btn btn-warning btn-sm" onclick="restoreBackup('s3', '${b.key}')" style="padding: 4px 10px; font-size: 11px;">
+                                ${i18n.restoreBtn}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+        }
+        
+        container.innerHTML = html;
+        
+    } catch (e) {
+        container.innerHTML = `<p style="color: var(--danger);">${i18n.error}: ${e.message}</p>`;
+    }
+    
+    btn.disabled = false;
+}
+
+async function restoreBackup(source, identifier) {
+    if (!confirm(i18n.restoreConfirm)) return;
+    
+    showToast(i18n.restoring, 'info');
+    
+    try {
+        const res = await fetch('/panel/settings/restore-backup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ source, identifier })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast(i18n.restored, 'success');
+            // Blocking dialog on purpose: the page reloads right after, which
+            // would hide a toast the operator has to act on.
+            if (data.warning) alert(data.warning);
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showToast(i18n.restoreError + ': ' + (data.error || 'unknown'), 'error');
+        }
+    } catch (e) {
+        showToast(i18n.restoreError + ': ' + e.message, 'error');
+    }
+}
+
+// ==================== MAINTENANCE ====================
+async function resetStats() {
+    if (!confirm(i18n.resetStatsConfirm)) return;
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = i18n.resetting;
+    
+    try {
+        const res = await fetch('/panel/settings/reset-stats', { method: 'POST', credentials: 'include' });
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast(i18n.statsReset.replace('{count}', data.count), 'success');
+        } else {
+            showToast(i18n.error + ': ' + (data.error || 'unknown'), 'error');
+        }
+    } catch (e) {
+        showToast(i18n.error, 'error');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = i18n.resetStatsBtn;
+}
+
+async function flushCache() {
+    if (!confirm(i18n.flushCacheConfirm)) return;
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = i18n.flushing;
+    
+    try {
+        const res = await fetch('/panel/settings/flush-cache', { method: 'POST', credentials: 'include' });
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast(i18n.cacheFlushed, 'success');
+        } else {
+            showToast(i18n.error + ': ' + (data.error || 'unknown'), 'error');
+        }
+    } catch (e) {
+        showToast(i18n.error, 'error');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = i18n.flushCacheBtn;
+}
+
+async function resetTraffic() {
+    if (!confirm(i18n.resetConfirm)) return;
+    if (!confirm(i18n.resetConfirmFinal)) return;
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = i18n.resetting;
+    
+    try {
+        const res = await fetch('/panel/settings/reset-traffic', { method: 'POST', credentials: 'include' });
+        const data = await res.json();
+        
+        if (data.success) {
+            showToast(i18n.trafficReset.replace('{count}', data.count), 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(i18n.error + ': ' + (data.error || 'unknown'), 'error');
+            btn.disabled = false;
+            btn.textContent = i18n.resetAllTraffic;
+        }
+    } catch (e) {
+        showToast(i18n.error, 'error');
+        btn.disabled = false;
+        btn.textContent = i18n.resetAllTraffic;
+    }
+}
+
+
+// ── MCP Integration ──
+
+(function initMcp() {
+    const endpoint = (window.location.origin) + '/api/mcp';
+    document.getElementById('mcpEndpointVal').textContent = endpoint;
+
+    const claudeConfig = JSON.stringify({
+        mcpServers: {
+            'celerity': {
+                type: 'sse',
+                url: endpoint,
+                headers: { Authorization: 'Bearer YOUR_API_KEY' },
+            },
+        },
+    }, null, 2);
+
+    const cursorConfig = JSON.stringify({
+        'celerity': {
+            url: endpoint,
+            headers: { Authorization: 'Bearer YOUR_API_KEY' },
+        },
+    }, null, 2);
+
+    const customConfig = `# List available tools
+curl -N -X POST ${endpoint} \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"method":"tools/list"}'
+
+# Call a tool
+curl -N -X POST ${endpoint} \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"method":"tools/call","params":{"name":"health_check","arguments":{}}}'`;
+
+    document.getElementById('claude-config').textContent = claudeConfig;
+    document.getElementById('cursor-config').textContent = cursorConfig;
+    document.getElementById('custom-config').textContent = customConfig;
+})();
+
+function switchMcpTab(tab, btn) {
+    document.querySelectorAll('.mcp-tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.mcp-tab').forEach(el => {
+        el.style.borderBottomColor = 'transparent';
+        el.style.color = 'var(--text-muted)';
+        el.style.fontWeight = '';
+    });
+    document.getElementById('mcp-tab-' + tab).style.display = '';
+    btn.style.borderBottomColor = 'var(--primary, #6366f1)';
+    btn.style.color = 'var(--primary, #6366f1)';
+    btn.style.fontWeight = '600';
+}
+
+function copyMcpEndpoint() {
+    const val = document.getElementById('mcpEndpointVal').textContent.trim();
+    navigator.clipboard?.writeText(val).catch(() => {});
+    const btn = document.getElementById('mcpCopyBtn');
+    btn.innerHTML = '<i class="ti ti-check" style="font-size:16px; color:var(--success,#22c55e);"></i>';
+    setTimeout(() => btn.innerHTML = '<i class="ti ti-copy" style="font-size:16px;"></i>', 1500);
+}
+
+function copyMcpConfig(tab) {
+    const text = document.getElementById(tab + '-config').textContent;
+    navigator.clipboard?.writeText(text).catch(() => {});
+    const btn = document.getElementById('copyBtn-' + tab);
+    const orig = btn.textContent;
+    btn.textContent = '<%= t("mcp.configCopied") || "Copied" %> ✓';
+    setTimeout(() => btn.textContent = orig, 1500);
+}
+
+function openMcpKeyModal() {
+    document.getElementById('mcpKeyModal').style.display = 'flex';
+    document.getElementById('mcpKeyName').focus();
+}
+
+function closeMcpKeyModal() {
+    document.getElementById('mcpKeyModal').style.display = 'none';
+    document.getElementById('mcpKeyForm').reset();
+}
+
+async function submitMcpKey(e) {
+    e.preventDefault();
+    const btn = document.getElementById('mcpKeySubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    const name = document.getElementById('mcpKeyName').value.trim() || 'MCP AI Key';
+    const writeScopes = [...document.querySelectorAll('.mcp-write-scope:checked')].map(c => c.value);
+
+    const scopes = ['mcp:enabled', 'users:read', 'nodes:read', 'stats:read', 'probes:read', ...writeScopes];
+    const uniqueScopes = [...new Set(scopes)];
+
+    const body = new URLSearchParams();
+    body.append('name', name);
+    uniqueScopes.forEach(s => body.append('scopes', s));
+    body.append('rateLimit', '300');
+
+    try {
+        const res = await fetch('/panel/api-keys', { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error');
+        closeMcpKeyModal();
+        document.getElementById('revealKeyInput').value = data.key;
+        document.getElementById('apiKeyRevealModal').style.display = 'flex';
+    } catch (err) {
+        alert(err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '<%= t("mcp.createKeyBtn") || "Create Key" %>';
+    }
+}
+</script>

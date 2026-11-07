@@ -1,0 +1,1487 @@
+# Changelog
+
+All notable changes to the OpenWrt Router integration will be documented in this file.
+
+## [1.28.2] - 2026-09-09
+
+### Fixed
+
+- **VLAN-Zuordnung pro Port war immer leer.** `get_port_vlan_map()` las die
+  DSA-`bridge-vlan`-Sektionen falsch: `device` wurde als Portname
+  interpretiert (es ist die Bridge) und die VLAN-IDs in einem Feld `vids`
+  erwartet, das dieser Sektionstyp nicht hat. Die Map kam dadurch immer leer
+  zurück und die VLAN-Spalte im Panel blieb dauerhaft `—`. Jetzt korrekt aus
+  `vlan` + `ports` (`lan1:u*`, `lan3:t`) gelesen.
+- **Kabelgeräte hinter einem AP hießen „Unbekannt".** Die Port-Zuordnung löste
+  Namen und IPs nur aus den DHCP-Leases und der ARP-Tabelle *desselben*
+  Routers auf. Nur das Gateway betreibt einen DHCP-Server, also blieb auf
+  jedem Dumb-AP jedes Kabelgerät namenlos. `build_port_connections()` nimmt
+  jetzt optional eine flottenweite Identitätsquelle
+  (`identity_leases` / `identity_arp`), die der Mesh-Aggregator aus allen
+  Config-Entries zusammenstellt. Ausdrücklich **nur** zur Namensauflösung für
+  MACs, die der Router ohnehin in seiner eigenen FDB sieht — fremde Leases
+  erzeugen keine Geräte und keine Unassigned-Einträge. Geliehene Identität
+  ist als `fleet-dhcp` / `fleet-arp` in der Quelle erkennbar.
+
+## [1.28.1] - 2026-09-09
+
+### Fixed
+
+- **Kanten-Orientierung in einer Kette.** Hängt ein AP hinter einem anderen AP
+  (Gateway → AP1 → AP2), zeigte die LLDP-Kante zwischen den beiden APs in die
+  falsche Richtung: ohne Gateway-Endpunkt entschied die alphabetische
+  Router-ID. Konsumenten indizieren Uplinks über das Kanten-Ziel, dadurch
+  überschrieb die verdrehte Kante den Uplink des oberen AP und der untere
+  bekam gar keinen — im Panel „Kabel" ohne Ports und ohne Status. Die
+  Orientierung folgt jetzt der Hop-Distanz zum Gateway
+  (`_lldp_hop_depths`); nur bei echtem Gleichstand bleibt die stabile
+  ID-Sortierung.
+- **Verkabelungsansicht zeigte immer das Gateway als Quelle.** `WiringView`
+  setzte `fromName` fest auf den Gateway-Namen und ignorierte `uplinkTo`. Eine
+  Kette wurde dadurch grundsätzlich als Stern dargestellt, egal wie korrekt
+  die LLDP-Daten waren. Frontend-Bundle neu gebaut.
+
+## [1.28.0] - 2026-09-09
+
+> **Bessere Geräte- & Topology-Erkennung via LLDP.** Router-zu-Router-Verkabelung
+> wird jetzt bevorzugt über **LLDP** erkannt (echte Nachbarn + physische Ports),
+> statt sie nur aus DHCP/ARP/FDB zu erraten. Optional — ohne lldpd funktioniert
+> alles wie bisher, nur mit geringerer Sicherheit und klarer Kennzeichnung.
+
+### Added
+
+- **LLDP als bevorzugte Quelle für Router-/AP-Nachbarschaften.** Neue Erfassung via
+  `lldpcli show neighbors -f json` über den bestehenden asyncssh-Transport (ubus wird
+  zuerst best-effort geprüft). Liefert lokalen/entfernten physischen Port, Chassis-ID,
+  Management-IP und Capabilities. Läuft als **Method 0** (höchste Priorität) im
+  Topology-Merge und überschreibt heuristische Kanten für dasselbe Router-Paar.
+- **Bidirektionale Erkennung & Konflikt-Handling.** Sehen sich zwei Router gegenseitig
+  → `confidence: high`, beide Portseiten. Einseitig → als solches markiert. Weicht der
+  LLDP-Port vom Bridge-FDB-Port ab, **gewinnt LLDP**; der Konflikt ist in Diagnostics
+  sichtbar.
+- **Dynamische Router-Erkennung aus ConfigEntries.** Bekannte Router werden aus den
+  vorhandenen `openwrt_router`-Einträgen ermittelt (IP/MAC/Hostname/Chassis-ID). Ein
+  bekannter Router wird nie mehr als normaler Client dargestellt. Keine Annahme über
+  IP-Reihenfolge, keine feste Routerzahl (1/2/3/N).
+- **Reicheres Geräte-Datenmodell.** Clients tragen jetzt `vendor` (server-seitiges OUI),
+  `connection_type` (wired/wireless/router_uplink/unknown), `confidence`, `source`,
+  `web_url` (`http://<ip>`) und `last_seen`.
+- **Optionale Capability `lldp_neighbors`** im Config-Flow-Checklist (grün/gelb), inkl.
+  Installations-Empfehlung für `lldpd`. **Kein** Abbruch des Add-Flows ohne LLDP.
+- **Panel-Erweiterung.** Router-Uplinks werden als eigener, verifizierter LLDP-Link mit
+  Port-Badges an beiden Enden dargestellt; Detail-/Hover-Ansichten zeigen Nachbar,
+  Management-IP (Weblink), Ports, VLAN, Quelle, Confidence, RX/TX u. a.
+
+### Fixed
+
+- **Medium kommt aus LLDP, nicht aus der Heuristik.** LLDP-Kanten tragen jetzt
+  `link_type: lan|wifi`, abgeleitet aus den LLDP-Interface-Namen. Ein Repeater, der
+  lldpd betreibt, wird dadurch wieder als **WLAN Repeater** dargestellt statt als
+  „Kabel"; umgekehrt gewinnt eine LLDP-verifizierte Kupferstrecke gegen die
+  STA-Interface-Heuristik — genauso wie ein WAN-Port mit Carrier.
+- **Switch-Erkennung berücksichtigt LLDP.** Zwei APs hinter einem unmanaged Switch
+  wurden nicht mehr als Switch-Knoten erkannt, sobald lldpd lief, weil die Inferenz
+  nur `lan_uplink`-Kanten gruppiert hat.
+- **Client-Anreicherung erreicht das Panel.** `vendor`, `connection_type`,
+  `confidence`, `source`, `web_url` und `last_seen` werden in die Client-Knoten
+  übernommen; vorher hat das Frontend still auf seine eigene OUI-Tabelle
+  zurückgegriffen und der server-seitige Lookup war wirkungslos.
+- **Optionales LLDP verfälscht das ACL-Deploy-Ergebnis nicht mehr.** Fehlte nur
+  `lldp_neighbors`, meldete ein erfolgreicher Deploy fälschlich „keine Änderung".
+- **LLDP wird nicht mehr pro Poll über SSH abgefragt.** Nachbarn werden alle
+  10 Minuten aufgefrischt; ein „unavailable" wird alle 30 Minuten (und nach jedem
+  ACL-Redeploy) erneut geprüft, damit ein nachträglich installiertes `lldpd` ohne
+  Reload des Config-Entry wirksam wird.
+
+### Notes
+
+- LLDP ist **optional** und ändert keine bestehenden ACL-Rechte (`ACL_VERSION` bleibt unverändert bei 5).
+  Die LLDP-Abfrage löst **nicht** die „SSH-Fallback/degraded"-Warnung aus.
+- **Empfehlung** für zuverlässige Router-zu-Router-Erkennung auf **allen** OpenWrt-Routern:
+  `opkg update && opkg install lldpd && /etc/init.d/lldpd enable && /etc/init.d/lldpd start`
+- Nach dem Update **Home Assistant neu starten** (neue Coordinator-Felder + Frontend-Bundle).
+
+## [1.27.0] - 2026-09-06
+
+> **Router-Neustart aus Home Assistant.** Bisher ließen sich nur einzelne
+> Dienste neu starten — für einen vollständigen Geräteneustart musste man
+> auf LuCI oder SSH ausweichen.
+
+### Added
+
+- **Reboot-Button pro Router** (`button.<router>_router_neu_starten`)
+  Löst `system/reboot` über ubus aus. Blockiert die rpcd-ACL die Methode
+  (oder ist sie nicht vorhanden), fällt der Button auf einen abgesetzten
+  SSH-`reboot` zurück — dieselben Zugangsdaten wie der übrige SSH-Fallback.
+  Ein Timeout des ubus-Calls gilt nicht als Fehlschlag: der Router kappt die
+  Verbindung beim Herunterfahren, deshalb entscheidet in dem Fall der
+  SSH-Fallback. Nach dem Druck wird bewusst kein Coordinator-Refresh
+  ausgelöst — der nächste reguläre Poll holt den Router wieder ab.
+  Neu: `OpenWrtAPI.reboot()`.
+
+## [1.26.6] - 2026-08-23
+
+> **Nachzügler zum SSH-Fallback-Fix aus 1.26.4.** Auf der Prod-Instanz zeigte
+> sich nach dem ACL-Redeploy: 10.10.30.50 fiel trotz korrekter v5-ACL weiter
+> in den SSH-Fallback — Ursache war der ACL-Block-Cache, nicht die ACL.
+
+### Fixed
+
+- **ACL-Block-Cache: uci-Denial einer Config blockierte ALLE Configs**
+  rpcd erzwingt uci-ACLs pro Config-Datei, der `_acl_blocked`-Cache keyte
+  aber nur auf `("uci", "get")`. Der (verweigerte) ddns-Probe vergiftete
+  damit den uci-wireless-Fallback für den Rest der Session — jeder weitere
+  Poll lief in den SSH-Fallback samt „SSH-Fallback aktiv“-Notification und
+  300s-Intervall. Analog zum file-Pfad-Fix aus 1.26.3 enthält der Cache-Key
+  für `uci` jetzt den Config-Namen.
+
+## [1.26.5] - 2026-08-23
+
+> **Blocking-Call-Warnung beim Setup behoben.** Der SSL-Kontext wird nicht
+> mehr synchron im Event-Loop gebaut — HA Core warnte bei jedem Setup mit
+> „Detected blocking call to set_default_verify_paths … inside the event loop".
+
+### Fixed
+
+- **`ssl.create_default_context()` blockierte den Event-Loop**
+  `OpenWrtAPI.__init__` baute den SSL-Kontext synchron (das CA-Bundle wird
+  dabei von der Platte geladen). Alle HA-Aufrufer — `async_setup_entry` und
+  die drei Config-Flow-Stellen — injizieren jetzt Home Assistants prozessweit
+  gecachte Kontexte (`homeassistant.util.ssl.client_context()` bzw.
+  `client_context_no_verify()`) über den neuen Konstruktor-Parameter
+  `ssl_context`. Die Protokoll-Auswahl kapselt das neue HA-seitige Modul
+  `ssl_util.py`; `api.py` bleibt bewusst HA-frei. Der synchrone Aufbau
+  existiert nur noch als Fallback für Standalone-/CLI-Nutzung außerhalb
+  eines Event-Loops.
+
+## [1.26.4] - 2026-08-23
+
+> **Log-Hygiene auf Multi-Router-Setups.** Drei Dauerbrenner beseitigt: die
+> minütliche root-Warnung, die unique_id-Kollision, wenn mehrere APs denselben
+> WLAN-Client sehen, und der ewige SSH-Fallback (samt wiederkehrender
+> HA-Notification) auf Routern mit einer prä-v5-ACL.
+
+### Fixed
+
+- **Router mit alter ACL blieben für immer im SSH-Fallback**
+  Konnte `ensure_acl()` die deployte ACL-Datei nicht lesen (von alten ACLs
+  blockiert), obwohl `file/stat` ihre Existenz zeigte, ließ es sie
+  „unverifiable — as-is" liegen — der Router blieb dauerhaft im SSH-Fallback
+  mit 300s-Polling, und die Notification „SSH-Fallback aktiv" kam nach jedem
+  HA-Neustart wieder. Da jede ACL seit v5 das Lesen ihres eigenen Pfads
+  erlaubt, ist eine unlesbare deployte ACL per Definition veraltet → sie wird
+  jetzt neu deployt (transiente Lesefehler wie Timeouts deployen weiterhin
+  NICHT, um rpcd-Restarts bei Netz-Blips zu vermeiden).
+
+- **root-Warnung spammte ~66×/Stunde statt einmal**
+  `reset_ssh_fallback_flag()` läuft am Anfang jedes Poll-Zyklus und setzte
+  dabei auch das `_root_warning_logged`-Latch zurück — die Warnung
+  „Using 'root' as rpcd user grants full router access" feuerte damit bei
+  jedem Re-Login (~1×/Minute pro Router) erneut. Das Latch bleibt jetzt für
+  die Lebensdauer der API-Instanz gesetzt (einmal pro Router und Start);
+  die Meldung nennt zusätzlich den Router-Host.
+
+- **„Platform openwrt_router does not generate unique IDs" bei Mesh-Clients**
+  HA-Core leitet die unique_id von `ScannerEntity` zwingend aus
+  `mac_address` ab (das bisherige entry-scoped `_attr_unique_id` wurde
+  dadurch ignoriert). Sehen mehrere Router/APs denselben Client, versuchte
+  jeder Eintrag eine Entity mit derselben MAC-unique_id anzulegen — HA
+  verwarf die Duplikate mit einem ERROR pro Client und Neustart. Clients
+  werden jetzt AP-übergreifend dedupliziert: Ein hass.data-Claim-Register
+  sorgt dafür, dass genau EIN Config-Entry die Entity pro MAC anlegt
+  (Claims werden beim Unload wieder freigegeben).
+
+### Changed
+
+- **Roaming-fähige Device-Tracker**: Die (eine) Tracker-Entity pro Client
+  sucht die MAC jetzt auf ALLEN geladenen Routern — ein Client, der zwischen
+  Mesh-APs roamt, bleibt `home` und meldet im neuen Attribut `connected_ap`
+  den Hostnamen des APs, mit dem er gerade verbunden ist. Vorher meldete der
+  Tracker `not_home`, sobald der Client den Router des besitzenden Entries
+  verließ.
+
+## [1.26.3] - 2026-08-16
+
+> **ACL-Deployment repariert.** Das automatische rpcd-ACL-Deployment war auf
+> ACL-restriktierten Routern komplett wirkungslos — betroffene Router blieben
+> dauerhaft im SSH-Fallback mit reduziertem Poll-Intervall und erhöhter Last.
+
+### Fixed
+
+- **ACL-Auto-Deploy: `NameError` machte jeden Deploy-Versuch wirkungslos**
+  `acl_provisioning.py` verwendete `OpenWrtAuthError`/`OpenWrtResponseError` in
+  except-Klauseln, ohne sie zu importieren. Sobald der Router `file/read` oder
+  `file/write` per ACL blockierte (genau der Fall, den das Deployment lösen
+  soll), flog ein `NameError`, den `async_setup_entry` still als „provisioning
+  skipped" verschluckte. Die ACL wurde nie geschrieben, der SSH-Fallback blieb
+  dauerhaft aktiv. Die Exceptions werden jetzt auf Modulebene importiert;
+  7 bestehende Tests, die genau diese Pfade abdecken, laufen wieder grün.
+
+- **ACL-Deploy: SSH-Fallback wurde bei blockiertem `file/write` nie erreicht**
+  Ein ACL-blockiertes `file/write` kommt aus `_call` als
+  `OpenWrtMethodNotFoundError` an (Konvertierung nach bestätigtem Re-Login) —
+  `_deploy_acl` fing aber nur `OpenWrtAuthError`/`OpenWrtResponseError` ab.
+  Der Fehler propagierte, statt den SSH-Fallback-Deploy auszulösen. Gleiches
+  galt für den (nicht-fatalen) rpcd-Neustart via `file/exec`.
+
+- **ACL-Block-Cache blockierte alle `file`-Pfade statt nur den verbotenen**
+  Der `_acl_blocked`-Cache arbeitete pro `(Objekt, Methode)`. rpcd erzwingt
+  `file`-ACLs aber pro Pfad: Ein einziger nicht freigegebener Pfad (z.B.
+  `/proc/net/nf_conntrack` bei alter ACL) schickte damit **alle** `file/read`-
+  Aufrufe der Session in den SSH-Fallback — der Haupttreiber der erhöhten
+  Router-Last. Für das `file`-Objekt enthält der Cache-Key jetzt den Pfad
+  (bzw. das `command` bei `file/exec`).
+
+### Changed
+
+- **rpcd-ACL v5** (`RPCD_ACL_CONTENT`, wird beim nächsten Start automatisch
+  deployt):
+  - `/sys/class/net` → `list` — der Capability-Check probt `file/list` auf dem
+    Verzeichnis selbst; der bestehende Glob `/sys/class/net/*` deckt das nicht ab.
+  - `/usr/share/rpcd/acl.d/ha-openwrt-router.json` → `read` — `ensure_acl()`
+    kann die deployte ACL jetzt via ubus verifizieren statt bei jedem Start
+    per SSH neu zu schreiben. Bewusst nur `read`: `write` auf `acl.d` würde
+    jeder rpcd-HTTP-Session erlauben, die eigenen Rechte zu erweitern.
+  - `/etc/init.d/rpcd` → `exec` (write-Scope) — rpcd-Neustart nach einem
+    ACL-Deploy funktioniert damit auch über ubus.
+
+- **`scripts/ha-openwrt-router.json` mit `RPCD_ACL_CONTENT` synchronisiert**
+  Die Datei für das manuelle scp-Deployment war auf einem alten Stand (ohne
+  `file/stat`, `file/exec`, conntrack-/sysfs-Pfade) — ein manuelles Deployment
+  nach Anleitung hat das SSH-Fallback-Problem daher nicht behoben. Ein neuer
+  Test verhindert künftiges Auseinanderlaufen.
+
+- **SSH-Fallback-Notification präzisiert** — verweist jetzt auf den
+  Berechtigungs-Check im Options-Flow (automatisches Deployment) und nennt den
+  korrekten Repo-Pfad `scripts/ha-openwrt-router.json` für den manuellen Weg.
+
+### Fixed (CI / weitere durch den Lint-Gate aufgedeckte Bugs)
+
+- **Update-Buttons: `NameError` statt Fehlerbehandlung** — `button.py` fing in
+  den Check-/Perform-Updates-Handlern vier nie importierte Exception-Klassen
+  (gleiche Bug-Klasse wie im ACL-Deploy). Ein Button-Press darf nie in HA
+  hochschlagen: die Handler fangen jetzt breit und loggen mit Traceback.
+  Die zwei zugehörigen, vorher roten Tests laufen wieder grün.
+
+- **Coordinator: ACL-Block nach dem ersten Poll warf rohe Exception** —
+  `OpenWrtMethodNotFoundError` wurde entgegen der dokumentierten Absicht von
+  `_first_poll_optional` nicht in `UpdateFailed` gewrappt; HA loggte das als
+  „unexpected error". Eigener except-Zweig ergänzt (Test wieder grün).
+
+- **Topology: Router-ID mit trailing Underscore ohne MAC** — ohne MAC und ohne
+  `host_ip` wurde die Node-ID als `"<hostname>_"` gebaut; die vier
+  `TestRouterIdFallback`-Tests laufen wieder grün.
+
+- **CI-Lint-Gate repariert** — `ruff check` (aktuelles ruff 0.16) fand 57
+  Verstöße und brach den Test-Job vor dem Testlauf ab: Import-Sortierung,
+  veraltete `noqa`, `ClassVar`-Annotationen für Klassen-Dicts, `startswith`-
+  Tupel, `dict.values()`, gezielte `noqa` für bewusste best-effort-excepts.
+  `ruff check` und `ruff format --check` laufen jetzt sauber durch.
+
+- **Topology: Repeater-Override ignorierte den WAN-Carrier** — der von
+  v1.26.x angelegte Helper `_has_wan_carrier()` wurde nie aufgerufen; der
+  Override nutzte weiterhin die alte `gateway_port`-Ausnahme. Folgen: Ein
+  verkabelter AP mit konfiguriertem STA-Interface wurde als „WLAN Repeater"
+  gezeichnet, und ein 802.11s-Mesh-AP hinter einem Trunk-Port blieb als
+  „Kabel" stehen (FDB-Sichtbarkeit ist kein Kabel-Beweis — Mesh-APs stehen
+  genauso in der FDB). Jetzt entscheidet der Link-Carrier des WAN-Ports;
+  die drei zugehörigen, vorher roten Tests laufen wieder grün.
+
+- **Topology: Rolle „Gateway" trotz WAN-IP == eigener LAN-IP** — ein Dumb-AP,
+  dessen gebridgter „WAN" die eigene Host-IP meldet, wird jetzt als AP
+  klassifiziert statt als Gateway.
+
+## [1.26.0] - 2026-08-15
+
+> **Stabilitäts- und Bugfix-Release.** Über 30 Korrekturen in 12 Dateien —
+> Topology-Darstellung, API-Zuverlässigkeit, Exception-Handling und ACL-Deployment.
+
+### Fixed
+
+- **Topology: Doppelte Verbindungen bei Switch-Erkennung**
+  Wenn mehrere APs am gleichen Gateway-Port hingen, wurden die direkten
+  Gateway→AP Edges nicht entfernt, obwohl ein Switch-Node eingefügt wurde.
+  Die Topologie zeigte dann sowohl Gateway→AP als auch Gateway→Switch→AP.
+  `_detect_switch_nodes` gibt jetzt `replaced_edge_ids` zurück, die in
+  `build_mesh_snapshot` vor dem Hinzufügen der Switch-Edges entfernt werden.
+
+- **Topology: Falsche WiFi-Uplink-Richtung in Mesh-Setups**
+  Wenn ein AP den Gateway in seiner Client-Liste sah (möglich bei Mesh),
+  wurde die Edge fälschlicherweise als `AP → Gateway` statt `Gateway → AP`
+  erstellt. Die Richtung wird jetzt anhand der Router-Rolle (gateway/ap)
+  korrekt bestimmt.
+
+- **Topology: Gateways mit privater WAN-IP als AP klassifiziert**
+  Router hinter ISP-Modems/FritzBoxen haben oft private WAN-IPs (z. B.
+  192.168.178.2). `_detect_router_role` prüfte fälschlicherweise auf
+  „public IP" und markierte diese als "ap". Jetzt gilt jeder Router mit funktionierender
+  WAN-Verbindung (dhcp/pppoe/static) als Gateway.
+
+- **Topology: Crash bei fehlendem Gateway in `_detect_switch_nodes`**
+  Die Funktion gab bei fehlendem Gateway nur 2 statt 3 Werte zurueck,
+  was einen `ValueError` ausloeste. Der Return-Wert ist jetzt immer
+  `(switch_nodes, switch_edges, replaced_ids)`.
+
+- **Topology: FDB-Key-Normalisierung verhindert doppelte Devices**
+  `build_port_connections` mixte normalisierte und nicht-normalisierte
+  MAC-Adressen. Geraete mit Bindestrich-MACs (z. B. "AA-BB-CC-DD-EE-FF")
+  wurden als "unassigned" hinzugefuegt, obwohl sie bereits im FDB waren.
+  FDB-Keys werden jetzt einmalig normalisiert.
+
+- **Topology: Router-ID-Kollisionen bei identischem Hostname**
+  Wenn zwei Router keine MAC hatten und denselben Hostname (z. B. "OpenWrt")
+  verwendeten, kollidierten ihre IDs. Die ID enthält jetzt die Host-IP als
+  Fallback: `{hostname}_{host_ip}`.
+
+- **API: `_call_file_read_shell` war ein Stub**
+  Die Methode gab immer `{}` zurueck, wodurch `get_disk_space()` und
+  `get_tmpfs_stats()` nie echte Daten lieferten. Jetzt wird der SSH-Fallback
+  verwendet, um Shell-Kommandos auszufuehren.
+
+- **API: Race Condition bei `async_close`**
+  Waehrend des Shutdowns konnten parallele `_call()`-Tasks noch laufen,
+  was zu "Session expired"-Fehlern fuehrte. Ein `_closing`-Flag blockiert
+  jetzt neue Calls waehrend des Shutdowns.
+
+- **API: Doppelte UTF-8-Dekodierung in SSH-Fallbacks**
+  `_asyncssh_run` mit `binary=False` dekodiert bereits in `str`. Die
+  SSH-Fallback-Methoden dekodierten den Rueckgabewert ein zweites Mal.
+  Die redundante Dekodierung wurde entfernt.
+
+- **API: Falsche `enabled=True` bei procd Services**
+  `service/list` liefert keine `enabled`-Info, aber der Code setzte
+  hartcodiert `True`. Jetzt wird `None` verwendet (unbekannt).
+
+- **ACL: `file/exec` fehlte in der ACL**
+  Nach dem ACL-Deploy wird `file/exec` aufgerufen, um rpcd zu restarten —
+  aber `exec` war nicht in der ACL erlaubt. Der Restart schlug immer fehl.
+  `file` Permissions jetzt: `["read", "stat", "list", "exec"]`.
+
+- **Exception-Handler: `asyncio.CancelledError` wurde verschluckt**
+  In `coordinator.py`, `topology_panel.py` und `button.py` fingen
+  `except Exception`-Bloecke auch `asyncio.CancelledError` ab, was
+  HA-Shutdown blockieren konnte. Die Handler wurden auf spezifische
+  Exception-Typen eingeschraenkt.
+
+- **Sensor: 0 dBm als "unknown" klassifiziert**
+  `_signal_quality` behandelte `0 dBm` als "unknown". 0 dBm ist ein
+  extrem starkes Signal (direkt neben der Antenne) und wird jetzt
+  korrekt als "good" bewertet.
+
+- **Sensor: ISO-Zeitstempel mit `Z`-Suffix**
+  `_seconds_since` konnte `2026-08-15T18:00:00Z` nicht parsen
+  (Python < 3.11). Das `Z`-Suffix wird jetzt in `+00:00` umgewandelt.
+
+### Changed
+
+- `manifest.json`: Version 1.25.0 -> 1.26.0
+- `acl_provisioning.py`: ACL_VERSION 3 -> 4
+- `topology_panel.py`: Panel-Version auf 20260815-v1.26.0 aktualisiert
+
+## [1.25.0] - 2026-07-04
+
+> **Fokussierung auf OpenWrt.** Die optionalen Zusatz-Features **Fritz!Box (TR-064/DSL)**
+> und **Managed Switch** wurden vollständig entfernt. Die Integration ist jetzt reine
+> OpenWrt-Router-Funktionalität.
+
+### Removed
+
+- **Fritz!Box (TR-064/DSL-Modem):** SOAP/TR-064-Client (`fritzbox.py`), Coordinator-Polling,
+  Config-/Options-Flow-Felder sowie die DSL-Kennzahlen (Sync-/Max-Rate, SNR-Marge,
+  Leitungsdämpfung) und der DSL-Verlaufsgraph. DSL-Werte stammen vom vorgelagerten
+  DSL-Modem und lassen sich nicht aus OpenWrt-Daten ableiten.
+- **Managed Switch (externes Gerät):** der `switch_dev`-Config-Flow-Step und die
+  `switch_*`-Konfigurationsfelder. Dieser Zweig war ein ungenutzter Setup-Stub (wurde nie
+  gepollt oder als Entität ausgewertet).
+
+### Changed
+
+- **WAN-Durchsatz jetzt immer nativ:** Download-/Upload-Rate (`wan_traffic`) wird
+  ausschließlich aus den OpenWrt-WAN-Interface-Zählern (rx/tx-Byte-Delta pro Poll)
+  berechnet. Der bisherige Fritz!Box-Pfad entfällt; Live-Werte in „WAN Aktivität",
+  Footer und Edge-Tooltip bleiben erhalten.
+- **Config-Flow verkürzt:** `user → checklist` (der Zwischen-Step „Zusätzliche Geräte"
+  entfällt). Optionen enthalten nur noch das Topology-Debug-Flag.
+
+> **Hinweis:** Nach dem Update ist ein **Neustart von Home Assistant** empfohlen (entfernte
+> Plattform-/Frontend-Assets). Bestehende Router-Einträge bleiben unverändert; verwaiste
+> `fritzbox_*`/`switch_*`-Schlüssel in den Optionen werden ignoriert.
+
+## [1.24.1] - 2026-07-03
+
+> **Topology-Fix.** Ein per WLAN angebundener **Mesh-AP** (z. B. 10.10.30.50 in VLAN 30)
+> wurde in der Topologie fälschlich als **„Kabel"** angezeigt.
+
+### Fixed
+
+- **Mesh-AP als „Kabel" statt WLAN:** Die Repeater-/WLAN-Erkennung
+  (`topology_mesh._has_active_sta_interface`) verlangte eine Client-STA-Assoziation
+  (BSSID **und** Signal). Ein 802.11s-**Mesh-Point**-Backhaul liefert beides nicht wie ein
+  klassischer STA-Client — dadurch griff das „Repeater-Override" nicht und der über die
+  Gateway-Bridge-FDB gelernte AP blieb ein `lan_uplink` („Kabel"). Ein Mesh-Point-Interface
+  gilt jetzt allein durch seine (aktive) Präsenz als WLAN-Uplink.
+- **Cross-Subnet-Mesh ohne Kante:** Ein Mesh-AP in einem **anderen** Subnetz/VLAN (VLAN 30
+  unter einem VLAN-10-Gateway) wurde von keiner Erkennungsmethode erfasst (Subnetz-Fallback
+  greift nur im gleichen /24) und fiel auf den Frontend-Default „Kabel" zurück. Ein
+  unverbundener AP mit aktivem Mesh-/STA-Interface bekommt jetzt einen verifizierten
+  `wifi_uplink` zum Gateway — auch über VLAN-Grenzen hinweg.
+- **Härtung:** `get_sta_interface_details` (UCI-Fallback) überspringt jetzt **deaktivierte**
+  wifi-ifaces, damit ein deaktivierter Mesh-/STA-Eintrag keinen kabelgebundenen AP
+  fälschlich auf WLAN kippt.
+
+> Hinweis: Der Mesh-AP erscheint danach als **„WLAN-Repeater"** (die UI unterscheidet aktuell
+> `wired` / `mesh` / `repeater`; ein verifizierter WLAN-Uplink ist `repeater`). Wichtig ist:
+> nicht mehr „Kabel".
+
+### Tests
+
+- `test_topology_mesh.py`: Mesh-AP (mode=mesh point, ohne bssid/signal) → `wifi_uplink`;
+  gekabelter Mesh-fähiger AP (WAN-Carrier) bleibt `lan_uplink`; Cross-Subnet-Mesh-AP bekommt
+  `wifi_uplink`-Fallback; Router ohne STA/Mesh in fremdem Subnetz bekommt weiterhin keine
+  Kante. `_has_active_sta_interface`-Unit-Tests. `test_api.py`: UCI-Fallback überspringt
+  deaktivierte ifaces. Gesamtsuite: 597 grün.
+
+## [1.24.0] - 2026-07-03
+
+> **Multi-Router-Release.** Mehrere OpenWrt-Router (z. B. 10.10.10.1, .2, .4 — baugleiche
+> Cudy WR3000) ließen sich nicht zuverlässig parallel hinzufügen: Router 1 klappte, der
+> zweite/dritte brach ab oder kam nach grüner Checklist nicht sauber hoch. Ursache waren
+> die `unique_id`-Ableitung und die Reihenfolge des ACL-Deploys im Setup — beides ist jetzt
+> gefixt. Neuer Multi-Router-Smoke-Test beweist: .1/.2/.4 existieren danach als eigene
+> Einträge/Geräte, ohne falschen `already_configured`-Abbruch.
+
+### Fixed
+
+- **Zweiter/dritter Router wurde als „bereits konfiguriert" abgewiesen:** Die `unique_id`
+  wurde aus dem Router-MAC gebildet (`config_flow.py`). OpenWrts `system board` liefert aber
+  meist gar kein Top-Level-`mac`-Feld, und baugleiche Geräte können denselben Platzhalter-
+  bzw. leeren MAC melden — dann kollidierten alle Router auf eine `unique_id` und der zweite
+  brach mit `already_configured` ab. Die `unique_id` ist jetzt **host-basiert**
+  (`host:port`, siehe neue Helper `_compute_unique_id`): unterschiedliche (feste) IPs sind
+  immer getrennte Einträge, ein echtes erneutes Hinzufügen desselben Hosts wird weiterhin
+  korrekt verhindert.
+- **Router kam nach grüner Checklist nicht sauber hoch / erst nach Reload:** Der ACL-Deploy
+  lief in `async_setup_entry` **nach** dem ersten Datenabruf. Dabei cachte der API-Client die
+  vor dem Deploy noch ACL-geblockten ubus-Methoden dauerhaft (`_acl_blocked`) und schaltete
+  sie auch nach dem Deploy weiter kurz — der Router lief bis zum nächsten Reload degradiert.
+  Jetzt wird die ACL **vor** dem ersten Refresh deployt, danach neu eingeloggt und der
+  Block-Cache geleert (neue Methode `api.reset_acl_blocked()`), sodass der erste Poll bereits
+  die frisch freigegebenen Methoden nutzt.
+
+### Changed
+
+- **First-Refresh-Härtung:** Wird beim allerersten Poll (Setup) eine Kern-ubus-Methode noch
+  durch die gerade erst deployte ACL blockiert (`OpenWrtMethodNotFoundError`), fällt der
+  Coordinator auf leere Defaults zurück statt `ConfigEntryNotReady` zu werfen — der Router
+  kommt hoch statt in „Wird wiederholt" zu hängen. Echte Verbindungs-/Timeout-/Auth-/
+  Response-Fehler propagieren unverändert; im Dauerbetrieb bleibt das strikte Fail-Fast.
+- **`network_wireless`-Capability** gilt jetzt auch als erfüllt, wenn Wireless über
+  hostapd **oder** UCI erreichbar ist (nicht nur `network.wireless/status` oder `iwinfo`).
+  Kein falscher „Kritisch"-Alarm mehr auf Stock-Cudy-Firmware, die für
+  `network.wireless/status` rc 2 liefert und kein iwinfo hat.
+
+### Tests
+
+- Neuer Multi-Router-Smoke-Test (`test_config_flow.py`): fügt .1/.2/.4 nacheinander in
+  dieselbe Domain ein, treibt das echte `_abort_if_unique_id_configured()` und beweist drei
+  getrennte Einträge ohne Abbruch; erneutes Hinzufügen desselben Hosts bricht korrekt ab.
+- `_compute_unique_id`-Unit-Tests (distinct hosts, geteilte/leere/all-zero MAC → trotzdem
+  eindeutig), Setup-Reihenfolge-Test (ACL vor First-Refresh + `reset_acl_blocked`),
+  First-Poll-Härtungs-Tests, `network_wireless`-via-UCI-Test. Gesamtsuite: 587 grün.
+
+## [1.23.0] - 2026-07-03
+
+> **Checklist-Release.** Nach einem erfolgreichen ACL-Deploy blieben „Datei-Lesezugriff" und
+> „WLAN-Status" trotzdem rot (fälschlich als „Kritische Berechtigungen fehlen"), obwohl die
+> Integration funktioniert. Am echten Cudy WR3000 (10.10.10.1) verifiziert: jetzt alle 9 Punkte grün.
+
+### Fixed
+
+- **Datei-Lesezugriff blieb rot:** Das rpcd-`file`-Objekt prüft Lesezugriff PRO PFAD. Die ACL
+  gewährte unter `read.file` nur ddns-Pfade — `/etc/openwrt_release`, `/sys/class/net/*` (Bridge-FDB,
+  Interface-Statistiken, Port-Nummern), `/proc/net/arp` und conntrack waren blockiert und fielen auf
+  SSH zurück. Diese read-only System-Pfade sind jetzt in der ACL → file/read läuft direkt über ubus
+  (schneller, kein SSH nötig). `ACL_VERSION` 2→3 löst beim nächsten Start ein automatisches Redeploy aus.
+- **WLAN-Status blieb rot:** Manche Firmware (Cudy Stock) liefert für `network.wireless/status`
+  ubus INVALID_ARGUMENT. Die WLAN-Daten kommen ohnehin über iwinfo/hostapd — die Capability gilt
+  jetzt als erfüllt, wenn `network.wireless` ODER `iwinfo` funktioniert. Kein falscher „Kritisch"-Alarm mehr.
+- **Manuelle Anleitung repariert:** Der Checklist-Hinweis zeigte `scp ha-openwrt-router.json root@…`,
+  was auf eine Datei verweist, die der Nutzer nicht hat. Jetzt: Verweis auf die Auto-Deploy-Checkbox
+  (inkl. der dropbear-`PasswordAuth`-Befehle, die der SSH-Fallback braucht) plus ein funktionierender
+  manueller `cat > acl.d/… <<'EOF'`-Block, dynamisch aus dem echten ACL-Inhalt erzeugt.
+
+### Notes
+
+- Auto-Deploy der ACL (Checkbox) benötigt aktives SSH-Passwort-Login am Router
+  (dropbear `PasswordAuth on`, bei manchen Geräten zusätzlich `RootPasswordAuth on`).
+
+## [1.22.0] - 2026-07-03
+
+> **Transport-Release.** Der SSH-Fallback läuft jetzt pure-Python über **asyncssh** —
+> kein `sshpass`/`ssh`-Binary auf dem HA-Host mehr nötig. Auf HAOS und typischen
+> Containern war der Fallback vorher faktisch tot (sshpass nicht installiert). Alle
+> Wrapper-Signaturen und Rückgabe-Verträge bleiben unverändert.
+
+### Fixed
+
+- **SSH-Fallback auf Hosts ohne `sshpass` tot:** Die gesamte SSH-Fallback-Schicht
+  (hostapd-Clients, WLAN-Status, Bridge-FDB, ARP, WAN-Statistiken, opkg-Update,
+  ACL-Deploy) schlug auf HAOS/Containern still fehl, weil `sshpass` dort nicht
+  existiert (Spawn-Fehler). Transport ist jetzt in-process asyncssh — das Passwort
+  landet nur noch als asyncssh-`password`-Argument, nie in argv/env/Log.
+  Am echten Cudy WR3000 verifiziert (6/6 Datenquellen inkl. SSH-Fallbacks).
+
+### Changed
+
+- `manifest.json`: `requirements: ["asyncssh>=2.22.0"]` (HA installiert die Abhängigkeit
+  automatisch beim Update), `loggers: ["asyncssh"]`.
+- Der Key-Auth-Retry (bei abgelehntem Passwort → `~/.ssh`-Keys/Agent) gilt jetzt auch
+  für die sechs Direkt-Callsites und detachte Kommandos, nicht nur die Wrapper.
+- `_safe_subprocess_exec` bleibt (regressionsgetestet), hat aber keine produktiven
+  Aufrufer mehr.
+
+### Tests
+
+- `test_sshpass_security_v1179.py` → `test_ssh_transport.py` (11 Tests, asyncssh gemockt);
+  die Detached-Wrapping-Tests aus `test_subprocess_lifecycle.py` dorthin portiert.
+
+### Docs / Security
+
+- README/SSH_SETUP: sshpass → asyncssh. **Klartext-Router-Passwort aus `SSH_SETUP.md`
+  entfernt** (stand dort in Zeile 73 — bleibt in der Git-Historie; Passwort-Rotation empfohlen).
+
+> **Router-Hinweis:** Der SSH-Fallback braucht `dropbear` mit aktivem `PasswordAuth`
+> (bei manchen Geräten zusätzlich `RootPasswordAuth`). Ist er aus, meldet der
+> Checklist-Schritt seit v1.20.1 einen klaren Fehler statt still zu scheitern.
+
+## [1.21.0] - 2026-07-03
+
+> **Port-Zuordnungs-Release.** Die Topology zeigte Geräte an falschen physischen Ports —
+> Ursache war ein fehlerhaftes Binär-Parsing der Bridge-FDB (8 statt 16 Bytes pro Eintrag,
+> `is_local` ignoriert) plus ein Case-Mismatch beim DHCP-Lease-Lookup. Jetzt gibt es ein
+> echtes Port→Gerät-Datenmodell mit Confidence-Stufen — und die Port-Kacheln zeigen, was
+> dranhängt.
+
+### Fixed
+
+- **brforward-Parsing korrigiert:** `/sys/class/net/br-lan/brforward` besteht aus
+  16-Byte-`struct __fdb_entry`-Records — der alte 8-Byte-Parser las jeden zweiten
+  Eintrag als Müll und ignorierte `is_local`, wodurch **Router-eigene MACs als
+  angeschlossene Geräte an Ports erschienen**. Multicast/Broadcast/Null-MACs werden
+  gefiltert, `port_hi` wird berücksichtigt, VLAN-Subinterface-Member (`lan1.10`)
+  zählen zum physischen Port.
+- **Lease-Lookup case-normalisiert:** DHCP-Leases sind UPPERCASE-gekeyt, FDB-MACs
+  lowercase — der Hostname-Lookup lief dadurch immer ins Leere und Ports zeigten
+  rohe MACs statt Gerätenamen.
+- **Deterministische Gerätewahl:** `connected_device` folgte der zufälligen
+  FDB-Reihenfolge und konnte bei jedem Poll wechseln. Geräte werden jetzt nach
+  Confidence → Name → MAC sortiert.
+
+### Added
+
+- **Port→Gerät-Datenmodell** (`topology_ports.py`): pro Port `connected_devices[]`
+  mit Name/IP/MAC/Quelle (`fdb+dhcp+arp`) und Confidence (`high`/`medium`/`low`/
+  `none`), `primary_device`, `device_count`, `has_downstream_switch`, `web_url`.
+  Keine Fake-Zuordnungen: Identitäten ohne verlässlichen FDB-Port landen im
+  `unassigned`-Bucket (`unknown_port`), reine Lease-Geister werden verworfen,
+  WLAN-Clients erscheinen nie auf LAN-Ports, der WAN-Port bekommt nie FDB-Geräte.
+- **ARP-Tabelle als Datenquelle:** `get_arp_table()` (MAC→IPv4) via ubus
+  `file/read /proc/net/arp` mit SSH-Fallback — löst Geräte mit statischer IP ohne
+  DHCP-Lease auf; `get_trunk_port_map()` nutzt die vorgeholten Maps (kein doppelter
+  FDB-Read pro Zyklus mehr).
+- **Topology-UI — Port-Kacheln:** zweite Zeile mit Gerätename/IP, `n Geräte`,
+  `Switch/AP`, `Internet` (WAN) oder `Unbekannt`; Hover-Tooltip listet bis zu
+  6 Geräte mit Confidence-Punkt; **Klick öffnet ein Port-Detail-Panel** mit
+  Status/Speed/VLANs und allen Geräten inkl. klickbarem `http://<ip>`-Link
+  (neuer Tab, `rel="noopener noreferrer"`, IP wird client-seitig validiert).
+- **Geräte-Icons pro Port:** unter der Port-Leiste erscheinen die kabelgebundenen
+  Geräte als gruppierte Dots je LAN-Port (max. 4 + Overflow) — Mesh-APs am
+  Trunk-Port mit Router-Icon und „Zum Access Point"-Sprung.
+- **Mesh: Nearest-Switch-Regel:** Geräte, die ein AP selbst auf seiner
+  Access-Seite sieht, werden dem AP zugerechnet und nicht mehr flach auf den
+  Gateway-Trunk-Port gelegt; der AP selbst erscheint dort als primäres Gerät.
+- **Debug-Option** (`topology_port_debug`, Optionen-Dialog): liefert im
+  auth-geschützten Snapshot pro Port die Roh-Zuordnung (FDB-MACs, DHCP/ARP-Treffer,
+  gefilterte MACs, finaler Stand, Begründung). HA-Diagnostics enthalten stattdessen
+  eine **PII-freie `port_mapping`-Zusammenfassung** (Counts, Confidence, Quellen);
+  die neue `arp_table` wird dort wie die DHCP-Leases als Count redacted.
+
+### Changed
+
+- Alte Snapshots ohne die neuen Felder rendert das Panel unverändert wie bisher
+  (alle neuen Felder optional; Legacy-`connected_device`-String bleibt erhalten
+  und zeigt am Trunk-Port weiterhin den AP-Hostnamen).
+
+## [1.20.1] - 2026-07-03
+
+> **Checklist-Fix-Release.** „Berechtigungen automatisch einrichten" im Setup zeigte bei
+> Fehlschlag kommentarlos dieselbe Form erneut — und konnte auf ACL-restriktiven Routern
+> (z. B. Cudy WR3000) prinzipbedingt nie funktionieren.
+
+### Fixed
+
+- **Feedback beim ACL-Deploy:** Der Checklist-Schritt zeigt jetzt das Ergebnis an —
+  `acl_deploy_failed` (ubus **und** SSH abgelehnt), `acl_already_current` (ACL war schon
+  aktuell — Ursache liegt woanders), `acl_deploy_no_change` (geschrieben, aber Rechte nach
+  Re-Check unverändert) sowie eine grüne Erfolgszeile. Vor dem Re-Check: 2 s Karenz +
+  ein Login-Retry (rpcd-Neustart-Race).
+- **Phantom-Zeile entfernt:** „Datei-Ausführung (Bridge FDB, ARP)" wurde nie geprobt und war
+  bei JEDEM Router dauerhaft rot — dadurch war der grüne Gesamtstatus unerreichbar und die
+  Deploy-Checkbox erschien immer. `file/exec` wird seit 1.15.6 zur Laufzeit nicht mehr genutzt.
+- **rpcd-Session-Leck im Checklist-Schritt:** Die Wegwerf-API-Instanzen (Deploy + Re-Check)
+  werden jetzt via `async_close()` geschlossen.
+
+### Added
+
+- **SSH-Fallback für das ACL-Deploy:** Blockiert der Router ubus `file/write` (Henne-Ei:
+  das Deploy braucht genau die file-Rechte, die die ACL erst gewähren würde), wird die ACL
+  per SSH mit denselben Zugangsdaten geschrieben und rpcd neu gestartet (sshpass -e —
+  Passwort nie in argv). *SemVer-Anmerkung: streng genommen ein Minor-Feature; als Patch
+  veröffentlicht, weil es das seit 1.15.4 beworbene Auto-Deploy erst flächendeckend
+  funktionsfähig macht.*
+
+### Changed
+
+- `ensure_acl`/`check_and_deploy_acl` werfen bei fehlgeschlagenem, aber nötigem Deploy jetzt
+  `AclDeployError` statt still `False` (Setup bleibt unberührt — `async_setup_entry` fängt
+  weiterhin alle Fehler best-effort ab).
+
+## [1.20.0] - 2026-07-03
+
+> **HA-Kompatibilitäts-Release.** Review gegen HA-Core-Standards Stand Juli 2026
+> (aktuell HA 2026.7): eine harte Deadline behoben, CI ehrlich gemacht, Übersetzungen
+> vervollständigt. Keine Verhaltensänderung auf HA ≥ 2026.2.
+
+### Fixed
+
+- **HA-2026.8-Deadline:** `DataUpdateCoordinator` erhält `config_entry=` jetzt explizit —
+  die implizite ContextVar-Übergabe wird in HA 2026.8 entfernt; ohne den Fix bräche u. a.
+  der Reauth-Start aus dem Coordinator.
+- **Toter Code entfernt:** Sync-Fallback `hass.http.register_static_path` im Topology-Panel
+  (durch den Modul-Import von `StaticPathConfig` ohnehin unerreichbar; seit HA 2024.6 obsolet).
+
+### Changed
+
+- **Mindest-HA-Version ehrlich deklariert:** hacs.json-Floor von 2024.1.0 auf **2026.2.0**
+  (der Code benötigte real bereits ≥ 2024.11 — Options-/Reauth-Flow crashten auf älteren Cores).
+- `manifest.json`: `integration_type: "hub"` ergänzt.
+- README: dynamische Versions-/Test-Badges (Badge war bei 1.15.6 eingefroren),
+  explizite Mindest-HA-Angabe.
+
+### Added
+
+- **Deutsche Übersetzung** (`translations/de.json`, 109 Keys). Die EN-Quelle
+  (strings.json/en.json) ist jetzt durchgängig englisch — Checklist-Step und einige
+  Entity-Namen waren zuvor deutsch im EN-Master.
+- Blueprint „Router Ausfall-Benachrichtigung": moderne Plural-Syntax
+  (`triggers:`/`actions:`, `action:` statt `service:`), `source_url`, `min_version`.
+- CHANGELOG: fehlender [1.19.0]-Eintrag nachgetragen (Release war ohne Changelog erschienen).
+
+### CI
+
+- **Release-Gate:** `release.yaml` erstellt Releases nur noch nach grünen `test`- und
+  `hassfest`-Jobs.
+- **Test-Matrix 3.13/3.14** (vorher 3.12/3.13): Unter Python 3.12 löste pip nur HA 2024.x
+  auf, unter 3.13 maximal HA 2026.2 — HA 2026.3+ verlangt Python ≥ 3.14. Der wöchentliche
+  ha-compat-Check pinnt jetzt die tatsächlich neueste HA-Version statt still gegen eine
+  ältere zu testen.
+
+### Notes / Offen
+
+- Geplant (siehe TODO.md): Migration der SSH-Fallback-/Outage-Notifications auf das
+  Repairs-System (`issue_registry`) inkl. i18n der bisher hart deutschen Meldungstexte.
+- Nicht betroffen von aktuellen Deprecations (verifiziert): Device-Tracker-Änderungen
+  2026.6 (`battery_level`/`location_name`), `show_advanced_options`,
+  Update-Listener+Reload-Pattern.
+
+## [1.19.0] - 2026-05-28
+
+> **Stabilitäts-Release nach rpcd-OOM-Forensik.** Adressiert die in der 24h-Production-Diagnose
+> nachgewiesene Restursache: rpcd-Session-Leck auf dem Router durch Re-Login-Churn.
+
+### Fixed
+
+- **rpcd-Session-Leck:** Beim Re-Login wird die vorherige ubus-Session jetzt aktiv via
+  `session.destroy` zerstört, statt auf dem Router zu verwaisen (Ursache des rpcd-OOM auf
+  Produktiv-Hardware).
+- **Re-Login-Churn gestoppt:** ACL-geblockte ubus-Methoden werden pro Session gecacht und nicht
+  mehr bei jedem Poll erneut versucht — vorher provozierte jeder Poll neue Login-Zyklen.
+- **ACL-Re-Validierung:** Die rpcd-ACL wird bei jedem Start gegen den Soll-Inhalt geprüft und bei
+  Drift aktualisiert (vorher nur bei Erstinstallation deployed).
+- **Setup-Robustheit:** Optionaler `topology_card`-Import ist geguardet — Setup übersteht das
+  Fehlen des WIP-Moduls.
+
+### CI / Tests
+
+- `ruff format` über die Codebase (CI-Format-Check).
+- Sync-Sensor-Tests nutzen `asyncio.run` (Fix für CI auf Python 3.12+).
+
+### Docs / Diagnostics
+
+- v1.19-Scope-Dokument nach v1.17.9-Crash-Forensik (`docs/v1.19-scope.md`).
+- 24h-Production-Baseline als JSONL (`diagnostics/prod-24h-baseline.jsonl`).
+
+## [1.18.0] - 2026-04-29
+
+> **Hardening-Release.** Kein garantierter Fix für die sporadischen HA-Crashes unter Last — der Beweis kommt aus der parallel laufenden 24h-Production-Diagnose. v1.18.0 schließt nachweisbare Lecks im Subprocess- und Panel-Lifecycle und liefert das Mess-Tooling, mit dem v1.19 die Restursache adressieren kann.
+
+### Hardening — Subprocess-Lifecycle (F4)
+
+- **Zentraler Helper `_safe_subprocess_exec`** in `api.py`. Alle 11 vormals direkten `asyncio.create_subprocess_exec`-Aufrufe wurden durch `_run_ssh` / `_run_ssh_binary` / `_run_ssh_detached` ersetzt; alle drei Helper laufen über denselben leak-freien Spawn-Pfad. Garantierte Cleanup-Sequenz `terminate → shielded wait(2s) → kill → shielded wait(2s)` auf JEDEM Exit-Pfad: success, non-zero rc, timeout, spawn-fail (`OSError`/`ValueError`), generic exception, `CancelledError` mid-flight UND `CancelledError` mid-cleanup.
+- **6 vormals leak-prone Stellen** in `api.py` migriert: `get_wan_status` rx/tx-Fallback, `_set_wifi_state_ssh`, `_get_wifi_status_ssh`, `_get_network_interfaces_ssh`, `get_bridge_fdb` (binär, NUL-safe), `perform_system_update` (opkg, detached).
+- **Doppel-Cancel-Härte (Release-Gate-Fix)**: beide `proc.wait()` im finally-Block sind jetzt `asyncio.shield`-gewrappt; ein Cancel während des Cleanups markiert intern `cleanup_cancelled=True`, eskaliert aber trotzdem bis SIGKILL + finalem Reap und re-raised `CancelledError` erst danach. Resultat: keine Zombies und keine Pipe-FDs mehr offen, auch unter HA-Shutdown-Druck.
+- **Sentinels** für nicht-OS-Returncodes: `SUBPROCESS_RC_TIMEOUT=-1`, `SUBPROCESS_RC_FAILED_TO_SPAWN=-2`, `SUBPROCESS_RC_CANCELLED=-3`. Caller distinguieren ohne `None`-Optional-Dance.
+
+### Hardening — Panel-Lifecycle (F3)
+
+- **Reference-Counting** in `topology_panel.py`: jede `async_setup_entry` bumpt `_PANEL_REFCOUNT_KEY`, jede `async_unload_entry` dekrementiert. Beim Last-Unload wird die Sidebar via `async_remove_panel` entfernt und der Snapshot-View **soft-disabled** — `OpenWrtMeshSnapshotView.get()` antwortet ab dann mit `HTTP 410 Gone`, bis ein neuer Entry den Flag zurücksetzt. Akzeptierter Trade-off: der statische Frontend-Pfad bleibt registriert (HA aiohttp router ist append-only, byte-konstant, kein Leak).
+- **Setup-Failure-Recovery (Release-Gate-Fix)**: pro-Stage-Flags `_PANEL_STATIC_BOUND_KEY` / `_PANEL_VIEW_BOUND_KEY` lassen einen Retry nach partialer Failure die fehlende Stage ergänzen, ohne bereits gebundene Resources doppelt zu registrieren. Master-Flag `_PANEL_REGISTERED_KEY` wird nur nach vollständigem Erfolg gesetzt; Refcount wird bei Failure rolled-back. `asyncio.Lock` (`_PANEL_SETUP_LOCK_KEY`) serialisiert concurrent Setup-Calls bei HA-Boot mit mehreren Config-Entries.
+- **`async_unload_entry`** ruft jetzt zusätzlich `async_teardown_topology_panel(hass)` und `entry.runtime_data.api.async_close()` (defensive try/except, beide nicht-blockierend bei Router-Ausfall — kein RPC).
+
+### Fixed
+
+- **opkg-Update Quote-Bug (pre-existing, jetzt behoben).** Der Filter-Command `grep -v -E '^addon-|^luci-' | cut -d' ' -f1` enthielt Single-Quotes, die das alte naive Wrapping `nohup sh -c '<cmd>' &` zerbrochen haben — die remote-Bash hat Pipe-Tokens statt Regex-OR interpretiert. `_run_ssh_detached` quoted `remote_cmd` jetzt POSIX-konform via `shlex.quote()`. Verifiziert mit `shlex.split(remote, posix=True)` round-trip-Test.
+
+### Added
+
+- **F5 Aggregator-Skeleton (deaktiviert).** Method `_call_aggregator()` und Schema-Version-Validator `_parse_aggregator_response()` in `api.py`; `CONF_USE_AGGREGATOR` / `DEFAULT_USE_AGGREGATOR=False` / `AGGREGATOR_SCHEMA_VERSION="1.18.0"` / `AGGREGATOR_REMOTE_SCRIPT_PATH="/root/ha-collect.sh"` in `const.py`. `_call_aggregator()` raises `NotImplementedError` bis das Remote-Script in v1.19+ deployed wird. Aktivierung erfolgt erst nach 24h-Diagnose-Auswertung.
+- **24h-Production-Sampler** `scripts/_prod_24h_sample.sh`. Read-only, pure `/proc` + `ps` + `find` (kein `lsof` nötig — funktioniert in Containern). 60s-Intervall, JSONL-Output mit RSS / VmSize / Threads / FD-Total / FD-by-Type (socket / pipe / file) / Subprocess-Count / Zombie-Count. Auswertungs-Decision-Rules im Skript-Header dokumentiert.
+- **API**: neue `OpenWrtAPI.async_close()` Methode dropped Session-Token + Caches ohne RPC. Wird von `async_unload_entry` aufgerufen.
+
+### Tests
+
+- **484 grün** (+36 neue gegenüber v1.17.9):
+  - `tests/test_subprocess_lifecycle.py` — 11 Tests inkl. Cancel-during-cleanup-Eskalation, NUL-Bytes-Round-Trip, Quote-Round-Trip via `shlex.split`.
+  - `tests/test_panel_lifecycle.py` — 13 Tests inkl. Refcount-Idempotenz, Re-Arm nach Last-Unload, Setup-Failure-Rollback (sowohl static-path als auch panel-register), Retry-überspringt-bereits-gebundene-Stages.
+  - `tests/test_aggregator_skeleton.py` — 11 Tests für Feature-Flag-Defaults, Schema-Version-Drift, JSON-Parse-Validation.
+
+### Notes & Disclaimer
+
+- **Dies ist kein Crash-Fix-Release im strengen Sinn.** Wir haben echte Lecks in 6 Subprocess-Pfaden geschlossen und das Panel-Lifecycle gehärtet, aber ob die sporadischen HA-Crashes unter Last damit verschwinden, beweist erst die parallel laufende 24h-Production-Diagnose. Falls FD-Trend nach v1.18.0 weiterhin monoton steigt, geht es in v1.19 mit dem Aggregator-Pfad (F5) weiter.
+- **Backward-compatible**: keine Migrations-Schritte nötig, keine Config-Entry-Schema-Änderung, kein Entity-Bruch.
+- **F5 Aggregator** ist deaktiviert (Default-Off) — nur Skeleton-Code, raises `NotImplementedError` bei Aktivierung.
+
+## [1.17.9] - 2026-04-29
+
+### Security
+
+- **🔴 sshpass-Passwort wurde via Kommandozeile exponiert.** Bis v1.17.8 wurden alle SSH-Fallback-Calls in `api.py` als `sshpass -p <password> ssh ...` ausgeführt. Damit landete das Klartext-Passwort in `/proc/<pid>/cmdline` und war für jeden Prozess auf demselben System (HA-Container, WSL2, Docker-Host) via `ps aux` sichtbar. Fix: alle 12 SSH-Aufrufstellen in `api.py` auf `sshpass -e` umgestellt; das Passwort wird jetzt via `SSHPASS`-Env-Variable an den Subprocess übergeben (neue Helper `_ssh_env()` + erweitertes `_build_ssh_cmd`). Affected paths: WAN-Status, RX/TX-Bytes, hostapd-Clients, iw station-dump, WiFi-Control, UCI-Show, Network-Interfaces, Bridge-FDB, opkg-Update.
+- 4 neue Regressions-Tests (`tests/test_sshpass_security_v1179.py`): Quellcode-Scan auf `-p <pw>`-Pattern, `_ssh_env()`-Helper-Verträglichkeit, `_build_ssh_cmd`-Verifikation für Password- und Key-Auth-Pfad.
+
+### Changed
+
+- **`manifest.json`: `requirements` ist jetzt leer.** Der Eintrag `aiohttp>=3.9.0` war redundant — `aiohttp` ist von Home Assistant als Core-Dependency immer mitgeliefert. Externer pip-Eintrag konnte den HACS-Resolver verlangsamen und theoretisch zu Versionskonflikten mit der HA-internen aiohttp-Version führen. HA-Konvention: `requirements` listet nur Libraries die HA NICHT mitbringt.
+
+### Tests
+
+- 448 grün (+4 neu, +3 von v1.17.8 Memory-Suite).
+
+## [1.17.8] - 2026-04-29
+
+### Fixed
+
+- **Wiring-View: Medium-Mapping war semantisch invertiert.** In `WiringView.tsx` wurde `uplinkType='mesh'` (Backend `mesh_member`, unverifizierter Subnet-Fallback) als "WLAN" angezeigt und `uplinkType='repeater'` (Backend `wifi_uplink`, per STA-MAC verifiziert) als "Mesh?". Korrektes Mapping: `wired→Kabel`, `repeater→WLAN`, `mesh→Mesh?`.
+- **Wiring-View: "-60 dBm"-Default täuschte echtes Signal vor.** `api.ts` setzte `backhaulSignal: number` mit `?? -60` — `mesh_member`-Edges (kein Signal-Attribut) zeigten dadurch reproduzierbar "-60 dBm" als ob es ein Messwert wäre. Neues Flag `backhaulSignalKnown` markiert echte RSSI-Werte; Wiring-Status zeigt sonst `verbunden` (WLAN) oder `vermutet · <ip>` (Mesh?).
+- **Wiring-View: Default-Hostname "OpenWrt" → unkonfigurierter Router.** Frisch geflashte Router (Hostname `openwrt`/`lede`) werden jetzt als kursiv-gedimmtes "`<ip>` (unkonfiguriert)" angezeigt, statt als gleichwertige Wiring-Zeile.
+- **Wiring-View: STA-Port für WLAN-Repeater.** Backend setzt `ap_port=null` bei `wifi_uplink`-Edges (kein physischer Port). WiringView zeigt jetzt `STA` für Medium=WLAN, statt leerem `—`.
+
+### Tests
+
+- 441 Tests grün (unverändert — Bugs liegen ausschließlich im Frontend-Adapter und der View-Komponente; Backend-Edge-Schema ist korrekt).
+
+## [1.17.7] - 2026-04-29
+
+### Fixed
+
+- **Topology: AP3 wurde fälschlich als "WLAN Repeater" angezeigt, obwohl er per Kabel angeschlossen war.** Der v1.17.5 Repeater-Override in `topology_mesh._detect_inter_router_edges()` löste sich bereits aus, sobald *irgendein* `sta_interfaces`-Eintrag für einen Router vorhanden war. UCI-Fallback in `api.get_sta_interface_details()` listet aber auch deaktivierte/abgemeldete Wireless-Sections — ohne `bssid` und ohne `signal`. Solche Stale-Einträge stempelten Kabel-APs zu Repeatern. Fix: zwei Helfer `_has_active_sta_interface(data)` (verlangt `bssid`+`signal`) und `_has_wan_carrier(data)` (prüft `port_stats[wan].up`); der Override greift jetzt nur, wenn die STA-Iface aktiv assoziiert ist *und* der WAN-Port keinen Link-Carrier hat. Echte WLAN-Repeater (z. B. OpenWrt) bleiben unverändert auf `wifi_uplink`.
+
+### Added
+
+- **Neue Sidebar-Ansicht "Verkabelung"** — strukturierte Tabelle aller Inter-Router-Verbindungen: Quelle/Port → Ziel/Port, Medium (Kabel/WLAN/Mesh?), VLAN-Tags und Status (Speed bzw. dBm). Sortiert nach Medium (Kabel zuerst). Klick auf eine Zeile öffnet das DetailPanel des Ziel-APs.
+- **Farbige VLAN-Badges in Gateway- und AP-Karten** — jede VLAN-ID hat jetzt eine konsistente Farbe (gleiche 7-Farb-Palette wie Port-Chips und Edge-Labels). VLAN 30 sieht überall identisch aus.
+- **Minimap-Header mit Titel "Übersicht"** — der Mini-Map-Container wirkte ohne Beschriftung wie ein orphanes Fragment am unteren rechten Rand. Jetzt klar als Übersichtsfenster erkennbar.
+
+### Changed
+
+- **Aktiv/inaktiv-Kontrast der LAN-Port-Chips deutlich erhöht.** Down-Ports erhalten gestrichelten Rahmen, opacity 0.45 und keinen LED-Glow. Die VLAN-Färbung greift nur noch auf Up-Ports — der Link-Status ist damit das dominante visuelle Signal, unabhängig vom konfigurierten VLAN.
+- **Shared VLAN-Color-Utility:** `VLAN_COLORS` + `vlanColor()` aus `PortStrip.tsx` extrahiert nach `utils/vlanColor.ts`. Wird jetzt von PortStrip, GatewayNode, APNode und WiringView gemeinsam genutzt — garantiert deterministische Konsistenz pro VLAN-ID.
+
+### Tests
+
+- `tests/test_topology_mesh.py` um 3 neue Cases ergänzt:
+  - `test_repeater_override_skipped_when_wan_carrier_up` — der eigentliche AP3-Fall
+  - `test_repeater_override_skipped_when_sta_inactive` — UCI-Stale-Eintrag wird ignoriert
+  - `test_repeater_override_active_when_sta_assoc_and_wan_down` — Regressionsschutz für echte Repeater
+- Total: 441 Tests grün (+3).
+
+## [1.17.6] - 2026-04-29
+
+### Fixed
+
+- **Hotfix für v1.17.5: Browser-Cache-Bust für Topology-Panel.** `_PANEL_VERSION` in `topology_panel.py` wurde seit 9 Tagen nicht inkrementiert (steckte auf `"20260420d"`). Der `?v=…`-Query-Parameter am Bundle-URL war damit konstant — Browser luden weiter das gecachte alte Bundle und WLAN-Repeater-Badge / Port-Inline-Label aus v1.17.5 wurden nicht sichtbar. Bump auf `"20260429a"`. Wer nach Update immer noch das alte UI sieht, einmal Hard-Reload (Strg+F5) im Topology-Panel.
+
+## [1.17.5] - 2026-04-29
+
+### Fixed
+
+- **Topology: WLAN-Repeater wurden fälschlich als "Kabel" angezeigt.** Method 2 (WiFi-Client-Cross-Reference) in `topology_mesh.py` scheiterte, weil die STA-MAC eines Repeater-Routers nicht im Lookup landete — `router_macs` enthielt nur LAN-MAC + AP-Mode-BSSIDs. Method 1 (DHCP-Lease) hat den Edge dann als `lan_uplink` abgefangen → Frontend mappte das auf `'wired'` → Badge "Kabel". Fix: neue Methode `OpenWrtAPI.get_sta_interface_details()` (iwinfo + UCI-Fallback) sammelt STA-Interface-MACs; `topology_mesh._detect_inter_router_edges()` schreibt sie ins `router_macs`-Lookup. Zusätzlich: Repeater-Override stuft bestehende `lan_uplink`-Edges auf `wifi_uplink` um, sobald `sta_interfaces` für den Ziel-Router vorhanden ist (deckt den Fall ab, dass das Gateway zusätzlich einen DHCP-Lease vergibt).
+
+### Changed
+
+- **Topology-Edges tragen jetzt Port-Info zwischen Routern.** Inter-Router-Edges (`lan_uplink`) liefern in den Attributen zusätzlich `ap_port` (`"wan"`) und `vlan_tags` (Liste von VLAN-IDs am Gateway-Port via `port_vlan_map`). Frontend zeichnet daraus inline auf der Verbindung ein Label wie `LAN3 · V30 · 1G` (Untagged) bzw. `T:10,20,30` (Trunk) plus AP-seitig `WAN`. Tooltip zeigt VLAN strukturiert (`Trunk 10, 20, 30` oder einzelne ID).
+- **Neuer UplinkType `'repeater'`** — Badge "WLAN Repeater" (amber) statt "Mesh"; `'mesh'` ist jetzt explizit Subnet-Fallback ("Mesh?", unverifiziert). MobileView und EdgeTooltip wurden synchron aktualisiert.
+
+### Added
+
+- `OpenWrtCoordinatorData.sta_interfaces` — Liste der STA-Mode-Wireless-Interfaces (für WLAN-Repeater-Erkennung).
+- 4 neue Tests in `tests/test_topology_mesh.py` (STA-MAC-Lookup, Repeater-Override, VLAN-Tag-Anreicherung, Port-Info bei Subnet-Fallback) + 1 in `test_coordinator.py` (`as_dict` exportiert `sta_interfaces`). Total: 438 Tests grün.
+
+## [1.17.4] - 2026-04-29
+
+### Changed
+
+- **Sensor-Explosion zurückgefahren:** Mit dem Fix in v1.17.3 kamen plötzlich ~180 Entitäten pro Router zum Vorschein — viele davon (per-VLAN, per-Switch-Port, per-Radio-Detail, per-AP-Metrik) sind für die meisten Setups unnötig und wurden daher zu Standard-Disabled umgestellt:
+  - `OpenWrtInterfaceSensor`, `OpenWrtInterfaceRateSensor`: Per-Interface RX/TX/Rate
+  - `OpenWrtPortSensor`: Per-Switch-Port Status/Speed/RX/TX
+  - `OpenWrtRadioSensor`: Per-Radio Signal/Noise (dBm)
+  - `OpenWrtAPInterfaceSensor`: Per-AP-Interface Channel/Frequency/TX-Power/Bitrate/HW-Mode/HT-Mode/Mode/Quality/Clients
+- **VLAN-Bridge-Interfaces** (`br-lan.40`, `eth0.30` etc. — alles mit `.` im Namen) werden gar nicht mehr als Sensoren angelegt. Per-VLAN-Status liefert ohnehin `gateway.vlans` als Attribut.
+
+### Fixed
+
+- **One-shot Migration für bestehende Installationen:** Wer von v1.17.3 oder früher migriert, hatte alle dynamischen Sensoren bereits als enabled im Registry. Beim ersten Setup nach dem Update werden diese nun automatisch via `RegistryEntryDisabler.INTEGRATION` deaktiviert (Patterns: `_iface_`, `_rate`, `_radio_`, `_ap_`, `_port_`). Idempotent — manuell wieder aktivierte Sensoren bleiben aktiviert.
+
+## [1.17.3] - 2026-04-29
+
+### Fixed
+
+- **Wahrer Grund für die "verschwundenen" Entitäten** (Folge zu v1.17.1/v1.17.2): Die Diagnose über zwei Releases hinweg war falsch — es gab keine doppelten Devices. Der echte Fehler: alle Entities mit `device_info.configuration_url` lieferten `https-insecure://host:port` zurück, was HA's `_validate_configuration_url` mit `ValueError: invalid configuration_url` ablehnt. Resultat: 25+ Sensoren scheiterten beim Hinzufügen, nur die 3 Entities ohne `configuration_url` (Connectivity, WAN Connectivity, Router Status) kamen durch. Fix: neuer Helper `url_scheme_for()` in `const.py` der den internen Marker `https-insecure` für URL-Generierung auf `https` collapsed; alle 18 `configuration_url`-Konstruktionen in `sensor.py`, `switch.py`, `button.py`, `device_tracker.py`, `topology_entities.py` umgestellt.
+
+## [1.17.2] - 2026-04-29
+
+### Fixed
+
+- **Doppelte Geräte im HA-Registry nach v1.17.0** (Folge-Fix zu v1.17.1): v1.17.1 stellte den korrekten Device-Identifier wieder her, aber HA verschiebt bestehende Entity↔Device-Verknüpfungen nicht automatisch — Nutzer sahen weiterhin zwei OpenWrt-Geräte (eines mit 3 Entitäten, eines mit den restlichen ~30). Beim Setup läuft jetzt automatisch eine Device-Registry-Migration: Orphan-MAC-Devices werden erkannt, ihre Entitäten auf das kanonische `entry_id`-Device umgehängt, und das Orphan-Device gelöscht. Idempotent — auf neu installierten Systemen passiert nichts.
+
+## [1.17.1] - 2026-04-28
+
+### Fixed
+
+- **Entitäten verschwinden nach Update auf v1.17.0** (`device_info` Inkonsistenz): Der neue `RouterStatusSensor` und beide `binary_sensor`-Entities verwendeten als Device-Identifier `(DOMAIN, mac)` statt `(DOMAIN, entry.entry_id)` wie alle anderen Plattformen. Folge: HA legte ein zweites Device im Registry an, das nur die 3 neuen Entities trug — die ~30 alten Sensors hingen weiter am ursprünglichen Device, wirkten aber im UI als wären sie verschwunden. Fix: alle Entities verwenden jetzt einheitlich `entry.entry_id`.
+- **Topology: Repeater-Backhaul-Erkennung verbessert** (`topology_mesh.py`): Inter-Router-Edges nutzen jetzt zusätzlich alle Interface-IPs (`network_interfaces`) und AP-BSSIDs (`ap_interfaces`) als Match-Kandidaten. Dadurch werden APs auch dann als WiFi-Uplink erkannt, wenn sie sich über eine sekundäre IP/MAC (z.B. STA-Backhaul) am Gateway anmelden.
+- **Topology: Client-Nodes liefern `is_wifi_client`-Flag** (`topology_diagnostic.py`): Clients aus hostapd erhalten jetzt explizit `is_wifi_client: true`, damit das Frontend WLAN- vs Kabel-Anbindung sicher unterscheiden kann.
+- **Topology-Panel: Falsche "Nicht registrierter Router"-Warnungen** (`useAlerts.ts`): Severity von `warning` auf `info` herabgesetzt, Patterns enger gefasst (kein generisches `/router/i` und `/gateway/i` mehr — diese matchten Smart-Home-Hubs wie *BresserGateway*). Hersteller-Match alleine löst keine Warnung mehr aus. Persistente Whitelist via `localStorage.openwrt_topology_ignored_routers` hinzugefügt.
+
+## [1.17.0] - 2026-04-28
+
+### Added
+
+- **Router Connectivity Binary Sensor** (`binary_sensor.*_connectivity`): Zeigt `ON` wenn der Router erreichbar ist, `OFF` wenn nicht. Immer verfügbar — auch wenn der Router offline ist. Attribute: `last_seen`, `consecutive_failures`, `error_type`.
+- **WAN Connectivity Binary Sensor** (`binary_sensor.*_wan_connectivity`): Zeigt `ON` wenn das Internet verfügbar ist, `OFF` wenn der Router erreichbar ist aber WAN down ist.
+- **Router Status Sensor** (`sensor.*_router_status`): Enum-Sensor mit States `online`, `offline`, `auth_error`, `timeout`, `response_error` — zeigt den genauen Fehlertyp bei Ausfällen.
+- **Persistente HA-Notification**: Nach 3 aufeinanderfolgenden fehlgeschlagenen Polls erscheint eine Warnung im HA-Notification-Center. Wird automatisch gelöscht wenn der Router wieder erreichbar ist.
+- **Automation Blueprint** (`blueprints/automation/openwrt_router_outage_notify.yaml`): Fertiger Blueprint für Push-Benachrichtigungen bei Router-Ausfall. Konfigurierbar: Wartezeit, Notify-Dienst, Nachrichtentext, optionale Wiederherstellungs-Meldung.
+
+## [1.16.2] - 2026-04-28
+
+### Added
+
+- **ACL automatisch einrichten**: Im Checklist-Schritt des Setups erscheint eine Checkbox "Berechtigungen automatisch einrichten", wenn ubus-Permissions fehlen. Ein Klick schreibt die rpcd-ACL-Datei direkt via ubus auf den Router und startet rpcd neu — kein SSH, kein manuelles `scp` nötig. Danach werden die Berechtigungen sofort neu geprüft und die aktualisierte Liste angezeigt.
+
+## [1.16.1] - 2026-04-28
+
+### Fixed
+
+- **Login-Absturz beim Setup** (`AttributeError: _root_warning_logged`): `_root_warning_logged`, `_auth_failure_count` und `_auth_backoff_until` wurden in `api.py` nur in `reset_ssh_fallback_flag()` initialisiert, nicht in `__init__`. Jeder erste `login()`-Aufruf auf einer frischen API-Instanz schlug mit einem `AttributeError` fehl — der Setup-Wizard zeigte einen generischen Fehler ohne Hinweis auf die Ursache.
+- **Bestehende Integrationen → HTTPS-Fehler nach Update** (Migration v1→v2): `DEFAULT_PROTOCOL` wurde in v1.16.0 von `"http"` auf `"https-insecure"` geändert. Alte Config-Entries ohne gespeichertes `protocol`-Feld fielen auf den neuen Default zurück und versuchten HTTPS/443 statt HTTP/80 — Verbindungsfehler beim Laden bestehender Integrationen. Fix: `async_migrate_entry` ergänzt `protocol: http` automatisch in alten Entries.
+
+## [1.16.0] - 2026-04-28
+
+### Fixed
+
+- **Standard-Port 443 / HTTPS Self-Signed**: Default-Port war fälschlicherweise 80 (HTTP). Da die meisten OpenWrt-Router HTTPS auf Port 443 nutzen, ist der neue Standard 443 + HTTPS Self-Signed.
+- **Login-Bug bei HTTPS**: Die Protokollauswahl wurde bisher erst *nach* dem Verbindungstest angezeigt — der Test verwendete daher immer HTTP, was bei Port 443 unweigerlich scheiterte. Protokoll ist jetzt Teil des ersten Schritts.
+
+### Added
+
+- **Geräte-Auswahl im Setup**: Nach der Router-Verbindung erscheinen Checkboxen für zusätzliche Geräte:
+  - ☐ **Fritz!Box DSL-Modem** — DSL-Statistiken, 24h-Speedchart, Ping
+  - ☐ **Managed Switch (OpenWrt)** — Port-Statistiken eines separaten Switches
+- **Paket-Installationshinweise**: Wenn ubus-Berechtigungen fehlen, zeigt der Checklist-Schritt fertige `opkg`-Befehle zum Kopieren an.
+
+## [1.15.6] - 2026-04-22
+
+### Fixed
+
+- **rpcd Memory Leak (kritisch)**: `file/exec` wurde aus der ACL und aus `get_bridge_fdb` entfernt — rpcd akkumulierte pro Poll-Zyklus Speicher durch großen stdout-Output vom `bridge fdb show`-Befehl (136 MB statt <5 MB). Bridge FDB wird nun via `file/read` auf `/sys/class/net/br-lan/brforward` gelesen (kein Shell-Exec nötig).
+- **ACL**: `file/exec` → `file/list` ersetzt; alle Router aktualisiert
+
+## [1.15.5] - 2026-04-22
+
+### Fixed
+
+- **Topology: Polling bei abgelaufener Sitzung** — bei HTTP 401 wird der Refresh-Timer gestoppt statt weiter zu pollen; stattdessen erscheint eine "Sitzung abgelaufen — Seite neu laden"-Meldung. Sobald HA ein neues `hass`-Objekt liefert, wird das Polling automatisch wiederaufgenommen.
+
+## [1.15.4] - 2026-04-21
+
+### Added
+
+- **Config-Flow-Checklist**: Nach Protokollauswahl werden alle ubus-Berechtigungen geprüft (system/info, network/wireless, file/read, file/exec, hostapd/clients, iwinfo, luci-rpc, UCI). Fehlende kritische Caps → rote Warnung mit Anleitung. Fehlende optionale Caps → Info-Hinweis. Setup ist trotzdem möglich.
+
+## [1.15.3] - 2026-04-21
+
+### Added
+
+- **SSH-Fallback-Erkennung**: Wenn ein Router ubus-Calls via SSH auflöst (fehlende ACL-Berechtigungen), erscheint eine persistente HA-Benachrichtigung mit Anleitung + Poll-Intervall wird auf 5 Minuten reduziert bis das Problem behoben ist
+- **rpcd-ACL erweitert**: `file/exec`, `file/stat`, `rc/list`, `service/list`, `network.device/status` hinzugefügt — eliminiert SSH-Fallbacks auf korrekt konfigurierten Routern
+
+## [1.15.2] - 2026-04-21
+
+### Changed
+
+- **Polling-Intervall** erhöht von 30s auf 60s — reduziert Router-Last bei mehreren Instanzen
+- **Gestaffeltes Polling** — mehrere Coordinatoren verteilen sich automatisch gleichmäßig über das Intervall (0/15/30/45s Offset), keine simultanen Bursts mehr
+
+### Added
+
+- **Adaptives Polling** — bei CPU-Last >100% (Linux Load Average) wird das Intervall automatisch auf 120s verdoppelt; bei Rückkehr unter 80% wird 60s wiederhergestellt
+
+### Fixed
+
+- **CPU-Anzeige** — Wert >100% wird als "Load" statt "CPU" beschriftet und pulsierend rot hervorgehoben (Linux Load Average kann auf Single-Core-Systemen 100% überschreiten)
+
+## [1.15.1] - 2026-04-21
+
+### Fixed
+
+- **Topology: Memory-Leak** — `nodeRefs` Map entfernt jetzt Einträge beim Node-Unmount statt unbegrenzt zu wachsen
+- **Topology: CPU-Spike bei mehreren Routern** — `recomputeEdges` (DOM-Layout-Reflow) wird nicht mehr bei jedem Coordinator-Update ausgelöst; stabilisiert durch `dataRef` + AP-ID-Fingerprint als Dependency statt des gesamten `data`-Objekts
+- **Topology: Merge-Conflict-Artefakt** — duplizierter CPU-History-Block war fälschlicherweise im `zoomToNode`-Callback eingebettet; `zoomFlyTimerRef` wird jetzt korrekt für Animations-Cleanup verwendet
+
+## [1.13.0] - 2026-04-19
+
+### Fixed
+
+- **Topology: VLAN-Badges bei Offline-Router** — `network_interfaces` und `port_vlan_map` werden jetzt gecacht; bei nicht erreichbarem Router bleiben die VLAN-Badges sichtbar (gedimmt + gestrichelt + ⚠-Icon statt leer)
+- **Coordinator**: `_last_known_network_interfaces` + `_last_known_port_vlan_map` als Stale-Cache; `vlans_stale: bool` Flag in `OpenWrtCoordinatorData`
+- **Frontend**: `vlansStale`-Prop in `Gateway`-Typ; `vlan-badge--stale` + `vlan-stale-hint` CSS; Tooltip erklärt gecachten Zustand
+
+## [1.12.3] - 2026-04-19
+
+### Fixed
+
+- **Topology: VLAN-Badges** — `OpenWrtAuthError` (ACL-Block, Code -32002) wird jetzt im SSH-Fallback von `get_network_interfaces()` korrekt abgefangen
+
+## [1.12.2] - 2026-04-19
+
+### Fixed
+
+- **Topology: VLAN-Badges** — SSH-Fallback für `get_network_interfaces()` wenn ubus ACL-beschränkt ist; liest VLANs direkt per `ip -o addr show` aus
+
+## [1.12.1] - 2026-04-19
+
+### Fixed
+
+- **Topology: SSID-Badges** zeigen jetzt nur noch die Anzahl (`📶 N`) statt volle Namen — Hover-Tooltip listet alle SSIDs mit Band und Kanal
+- **Topology: VLAN-Badges im AP-Node** ergänzt (fehlten komplett)
+- **Topology: Uplink-Typ** — WiFi-Client-Erkennung hat Vorrang vor DHCP-Erkennung; WLAN-Repeater werden korrekt als "Mesh" statt "Kabel" angezeigt
+
+## [1.12.0] - 2026-04-19
+
+### Added
+
+- **Minimap** — 160×100 canvas overview (bottom-right corner of topology). Shows all nodes as coloured status dots and the current viewport as a dashed blue rectangle. Click to pan the canvas. Only visible in Topology tab.
+- **Right-click context menu** on Gateway and AP nodes — items: Focus, Zoom to node, Clients, VLAN-Overlay, Alerts tab.
+- **AP client expansion** — click the client-count button on any AP card to reveal an inline list of connected clients with signal bars, band, and IP.
+- **Health mode** (♥ toggle) — colours every node by system health: `ok` (green) → `caution` (amber) → `warning` (orange) → `critical` (red). Scoring based on CPU load, RAM usage, and backhaul signal.
+- **Status-change flash animation** — when a node transitions between online/warning/offline states a 650 ms colour-flash plays on the card. The status dot cross-fades via `transition: background-color 300ms`.
+- **Layout transition** — AP columns animate out (`max-width: 0, opacity: 0`) when hidden by a filter change, and animate back in when revealed.
+- **Gruppen-Modus** (group selector in toolbar) — organise APs into visual groups: by uplink type, by primary VLAN, or by online status.
+- **Double-click to zoom** — double-click any node to zoom to 2× centered on that node. Double-click again (or when zoom ≥ 1.75) to reset to fit-view. Transition uses `cubic-bezier(0.4, 0, 0.2, 1)`.
+- **Firmware version** — shown in hover tooltip and Inspector "Allgemein" section for Gateway and APs. Backend already computed `release.version`; now surfaced to the frontend.
+- **Mini traffic & resource bars in Inspector** — compact horizontal bars for WAN downstream/upstream (Mbps), CPU%, RAM%, and client session RX/TX bytes.
+- **Context actions in Inspector** — action bar at the bottom of the Inspector panel: Focus, Clients, Alerts (Gateway adds VLANs button).
+- **Event timeline per device** — chronological list of status changes in the Inspector panel. Backend tracks WAN connect/disconnect, CPU ≥ 80% spike, RAM ≥ 90% spike in a ring-buffer (`deque(maxlen=30)`); events survive between polls but reset on HA restart.
+
+### Changed
+
+- `TopologyView`: AP render replaced with `groupAPs()` IIFE supporting flat and grouped layouts.
+- `StatusBar`: added Health toggle, VLAN toggle, Group selector.
+- `DetailPanel`: added `EventTimeline`, `ResourceBars`, `WanTrafficBars`, `BytesBars`, `MiniBar`, `ActionBtn` components; `DetailPanelActions` interface exported.
+
+### Technical
+
+- New files: `Minimap.tsx`, `ContextMenu.tsx`, `APClientList.tsx`, `useStatusFlash.ts`
+- `coordinator.py`: `events` field on `OpenWrtCoordinatorData`, `_record_events()` method, `_event_history` deque, WAN/CPU/RAM state tracking
+- `topology_diagnostic.py`: `events` included in router node attributes
+- `types.ts`: `RouterEvent`, `firmwareVersion?` on `Gateway`/`AccessPoint`, `events?` on both
+
+---
+
+## [1.11.2] - 2026-04-17
+
+### Added
+
+- **Topology canvas dot-grid**: `.topo-scroll` background uses `radial-gradient` dot pattern (28 px spacing) — scrolls fixed, does not move with pan/zoom
+- **Edge glow on hover**: CSS `drop-shadow` per edge type (`gateway-wired` / `ap-mesh` / `internet`) applied via child class — no SVG filter needed
+- **Internet node pulse animation**: `internet-pulse` keyframe (3.5s ease-in-out infinite) on the internet node
+- **Edge tooltip accent line**: 2px colored `border-top` per edge type in `EdgeTooltip`
+
+### Changed
+
+- Edge background opacity increased: wired `0.12 → 0.18`, mesh `0.10 → 0.16`
+- Panel version bump: `20260416d`
+
+### Fixed
+
+- Removed stale `.edge-highlighted .edge-mesh-bg { drop-shadow(...blue...) }` — was applying wrong color on mesh edge hover
+
+---
+
+## [1.11.1] - 2026-04-16
+
+### Fixed
+
+- **fritz1750e frequent re-logins**: `login()` now requests a 24-hour session timeout from rpcd (`"timeout": 86400`). Previously, rpcd used its firmware default (often 30–300 s), causing a new login on nearly every poll cycle.
+- **DDNS log spam on devices without DDNS**: `get_ddns_status()` now tracks per-device availability. After the first failed attempt (both `file/read` and `uci/get` paths fail), subsequent poll cycles skip DDNS entirely instead of logging `"DDNS: config unavailable"` every 30 s.
+- **Defensive `ipv4-address` parsing**: Added `isinstance` guard when reading the first entry of the `ipv4-address` list from `network.interface.wan/status` — prevents `AttributeError` if the router returns an unexpected non-dict entry.
+
+### Technical
+
+- 30 unused imports removed across 9 files (ruff F401) — CI `ruff check` would have failed on every push
+- `topology_diagnostic.py`: misplaced module-level import moved to top of file (ruff E402)
+- `topology_mesh.py`: removed dead `router_ids` assignment (ruff F841)
+- `__init__.py`: explicit re-export `DOMAIN as DOMAIN` for ruff F401 compliance
+
+### Tests
+
+- 396 passing (no regressions)
+
+---
+
+## [1.11.0] - 2026-04-15
+
+### Added
+
+- **Client Detail Panel — new fields**:
+  - **IP address** now shown prominently at the top of the Gerät section
+  - **Band** (2.4 GHz / 5 GHz / 6 GHz) — derived from `wifi_radios` via `topology_diagnostic.py`
+  - **Verbunden seit** — connection duration from `hostapd connected_time` (e.g. "2h 34m")
+  - **Lease bis** — DHCP lease expiry formatted as "22:15 (noch 3h 12m)" or "Abgelaufen"
+  - **Status badge** — dot + text label (● Online / ● Warnung / ● Offline)
+  - **„In HA anzeigen →"** link — navigates to the device_tracker entity in HA
+
+- **Mobile connector line animation** — animated light-dot flowing through the vertical connector bars in MobileView
+
+### Fixed
+
+- **Topology dark theme not rendering on HA light theme** (critical): CSS custom properties were defined on `:root {}` which does not work when HA renders the panel in a shadow-DOM context. All variables moved to `.topo-app {}` (component root) so they cascade to all descendants regardless of outer DOM context. Literal color fallbacks added before each `var()` reference.
+- **StatusDot invisible in detail panel**: `<span class="status-dot">` had no `display: inline-block` — browsers ignore `width`/`height` on inline elements. Fixed in CSS; all status rows now use the new `StatusBadge` component (dot + text).
+- **SVG connection lines and animations invisible**: Caused by the same `:root` CSS variable scoping bug — strokes using `var(--blue)` resolved to `undefined`. Fixed by the `.topo-app` variable move.
+
+### Technical
+
+- `topology_diagnostic.py`: Added `_radio_band_map` built from `data.wifi_radios`; `band` field added to client node attributes
+- `api.py`: Extracts `connected_time` from `hostapd/get_clients` `sta_data`; stored as `CLIENT_KEY_CONNECTED_SINCE`
+- `api.ts`: Added `formatBand()`, `formatConnectedSince()`, `formatLeaseExpiry()` helpers; `Client` type extended with `connectedSince?` and `dhcpExpires?`
+- `topology_panel.py`: Version bumped to `20260415e` for cache-busting
+
+## [1.10.1] - 2026-04-14
+
+### Added
+
+- **Panel integrated into openwrt_router**: The topology panel is now part of the `openwrt_router` integration — no separate `openwrt_topology` component needed. The panel registers automatically when the first router entry is set up.
+  - `topology_panel.py` — registers sidebar panel, static frontend path, and `/api/openwrt_topology/snapshot` endpoint
+  - Moved `frontend/topology-panel.js` into `openwrt_router/frontend/`
+  - `manifest.json` updated with `"dependencies": ["frontend", "http", "panel_custom"]`
+
+- **Auto-ACL provisioning**: When a new router is added, the integration automatically checks for the rpcd ACL file (`/usr/share/rpcd/acl.d/ha-openwrt-router.json`). If missing, it deploys it via SSH and restarts rpcd — fixing the common "Authentication failed" error when adding AP clients that have no ACL file.
+  - `acl_provisioning.py` — SSH check + deploy + rpcd restart (best-effort, graceful skip if SSH unavailable)
+  - Called from `async_setup_entry()` after first coordinator refresh
+
+- **Multi-Router Mesh Topology**: `topology_mesh.py` aggregates per-router snapshots from all configured OpenWrt entries into a single unified mesh view (1 gateway + N AP clients).
+  - Automatic role detection: `gateway` (WAN uplink, non-private IP) vs `ap`
+  - Inter-router edge detection via DHCP lease cross-reference, WiFi client MAC, or subnet fallback
+  - Client deduplication: roaming clients (same MAC on multiple APs) appear once — strongest signal wins
+
+- **FritzBox-style panel redesign**: Topology panel now uses card-style nodes with iOS-inspired dark palette:
+  - Card nodes with band-specific border colors (gateway: blue, AP: purple, 2.4 GHz: green, 5 GHz: purple, 6 GHz: magenta)
+  - Status dots (green/red/grey) per card
+  - Signal quality pills for WiFi clients: `gut` (>-65 dBm) / `mittel` / `schwach` (<-75 dBm)
+  - WAN badge (✓/✗) on gateway card
+  - Bezier SVG connector lines with per-type styling (dashed WLAN, solid LAN, thick uplinks)
+  - CSS variable palette (`--cg`, `--cr`, `--cl`, `--good`, `--fair`, `--poor`)
+  - Multi-router group labels + separator lines
+
+### Removed
+
+- **`openwrt_topology/` component**: Entire separate component deleted. Panel functionality moved into `openwrt_router`.
+
+### Technical
+
+- `topology_panel.py` (NEW): Panel registration, API view, idempotent setup
+- `acl_provisioning.py` (NEW): `check_and_deploy_acl()`, `_check_acl_exists()`, `_deploy_acl()`, `_ssh_exec()`
+- `topology_mesh.py` (NEW): `build_mesh_snapshot()`, `_detect_router_role()`, `_detect_inter_router_edges()`, `_deduplicate_clients()`
+- `topology_diagnostic.py`: `build_topology_snapshot()` gains optional `role` and `host_ip` parameters. Router node attributes now include `host_ip`, `wan_proto`, `wan_connected`. Interface labels prefer SSID+band over raw ifname.
+- `coordinator.py`: `get_wifi_status()` wrapped in try/except to prevent `ConfigEntryAuthFailed` on ACL-restricted AP routers.
+- `api.py`: Post-relogin `-32002` raised as `OpenWrtMethodNotFoundError` (genuine ACL block), not `OpenWrtAuthError`.
+
+### Tests
+
+- 353 passing (+37 new: ACL provisioning, mesh aggregation, role detection, inter-router edges, client deduplication, topology role/host_ip parameters)
+
+---
+
+## [1.9.3] - 2026-04-09
+
+### Fixed
+
+- **DHCP leases empty on OpenWrt 25** (`dhcp_leases` key): `luci-rpc/getDHCPLeases` returns `{"dhcp_leases": [...]}` on OpenWrt 25 instead of `{"leases": [...]}`. All 33 clients now have correct IPs and hostnames. Older OpenWrt versions using `"leases"` or a direct list still work.
+- **rpcd -32002 treated as permanent ACL block**: Error code `-32002` from rpcd was raised as `OpenWrtMethodNotFoundError`, which bypassed the re-login retry logic in `_call()`. In practice, `-32002` can also mean a stale session token (e.g. after an rpcd restart). Changing it to `OpenWrtAuthError` triggers the existing re-login-and-retry mechanism. If the retry also returns `-32002` it's a genuine ACL restriction and propagates to the caller.
+- **Topology: Router-ID empty string when MAC unavailable**: OpenWrt 25 / Cudy WR3000 v1 does not return a `mac` field in `system board`. Router-ID fell back to `""` (empty string), causing all topology edges to have `"from": ""` and breaking the panel. Now falls back to `hostname`, then to `"router"` literal.
+- **Duplicate sensor entity IDs for `wan_rx` / `wan_tx`** (HA log: _"Platform openwrt_router does not generate unique IDs. ID …_wan_rx already exists"_): The static WAN byte-count sensors (`SUFFIX_WAN_RX` / `SUFFIX_WAN_TX`) and the dynamically-created `OpenWrtInterfaceSensor` for the `wan` interface produced identical `unique_id` values. Fixed by adding an `_iface_` disambiguator to the dynamic sensor: `entry_id_iface_wan_rx` / `entry_id_iface_wan_tx`.
+
+### Technical
+
+- `api.py`: `_get_dhcp_leases_luci_rpc()` — try `dhcp_leases` key first, fall back to `leases`, then direct list.
+- `api.py`: `_raw_call()` — error code `-32002` raises `OpenWrtAuthError` (was `OpenWrtMethodNotFoundError`).
+- `topology_diagnostic.py`: `build_topology_snapshot()` — router_id uses `mac or hostname or "router"` (was `mac` only with literal `"router"` fallback, which didn't handle empty-string MAC).
+- `sensor.py`: `OpenWrtInterfaceSensor._attr_unique_id` — changed to `entry_id_iface_{interface}_{direction}`.
+
+### Tests
+
+- 316 passing (+20 new tests: Fix 3, Fix 4, Fix B coverage; new `test_topology_diagnostic.py`)
+
+---
+
+## [1.9.3-patch1] - 2026-04-10
+
+### Fixed
+
+- **Topology sensor attributes exceed HA Recorder 16 KB limit** (WARNING: _"State attributes for sensor.secureap_gateway_network_topology exceed maximum size of 16384 bytes"_): Topology snapshots with 40+ nodes and 33+ clients regularly exceed the recorder limit. The sensor _state_ (node count / active interface count) is still recorded. Attributes are excluded via `_unrecorded_attributes = frozenset({MATCH_ALL})` — they remain available in-memory at all times and the topology panel continues to read them from the live state object.
+
+### Technical
+
+- `topology_entities.py`: `_TopologyEntityBase._unrecorded_attributes = frozenset({MATCH_ALL})` — excludes all topology attributes from SQLite recorder without affecting in-memory availability.
+
+---
+
+## [1.9.2] - 2026-04-07
+
+### Added
+- **WiFi switch client list attribute**: Each WiFi switch now exposes a `clients` attribute containing a list of all connected clients on that SSID. Each entry shows:
+  - `name` — hostname (falls back to MAC if no hostname)
+  - `mac` — MAC address
+  - `ip` — IP address (from DHCP lease enrichment)
+  - `signal_dbm` — WiFi signal strength in dBm
+  - `connected_since` — ISO-8601 timestamp of when the client first appeared
+  - `dhcp_expires` — Remaining DHCP lease time (e.g. `"2h 14m"`, `"45m"`, `"<1m"`, `"expired"`)
+- **DHCP lease expiry tracking**: `_parse_dhcp_leases()` and `luci-rpc/getDHCPLeases` now store the `expires` Unix timestamp. Expiry is propagated to connected client dicts and displayed as remaining time in switch attributes.
+
+### Technical
+- `const.py`: Added `CLIENT_KEY_DHCP_EXPIRES = "dhcp_expires"`.
+- `api.py`: DHCP lease dicts now include `"expires"` (Unix timestamp). `_enrich_clients_with_ip()` propagates `CLIENT_KEY_DHCP_EXPIRES` to client dicts.
+- `switch.py`: Replaced `_count_clients_for_ssid()` with `_get_clients_for_ssid()` returning full enriched list. Added `_format_dhcp_expires()` helper (converts epoch to human-readable remaining time).
+
+### Tests
+- 296 passing (no regressions)
+
+---
+
+## [1.9.1] - 2026-04-06
+
+### Fixed
+- **WiFi toggle: `uci/apply` fallback komplett übersprungen**: `uci/commit` blockiert via rpcd ACL → wirft `OpenWrtAuthError` → war NICHT in der except-Klausel → `uci/apply` wurde nie versucht. Fix: `OpenWrtAuthError` zu beiden except-Klauseln hinzugefügt.
+- **Connected Clients = 0 bei read-only SSH**: SSH-Fallback lief `ubus call hostapd.*/get_clients` — erfordert ubus-Socket-Zugriff, schlägt bei read-only SSH-Usern fehl. Neuer Fallback: `iw dev {iface} station dump` (Kernel nl80211, rein lesend, kein ubus nötig).
+
+### Technical
+- `api.py`: `OpenWrtAuthError` in `set_wifi_state()` except-Klauseln ergänzt (commit + apply).
+- `api.py`: Neue Methode `_get_clients_via_iw_ssh()` — parst `iw station dump` Output, wird automatisch aufgerufen wenn ubus SSH-Fallback fehlschlägt.
+
+### Tests
+- 294 passing (no regressions)
+
+---
+
+## [1.9.0] - 2026-04-06
+
+### Fixed
+- **WiFi switch shows only `(5 GHz)` instead of `OpenWrt (5 GHz)`**: Switch names were set statically at init time when the SSID was not yet available (UCI-method routers like Cudy WR3000 on OpenWrt 25). Replaced static `_attr_name` with a dynamic `name` property that always reads the current SSID and band from coordinator data.
+- **2.4 GHz switch shows no band label**: `_detect_band()` returns `"2.4g"` for 2.4 GHz radios, but `_format_band()` only mapped `"2g"`. Added `"2.4g"` as an alias so 2.4 GHz switches correctly show `OpenWrt (2.4 GHz)`.
+- **WiFi toggle fails with "uci/commit access denied"**: Replaced `network.wireless/up|down` with `uci/apply` as fallback when `uci/commit` is blocked by rpcd ACL. Staged UCI changes are reverted if both primary and fallback fail.
+- **Connected Clients always 0**: rpcd ACL blocks `hostapd.*/get_clients` on Cudy WR3000 / OpenWrt 25. Added SSH fallback (`_get_clients_via_ssh()`) — connects once, runs `ubus call hostapd.<iface> get_clients` per interface.
+- **DHCP enrichment disabled**: `file/read /tmp/dhcp.leases` blocked by rpcd ACL. Added `luci-rpc/getDHCPLeases` as automatic fallback. DHCP enrichment now works on ACL-restricted routers.
+- **Client SSID empty**: `hostapd.*/get_status` blocked by rpcd ACL. Added `luci-rpc/getWirelessDevices` as cached fallback (fetched once per poll cycle).
+
+### Technical
+- `switch.py`: Dynamic `name` property with `_format_band()` alias for `"2.4g"`.
+- `api.py`: `set_wifi_state()` → `uci/apply` fallback; `get_connected_clients()` SSH fallback; `get_dhcp_leases()` → `luci-rpc` fallback; SSID via `luci-rpc/getWirelessDevices`.
+
+### Tests
+- 294 passing (no regressions)
+
+---
+
+## [1.8.0] - 2026-04-06
+
+### Added
+- **AP Interface Sensors**: Per-radio channel, mode, HT mode, HW mode, and connected client count sensors.
+  - `sensor.<section>_channel` — active WiFi channel (e.g. 1, 36)
+  - `sensor.<section>_mode` — AP mode (`ap`, `client`, `monitor`)
+  - `sensor.<section>_ap_clients` — number of currently associated clients
+  - `sensor.<section>_ht_mode` — HT/VHT/HE mode (e.g. HE20, HE80, VHT80)
+  - `sensor.<section>_hw_mode` — hardware mode or device type (e.g. mt7986, 11ax)
+  - Optional (iwinfo only): `frequency` (MHz), `tx_power` (dBm), `bitrate` (Mbps), `signal_quality` (%)
+- **UCI fallback** for AP interface discovery: Routers without `iwinfo` access via rpcd (e.g. Cudy WR3000 on OpenWrt 25) now expose AP sensors via UCI wireless config. UCI section names (e.g. `default_radio0`) are used as stable entity identifiers.
+
+### Technical
+- `const.py`: Added `RADIO_KEY_CHANNEL`, `RADIO_KEY_FREQUENCY`, `RADIO_KEY_TXPOWER`, `RADIO_KEY_BITRATE`, `RADIO_KEY_HWMODE`, `RADIO_KEY_HTMODE`, `RADIO_KEY_MODE`, `RADIO_KEY_BSSID`.
+- `api.py`: New `get_ap_interface_details()` method — iwinfo primary path, UCI fallback. Extends `_parse_iwinfo_info()` and `_parse_wireless_status()` with new fields.
+- `coordinator.py`: Added `data.ap_interfaces` field; fetched after clients each poll.
+- `sensor.py`: New `OpenWrtAPInterfaceSensor` class; `_add_dynamic_sensors()` extended to iterate `ap_interfaces`.
+
+### Tests
+- 294 passing (no regressions)
+
+---
+
+## [1.7.0] - 2026-04-06
+
+### Added
+- **Service Management**: Monitor and control procd/rc system services directly from Home Assistant.
+  - **Service Switches** (`switch.service_<name>`): Start/stop individual services — `dnsmasq`, `dropbear`, `firewall`, `network`, `uhttpd`, `wpad`. State reflects real-time running status.
+  - **Service Restart Buttons** (`button.restart_<name>`): One-click restart per service with dedicated icons.
+  - Auto-discovery: Uses `rc/list` (OpenWrt 19+) with `service/list` (procd) as fallback. Only services present on the router appear as entities.
+  - Feature-gated: Service entities are only created when `rc/list` or `service/list` is accessible.
+
+### Fixed
+- **Active Connections = 0**: Now reads `/proc/sys/net/netfilter/nf_conntrack_count` (fast single-int file) with `/proc/net/nf_conntrack` as fallback.
+- **WiFi Switch Access Denied**: Added `network.wireless/up` (or `/down`) as fallback when `uci/commit` is blocked by rpcd ACL.
+- **Connected Clients = 0** (OpenWrt 25): Fixed hostapd interface name discovery — probes `phy{N}-ap{M}` naming used since OpenWrt 21+/25, caches result to avoid repeated probing.
+- **SSID via hostapd**: Uses `hostapd.*/get_status` to retrieve SSID even when `iwinfo/info` is blocked by rpcd ACL.
+
+### Technical
+- `api.py`: Added `get_services()` (rc/list → service/list fallback) and `control_service(name, action)`.
+- `const.py`: Added `UBUS_RC_OBJECT`, `UBUS_RC_INIT`, `UBUS_SERVICE_OBJECT`, `DEFAULT_SERVICES`, `KEY_SERVICES`, `FEATURE_HAS_SERVICES`.
+- `coordinator.py`: Added `data.services` field; fetches service status each poll when `has_services` feature detected; service probed during feature detection.
+- `switch.py`: Added `OpenWrtServiceSwitch` — start/stop toggle per service with per-service icons.
+- `button.py`: Added `OpenWrtServiceRestartButton` — restart per service.
+
+### Tests
+- 275 passing (no regressions from new service management code)
+
+---
+
+## [1.6.0] - 2026-04-06
+
+### Added
+- **Bandwidth Rate Sensors**: Dynamic `sensor.<iface>_rx_rate` / `sensor.<iface>_tx_rate` entities (bytes/s) per network interface — created alongside existing byte-total sensors. Returns `unavailable` on the first poll (two data points needed); `0` on counter wraparound/reset.
+- **Traffic Charts/History**: The existing cumulative byte sensors (`state_class: TOTAL_INCREASING`) already enable HA Long-Term Statistics — add them to a Statistics card or Energy Dashboard for per-interface traffic history.
+
+### Technical
+- `coordinator.py`: Added `_prev_interface_bytes` dict and `_prev_poll_time` timestamp; injects `rx_rate`/`tx_rate` (B/s) into each interface dict on every poll after the first.
+- `sensor.py`: Added `OpenWrtInterfaceRateSensor` class (`DATA_RATE`, `MEASUREMENT`, `B/s`); registered in `_add_dynamic_sensors()` alongside byte-total sensors.
+
+### Tests
+- T-R1–R4: Rate is `None` on first poll, correctly calculated on second poll, `0` on counter wraparound, sensor returns `None` before rate is available
+- T-S7–S9: `OpenWrtInterfaceRateSensor` unique_id format, device_class/unit, native_value
+- **275 tests passing** (was 268)
+
+---
+
+## [1.5.0] - 2026-04-06
+
+### Added
+- **QA Strategy Document** (`Anweisungs.md`): Comprehensive 4-level test strategy covering static checks, unit tests, HA-environment integration tests, and manual E2E checklist
+- **Test Fixtures** (`tests/fixtures/`): 5 versioned JSON router state fixtures — `router_healthy`, `router_wan_down`, `router_minimal`, `router_broken`, `router_high_traffic`
+- **Regression Tests** (`tests/test_regressions.py`): REG-01–REG-05 covering WAN-down interface handling, string rx_bytes robustness, connected_since cleanup, unique_id stability, duplicate entity prevention
+- **CI: Ruff Lint + Format Check**: Added `ruff check` and `ruff format --check` step to GitHub Actions workflow before pytest
+
+### Tests
+- Extended `test_sensor.py`: dynamic interface sensor creation, WAN-down edge case, None rx_bytes robustness, unique_id stability, radio sensor noise guard
+- Extended `test_coordinator.py`: `_client_first_seen` tracking, stability on re-poll, cleanup on disconnect, connected_since propagation, missing MAC skip
+- Extended `test_device_tracker.py`: `connected_since` in `extra_state_attributes`, offline state, ISO format validation
+- **268 tests passing** (was 247)
+
+---
+
+## [1.4.0] - 2026-04-06
+
+### Added
+- **Per-Interface Bandwidth Sensors**: Dynamic `sensor.<iface>_rx` / `sensor.<iface>_tx` entities for every network interface (wan, loopback, br-lan, etc.) using existing `network.interface/dump` data
+- **Per-Client Online Time**: `connected_since` ISO timestamp attribute in device tracker entities — tracks when each WiFi client first connected (resets on HA restart)
+- **Radio Signal/Noise Sensors**: Dynamic `sensor.<iface>_signal` / `sensor.<iface>_noise` entities per WiFi radio (requires iwinfo support; only created when noise data available)
+
+### Technical
+- `coordinator.py`: Added `_client_first_seen` dict tracking UTC connection timestamps per MAC
+- `api.py`: Extended `_parse_iwinfo_info()` to extract noise/signal/quality/quality_max from iwinfo response
+- `const.py`: Added `CLIENT_KEY_CONNECTED_SINCE`
+
+---
+
+## [1.3.0] - 2026-04-05
+
+### Fixed
+- **Entity ID naming**: Sensors no longer include the config entry hash in their entity IDs (e.g. `sensor.openwrt_firmware_version` instead of `sensor.openwrt_router_01knfp2yyvf5j20wwpdze0sp99_firmware`)
+- **P1**: `perform_update()` — replaced non-existent `file/write` ubus call with SSH subprocess
+- **P2**: `get_network_interfaces()` now reads from `network.interface/dump`; `get_active_connections()` reads `/proc/net/nf_conntrack`
+- **P3**: Button entity no longer mutates coordinator data directly (race condition)
+- **P4**: `configuration_url` now uses the configured protocol (HTTP/HTTPS) in all entity platforms
+- **P5**: Removed unreachable dead code in `get_wan_status()`
+- **P6**: Exponential backoff on repeated auth failures (3 strikes → 30 s → 300 s max)
+- **P7**: SSH JSON parse calls wrapped in `try/except ValueError`
+- **P8**: Logging uses `%s` pattern instead of f-strings
+- **WiFi SSH fallback**: Uses direct UCI commands instead of a helper script that may not be present on all routers
+
+### Added
+- **Memory Total sensor**: Expose total RAM as a standalone sensor (`memory_total`)
+- **Memory Used sensor**: Expose used RAM as a standalone sensor (`memory_used`)
+
+---
+
+## [1.2.0] - 2026-03-24
+
+### Added
+- **Comprehensive Test Suite**: 247 tests across 11 files covering all modules
+  - API parsing, error handling, session management (63 tests)
+  - Coordinator polling, feature detection, error wrapping (33 tests)
+  - Config flow host validation and setup steps (25 tests)
+  - All entity platforms: sensor, switch, button, device_tracker, diagnostics
+  - Integration setup/unload/reload lifecycle tests
+- **CI/CD Pipelines**: GitHub Actions for automated quality checks
+  - `hassfest.yaml`: Home Assistant manifest validation
+  - `hacs.yaml`: HACS repository validation
+  - `tests.yaml`: Pytest on Python 3.12 and 3.13
+- **Brand Icon**: 256x256 PNG icon for HACS store listing
+- **Translations**: English translation file (`translations/en.json`)
+
+### Fixed
+- Removed non-existent `entity.py` reference from documentation
+
+---
+
+## [1.1.0] - 2026-03-23
+
+### Added
+- **Extended System Monitoring**: Comprehensive metrics for advanced system oversight
+  - **System Information**: Platform architecture, OpenWrt version, hostname, model detection
+  - **CPU Metrics**: Extended load averages - 1-minute, 5-minute, and 15-minute load as percentage
+  - **Memory Details**: Separate sensors for cached, shared, and buffered memory in addition to total/free
+  - **Disk Space Monitoring**: Total, used, free capacity and usage percentage for all mounted filesystems
+  - **Temporary Storage (tmpfs)**: Dedicated monitoring for /tmp, /run, /dev/shm with usage metrics
+  - **Network Connection Tracking**: Active network connection count via nf_conntrack integration
+  - **15+ New Sensors**: All metrics exposed as individual sensors for dashboards and automations
+
+### Technical
+- Enhanced API methods with graceful fallback for unsupported features
+- Improved platform architecture detection from multiple sources
+- Comprehensive error handling for missing system features
+- Support for systems with/without nf_conntrack module
+
+---
+
+## [1.0.8] - 2026-03-20
+
+### Added
+- **Update Management Feature**: Check and perform system/addon package updates
+  - "Check for Updates" button: Detects available system packages and addons
+  - "Perform Updates" button: Triggers package updates on the router
+  - "Update Status" sensor: Shows if updates are available with package counts as attributes
+  - Support for selective updates: system packages, addons, or both
+  - Proper categorization of updates by type (system vs addon/LuCI packages)
+
+---
+
+## [1.0.7] - 2026-03-20
+
+### Added
+- **SSL/HTTPS Support**: Secure connections to OpenWrt routers
+  - Config Flow with Protocol Dropdown: HTTP, HTTPS, HTTPS Self-Signed
+  - Automatic port adjustment (80 for HTTP, 443 for HTTPS)
+  - Self-signed certificate support for private/lab networks
+  - Proper SSL context with certificate validation for production use
+  - Token transmission now protected over HTTPS when enabled
+
+---
+
+## [1.0.6] - 2026-03-20
+
+### Changed
+- **Sensor Visibility**: Move sensors from "Diagnose" to main "Sensoren" section
+  - Uptime, Memory Free, WAN IP, Firmware now appear in Sensors (not Diagnostics)
+  - Better UX: All important metrics visible without expanding Diagnostics
+  - Devices in Home Assistant now show sub-entities under Sensors
+
+---
+
+## [1.0.5] - 2026-03-20
+
+### Changed
+- **WiFi Switch Display Enhanced**: Switches now show band information and connected client count
+  - Switch names now display: "secure-IoT (2.4 GHz)" instead of just "secure-IoT"
+  - Band information (2.4 GHz, 5 GHz, 6 GHz) automatically appended
+  - Connected client count visible in switch attributes: "connected_clients"
+  - Better UX for managing multiple WiFi networks
+
+---
+
+## [1.0.4] - 2026-03-19
+
+### Fixed
+- **Sensor Display Names**: Sensors now show their actual names instead of device hostname
+  - Changed `_attr_has_entity_name` from True to False in sensor.py
+  - Sensors now display: "WAN Status", "CPU Load", "Memory Usage", "Connected Clients" etc.
+  - Previously all sensors showed "sECUREaP-gATEWAy" (the device name)
+
+---
+
+## [1.0.3] - 2026-03-19
+
+### Fixed
+- **WAN RX/TX Bytes Now Show Actual Data**: Fixed issue where WAN Download/Upload sensors showed "unavailable"
+  - Changed from reading `network.interface/dump` to directly reading `/sys/class/net/{interface}/statistics/`
+  - Uses kernel filesystem as source of truth for interface statistics
+  - Works on routers like Cudy WR3000 where stats may not be included in network interface dump
+  - Example: Now shows actual 93.9 GB RX / 1.9 GB TX instead of unavailable
+
+---
+
+## [1.0.2] - 2026-03-19
+
+### Fixed
+- **WAN Statistics Handling**: Show "unavailable" instead of "0 B" when router doesn't provide WAN statistics
+  - WAN Download and WAN Upload sensors now properly display unavailable state
+  - Added debug logging to identify routers without statistics support
+
+---
+
+## [1.0.1] - 2026-03-19
+
+### Fixed
+- **Entity Display Names**: WiFi switch entities now display only the SSID name (e.g., "secure-IoT") instead of the device prefix + SSID. This provides a cleaner, more intuitive UI experience in Home Assistant.
+  - Changed `_attr_has_entity_name=False` to remove redundant device name repetition in entity display names
+  - Entity IDs remain unchanged (e.g., `switch.secureap_gateway_secure_iot`)
+
+### Changed
+- Improved entity naming consistency with Home Assistant best practices
+
+---
+
+## [1.0.0] - 2026-03-11
+
+### Added
+- Initial release: Home Assistant custom integration for OpenWrt Router management
+- **WiFi Switches**: One switch per detected WiFi SSID (2.4GHz, 5GHz, Guest networks)
+- **Sensors**: Uptime, WAN status, connected client count
+- **Device Tracker**: Track connected WiFi clients by MAC address
+- **Button**: WiFi reload/reboot control
+- **Security**: SSRF, token leak, and input validation hardening
+- Configuration via Home Assistant UI setup wizard
+- Automatic token refresh and retry logic for JSON-RPC API
+- Diagnostics with redacted sensitive data
+
+### Architecture
+- Async-only design with proper error handling
+- Polling coordinator with 30-second update intervals
+- ubus/rpcd JSON-RPC communication via HTTP
+- Per-SSID controls with UCI configuration backend

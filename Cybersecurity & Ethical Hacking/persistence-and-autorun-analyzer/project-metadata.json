@@ -1,0 +1,14 @@
+﻿{
+    "id":  "persistence-and-autorun-analyzer",
+    "name":  "Persistence \u0026 Autorun Analyzer",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/iocx-dev/iocx-registry-keys",
+    "stack":  "Python; psutil; Windows Registry",
+    "goal":  "Enumerate startup entries/scheduled tasks, flag suspicious paths and export a triage report.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "src/iocx_registry_keys/enricher.py",
+    "expectedFileCount":  10,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  19
+}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "college-canteen-pre-order-app",
+    "name":  "College Canteen Pre-Order App",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/sidhardhagadegani/Canteen-pre-order-system",
+    "stack":  "MERN; Razorpay test",
+    "goal":  "Menu by day, pickup slots, order queue display and daily sales report.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "frontend/index.html",
+    "expectedFileCount":  15,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  30
+}

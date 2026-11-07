@@ -1,0 +1,130 @@
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  TextField,
+} from "@mui/material";
+import { TabNode } from "flexlayout-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { CrossnoteContainer } from "../containers/crossnote";
+import { Note } from "../lib/note";
+import { isFinishingEnter } from "../lib/keys";
+import { notify } from "../lib/notifications";
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  tabNode: TabNode;
+  note: Note;
+}
+
+export default function ChangeFilePathDialog(props: Props) {
+  const crossnoteContainer = CrossnoteContainer.useContainer();
+  const note = props.note;
+  const tabNode = props.tabNode;
+  const [inputEl, setInputEl] = useState<HTMLInputElement>(null);
+  const [newFilePath, setNewFilePath] = useState<string>(
+    (note && note.filePath) || "",
+  );
+  const { t } = useTranslation();
+  // One move at a time. The dialog stays open until the move has finished,
+  // and Enter pressed again or Save clicked meanwhile would start another
+  // from the path the note is leaving.
+  const moving = useRef<boolean>(false);
+
+  const changeFilePath = useCallback(
+    (newFilePath: string) => {
+      if (!note || moving.current) return;
+      moving.current = true;
+      (async () => {
+        newFilePath = newFilePath.replace(/^\/+/, "");
+        if (!newFilePath.endsWith(".md")) {
+          newFilePath = newFilePath + ".md";
+        }
+        if (note.filePath !== newFilePath) {
+          try {
+            await crossnoteContainer.changeNoteFilePath(
+              tabNode,
+              note,
+              newFilePath,
+            );
+          } catch (error) {
+            notify({
+              severity: "error",
+              message: t("error/failed-to-change-file-path"),
+              duration: 5000,
+            });
+          }
+        }
+        moving.current = false;
+        props.onClose();
+      })();
+    },
+    [note, tabNode, props, t],
+  );
+
+  useEffect(() => {
+    return () => {
+      setInputEl(null);
+    };
+  }, []);
+
+  // Reset to the note's path when the dialog opens or the path changes. The
+  // note object itself is replaced by every reload of its notebook, a pull
+  // finishing while the dialog is open among them, which is no reason to
+  // throw away what is being typed.
+  const filePath = note ? note.filePath : "";
+  useEffect(() => {
+    if (filePath) {
+      setNewFilePath(filePath);
+    }
+  }, [filePath, props.open]);
+
+  useEffect(() => {
+    if (!inputEl) return;
+    inputEl.focus();
+    if (inputEl.setSelectionRange) {
+      const start = inputEl.value.lastIndexOf("/") + 1;
+      let end = inputEl.value.lastIndexOf(".md");
+      if (end < 0) {
+        end = inputEl.value.length;
+      }
+      inputEl.setSelectionRange(start, end);
+    }
+  }, [inputEl]);
+
+  return (
+    <Dialog open={props.open} onClose={props.onClose}>
+      <DialogTitle>{t("general/change-file-path")}</DialogTitle>
+      <DialogContent style={{ width: "400px", maxWidth: "100%" }}>
+        <TextField
+          value={newFilePath}
+          autoFocus={true}
+          onChange={(event) => setNewFilePath(event.target.value)}
+          onKeyDown={(event) => {
+            if (isFinishingEnter(event.nativeEvent)) {
+              changeFilePath(newFilePath);
+            }
+          }}
+          inputRef={(input: HTMLInputElement) => {
+            setInputEl(input);
+          }}
+          fullWidth={true}
+        ></TextField>
+      </DialogContent>
+      <DialogActions>
+        <Button
+          variant={"contained"}
+          color={"primary"}
+          onClick={() => changeFilePath(newFilePath)}
+        >
+          {t("general/Save")}
+        </Button>
+        <Button onClick={props.onClose}>{t("general/cancel")}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}

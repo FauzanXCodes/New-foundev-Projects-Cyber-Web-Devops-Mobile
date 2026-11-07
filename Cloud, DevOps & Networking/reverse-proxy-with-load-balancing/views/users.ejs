@@ -1,0 +1,479 @@
+<div class="page-header sticky-header">
+    <div class="page-header-left">
+        <span class="results-count"><%= t('common.total') %>: <%= pagination.total %></span>
+        <button type="button" id="bulkDeleteBtn" class="btn btn-danger bulk-delete-btn" hidden>
+            <i class="ti ti-trash"></i>
+            <%= t('users.deleteSelected') %> (<span id="bulkDeleteCount">0</span>)
+        </button>
+    </div>
+    <div class="page-header-center">
+        <div class="filters-bar">
+            <div class="search-box">
+                <span class="search-icon"><i class="ti ti-search"></i></span>
+                <input type="text" id="searchUser" placeholder="<%= t('users.searchPlaceholder') %>" 
+                       value="<%= query.search || '' %>" autocomplete="off">
+                <kbd class="search-hint">/</kbd>
+            </div>
+            <select id="filterEnabled" class="filter-select">
+                <option value=""><%= t('users.allStatuses') %></option>
+                <option value="true" <%= query.enabled === 'true' ? 'selected' : '' %>><%= t('users.activeFilter') %></option>
+                <option value="false" <%= query.enabled === 'false' ? 'selected' : '' %>><%= t('users.inactiveFilter') %></option>
+            </select>
+            <select id="filterGroup" class="filter-select">
+                <option value=""><%= t('users.allGroups') %></option>
+                <% if (groups) { groups.forEach(group => { %>
+                <option value="<%= group._id %>" <%= query.group === group._id.toString() ? 'selected' : '' %>><%= group.name %></option>
+                <% }); } %>
+            </select>
+        </div>
+    </div>
+    <div class="page-header-right">
+        <a href="/panel/users/add" class="btn btn-primary page-fab-mobile" aria-label="<%= t('common.create') %>">
+            <i class="ti ti-user-plus"></i> <span class="fab-label"><%= t('common.create') %></span>
+        </a>
+    </div>
+</div>
+
+<div class="card users-table-card">
+    <div class="table-wrapper">
+        <table class="table" id="usersTable">
+            <thead>
+                <tr>
+                    <th class="th-select user-select-cell">
+                        <input type="checkbox" id="selectAllVisibleUsers" class="user-select-checkbox" aria-label="<%= t('users.selectVisible') %>">
+                    </th>
+                    <th class="th-user sortable" onclick="sortBy('userId')" style="cursor: pointer;">
+                        <%= t('users.user') %> <%- getSortIcon('userId') %>
+                    </th>
+                    <th class="th-status"><%= t('common.status') %></th>
+                    <th class="th-groups"><%= t('users.groups') %></th>
+                    <th class="th-traffic sortable" onclick="sortBy('traffic')" style="cursor: pointer;">
+                        <%= t('users.traffic') %> <%- getSortIcon('traffic') %>
+                    </th>
+                    <th class="th-actions"><%= t('common.actions') %></th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (users.length === 0) { %>
+                <tr>
+                    <td colspan="6" class="empty-cell">
+                        <div class="empty-state">
+                            <span class="empty-icon"><i class="ti ti-users"></i></span>
+                            <p><%= t('users.noUsers') %></p>
+                            <a href="/panel/users/add" class="btn btn-primary btn-sm"><%= t('users.createFirst') %></a>
+                        </div>
+                    </td>
+                </tr>
+                <% } %>
+                <% users.forEach(user => {
+                    const isExpired = user.expireAt && new Date(user.expireAt).getTime() < Date.now();
+                %>
+                <tr class="user-row" data-userid="<%= user.userId %>">
+                    <td class="td-select user-select-cell">
+                        <input type="checkbox" class="user-select-checkbox" data-userid="<%= user.userId %>" aria-label="<%= t('users.selectUser') %> <%= user.userId %>">
+                    </td>
+                    <td class="td-user">
+                        <div class="user-info">
+                            <code class="user-id"><%= user.userId %></code>
+                            <% if (user.username) { %>
+                            <span class="user-name"><%= user.username %></span>
+                            <% } %>
+                            <% if (user.comment) { %>
+                            <small class="user-comment" title="<%= user.comment %>"><i class="ti ti-message-circle"></i> <%= user.comment %></small>
+                            <% } %>
+                        </div>
+                    </td>
+                    <td class="td-status">
+                        <% if (isExpired) { %>
+                            <span class="badge badge-danger"><%= t('common.expired') %></span>
+                        <% } else { %>
+                        <label class="toggle-switch" title="<%= user.enabled ? t('users.disable') : t('users.enable') %>">
+                            <input type="checkbox" <%= user.enabled ? 'checked' : '' %> 
+                                   onchange="toggleUser('<%= user.userId %>', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <% } %>
+                    </td>
+                    <td class="td-groups">
+                        <% if (user.groups && user.groups.length > 0) { %>
+                            <% user.groups.slice(0,2).forEach(group => { %>
+                                <span class="group-tag-sm" style="background: <%= group.color %>20; border-color: <%= group.color %>; color: <%= group.color %>">
+                                    <%= group.name %>
+                                </span>
+                            <% }); %>
+                            <% if (user.groups.length > 2) { %>
+                                <span class="group-more">+<%= user.groups.length - 2 %></span>
+                            <% } %>
+                        <% } else { %>
+                            <span class="text-muted">—</span>
+                        <% } %>
+                    </td>
+                    <td class="td-traffic">
+                        <% 
+                        const usedBytes = (user.traffic?.tx || 0) + (user.traffic?.rx || 0);
+                        const limitBytes = user.trafficLimit || 0;
+                        const percent = limitBytes > 0 ? Math.min((usedBytes / limitBytes) * 100, 100) : 0;
+                        %>
+                        <div class="traffic-info">
+                            <span class="traffic-used"><%= formatTraffic(usedBytes, { decimals: 1 }) %></span>
+                        <% if (limitBytes > 0) { %>
+                            <div class="traffic-bar">
+                                <div class="traffic-fill" style="width: <%= percent %>%"></div>
+                            </div>
+                            <span class="traffic-limit">/ <%= formatTraffic(limitBytes, { decimals: 0 }) %></span>
+                            <% } else { %>
+                            <span class="traffic-unlimited">∞</span>
+                            <% } %>
+                        </div>
+                    </td>
+                    <td class="td-actions">
+                        <div class="action-buttons">
+                            <button class="btn-icon" onclick="copySubscription('<%= user.subscriptionToken %>')" title="<%= t('users.copySubscription') %>">
+                                <i class="ti ti-clipboard"></i>
+                            </button>
+                            <a href="/panel/users/<%= user.userId %>" class="btn-icon" title="<%= t('users.details') %>">
+                                <i class="ti ti-arrow-right"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Mobile Cards -->
+    <div class="mobile-users-list">
+        <% if (users.length === 0) { %>
+            <div style="text-align: center; padding: 40px 20px;">
+                <p style="color: var(--text-muted); margin-bottom: 16px;"><%= t('users.noUsers') %></p>
+                <a href="/panel/users/add" class="btn btn-primary btn-sm"><%= t('users.createFirst') %></a>
+            </div>
+        <% } %>
+        <% users.forEach(user => { 
+            const usedBytes = (user.traffic?.tx || 0) + (user.traffic?.rx || 0);
+            const limitBytes = user.trafficLimit || 0;
+            const percent = limitBytes > 0 ? Math.min((usedBytes / limitBytes) * 100, 100) : 0;
+            const isExpired = user.expireAt && new Date(user.expireAt).getTime() < Date.now();
+        %>
+            <div class="mobile-user-card" data-userid="<%= user.userId %>">
+                <div class="mobile-node-header">
+                    <div class="mobile-user-title-wrap">
+                        <input type="checkbox" class="user-select-checkbox mobile-user-select" data-userid="<%= user.userId %>" aria-label="<%= t('users.selectUser') %> <%= user.userId %>">
+                        <div class="mobile-node-title">
+                            <strong><%= user.userId %></strong>
+                            <% if (user.username) { %>
+                                <code style="font-size: 11px; color: var(--text-muted);"><%= user.username %></code>
+                            <% } %>
+                            <% if (user.comment) { %>
+                                <small class="user-comment" title="<%= user.comment %>"><i class="ti ti-message-circle"></i> <%= user.comment %></small>
+                            <% } %>
+                        </div>
+                    </div>
+                    <% if (isExpired) { %>
+                        <span class="badge badge-danger"><%= t('common.expired') %></span>
+                    <% } else { %>
+                    <label class="toggle-switch" title="<%= user.enabled ? t('users.disable') : t('users.enable') %>">
+                        <input type="checkbox" <%= user.enabled ? 'checked' : '' %> 
+                               onchange="toggleUser('<%= user.userId %>', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <% } %>
+                </div>
+                
+                <div class="mobile-node-stats">
+                    <div class="mobile-stat-item">
+                        <span class="mobile-stat-label"><%= t('users.traffic') %></span>
+                        <span class="mobile-stat-value">
+                            <%= formatTraffic(usedBytes, { decimals: 1 }) %><% if (limitBytes > 0) { %> / <%= formatTraffic(limitBytes, { decimals: 0 }) %><% } else { %> ∞<% } %>
+                        </span>
+                    </div>
+                    <div class="mobile-stat-item">
+                        <span class="mobile-stat-label"><%= t('users.groups') %></span>
+                        <span class="mobile-stat-value" style="font-size: 12px;">
+                            <% if (user.groups && user.groups.length > 0) { %>
+                                <%= user.groups.length %> <%= t('users.groupsCount') %>
+                            <% } else { %>
+                                —
+                            <% } %>
+                        </span>
+                    </div>
+                </div>
+                
+                <% if (user.groups && user.groups.length > 0) { %>
+                <div class="groups-list" style="margin-bottom: 12px;">
+                    <% user.groups.slice(0,3).forEach(group => { %>
+                        <span class="group-tag-sm" style="background: <%= group.color %>20; border-color: <%= group.color %>; color: <%= group.color %>">
+                            <%= group.name %>
+                        </span>
+                    <% }); %>
+                    <% if (user.groups.length > 3) { %>
+                        <span class="group-more">+<%= user.groups.length - 3 %></span>
+                    <% } %>
+                </div>
+                <% } %>
+                
+                <div class="mobile-node-actions">
+                    <button class="btn btn-sm" onclick="copySubscription('<%= user.subscriptionToken %>')" style="flex: 1;">
+                        <i class="ti ti-clipboard"></i> <%= t('users.subscription') %>
+                    </button>
+                    <a href="/panel/users/<%= user.userId %>" class="btn btn-sm" style="flex: 1;">
+                        <%= t('users.details') %>
+                    </a>
+                </div>
+            </div>
+        <% }); %>
+    </div>
+</div>
+
+<% if (pagination.pages > 1) { %>
+<div class="pagination">
+    <% if (pagination.page > 1) { %>
+    <a href="?page=<%= pagination.page - 1 %>&<%= Object.entries(query).filter(([k,v]) => k !== 'page' && v).map(([k,v]) => k+'='+v).join('&') %>" class="page-btn"><i class="ti ti-chevron-left"></i></a>
+    <% } %>
+    
+    <% 
+    let startPage = Math.max(1, pagination.page - 2);
+    let endPage = Math.min(pagination.pages, pagination.page + 2);
+    %>
+    
+    <% if (startPage > 1) { %>
+    <a href="?page=1" class="page-btn">1</a>
+    <% if (startPage > 2) { %><span class="page-dots">...</span><% } %>
+    <% } %>
+    
+    <% for (let i = startPage; i <= endPage; i++) { %>
+    <a href="?page=<%= i %>&<%= Object.entries(query).filter(([k,v]) => k !== 'page' && v).map(([k,v]) => k+'='+v).join('&') %>" 
+       class="page-btn <%= pagination.page === i ? 'active' : '' %>"><%= i %></a>
+    <% } %>
+    
+    <% if (endPage < pagination.pages) { %>
+    <% if (endPage < pagination.pages - 1) { %><span class="page-dots">...</span><% } %>
+    <a href="?page=<%= pagination.pages %>" class="page-btn"><%= pagination.pages %></a>
+    <% } %>
+    
+    <% if (pagination.page < pagination.pages) { %>
+    <a href="?page=<%= pagination.page + 1 %>&<%= Object.entries(query).filter(([k,v]) => k !== 'page' && v).map(([k,v]) => k+'='+v).join('&') %>" class="page-btn"><i class="ti ti-chevron-right"></i></a>
+    <% } %>
+</div>
+<% } %>
+
+<div id="toast" class="toast"></div>
+
+<%
+function getSortIcon(field) {
+    const currentSort = query.sortBy || 'createdAt';
+    const currentOrder = query.sortOrder || 'desc';
+    
+    if (currentSort !== field) {
+        return '<i class="ti ti-arrows-vertical"></i>';
+    }
+    
+    return currentOrder === 'desc' ? '<i class="ti ti-chevron-down"></i>' : '<i class="ti ti-chevron-up"></i>';
+}
+%>
+
+<script>
+const baseUrl = <%- JSON.stringify(baseUrl) %>;
+const currentSortBy = <%- JSON.stringify(String(query.sortBy || "createdAt").replace(/[<>]/g, "")) %>;
+const currentSortOrder = <%- JSON.stringify(String(query.sortOrder || "desc").replace(/[<>]/g, "")) %>;
+const i18n = {
+    turnedOn: <%- JSON.stringify(t("users.turnedOn")) %>,
+    turnedOff: <%- JSON.stringify(t("users.turnedOff")) %>,
+    error: <%- JSON.stringify(t("common.error")) %>,
+    linkCopied: <%- JSON.stringify(t("users.linkCopied")) %>,
+    copyError: <%- JSON.stringify(t("users.copyError")) %>,
+    confirmBulkDelete: <%- JSON.stringify(t("users.confirmBulkDelete")) %>,
+    bulkDeleteSuccess: <%- JSON.stringify(t("users.bulkDeleteSuccess")) %>,
+    bulkDeletePartial: <%- JSON.stringify(t("users.bulkDeletePartial")) %>,
+    bulkDeleteError: <%- JSON.stringify(t("users.bulkDeleteError")) %>
+};
+
+const selectedUserIds = new Set();
+const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+const bulkDeleteCount = document.getElementById('bulkDeleteCount');
+const selectAllVisibleUsers = document.getElementById('selectAllVisibleUsers');
+const userSelectCheckboxes = Array.from(document.querySelectorAll('.user-select-checkbox[data-userid]'));
+
+function formatMessage(template, values) {
+    return Object.entries(values).reduce((message, [key, value]) => {
+        return message.replaceAll(`{${key}}`, value);
+    }, template);
+}
+
+function renderBulkSelection() {
+    userSelectCheckboxes.forEach((checkbox) => {
+        const selected = selectedUserIds.has(checkbox.dataset.userid);
+        checkbox.checked = selected;
+    });
+
+    document.querySelectorAll('.user-row[data-userid], .mobile-user-card[data-userid]').forEach((item) => {
+        item.classList.toggle('is-selected', selectedUserIds.has(item.dataset.userid));
+    });
+
+    const selectedCount = selectedUserIds.size;
+    bulkDeleteCount.textContent = selectedCount;
+    bulkDeleteBtn.hidden = selectedCount === 0;
+
+    const desktopCheckboxes = Array.from(document.querySelectorAll('#usersTable tbody .user-select-checkbox[data-userid]'));
+    const selectedDesktopCount = desktopCheckboxes.filter((checkbox) => selectedUserIds.has(checkbox.dataset.userid)).length;
+    selectAllVisibleUsers.checked = desktopCheckboxes.length > 0 && selectedDesktopCount === desktopCheckboxes.length;
+    selectAllVisibleUsers.indeterminate = selectedDesktopCount > 0 && selectedDesktopCount < desktopCheckboxes.length;
+}
+
+function setUserSelected(userId, selected) {
+    if (selected) {
+        selectedUserIds.add(userId);
+    } else {
+        selectedUserIds.delete(userId);
+    }
+    renderBulkSelection();
+}
+
+userSelectCheckboxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+        setUserSelected(checkbox.dataset.userid, checkbox.checked);
+    });
+});
+
+selectAllVisibleUsers.addEventListener('change', () => {
+    document.querySelectorAll('#usersTable tbody .user-select-checkbox[data-userid]').forEach((checkbox) => {
+        if (selectAllVisibleUsers.checked) {
+            selectedUserIds.add(checkbox.dataset.userid);
+        } else {
+            selectedUserIds.delete(checkbox.dataset.userid);
+        }
+    });
+    renderBulkSelection();
+});
+
+bulkDeleteBtn.addEventListener('click', async () => {
+    const userIds = Array.from(selectedUserIds);
+    if (userIds.length === 0) return;
+
+    if (!confirm(formatMessage(i18n.confirmBulkDelete, { count: userIds.length }))) {
+        return;
+    }
+
+    bulkDeleteBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/users/bulk-delete', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userIds }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            throw new Error(data.error || i18n.bulkDeleteError);
+        }
+
+        const issueCount = (data.notFound?.length || 0) + (data.errors?.length || 0);
+        const template = issueCount > 0 ? i18n.bulkDeletePartial : i18n.bulkDeleteSuccess;
+        localStorage.setItem('usersBulkDeleteToast', JSON.stringify({
+            message: formatMessage(template, { count: data.deleted || 0, issues: issueCount }),
+            type: issueCount > 0 ? 'warning' : 'success',
+        }));
+        window.location.reload();
+    } catch (error) {
+        showToast(error.message || i18n.bulkDeleteError, 'error');
+        bulkDeleteBtn.disabled = false;
+    }
+});
+
+try {
+    const pendingToast = JSON.parse(localStorage.getItem('usersBulkDeleteToast') || 'null');
+    if (pendingToast?.message) {
+        localStorage.removeItem('usersBulkDeleteToast');
+        setTimeout(() => showToast(pendingToast.message, pendingToast.type || 'success'), 100);
+    }
+} catch (_error) {
+    localStorage.removeItem('usersBulkDeleteToast');
+}
+
+renderBulkSelection();
+
+// Debounced search
+let searchTimeout;
+document.getElementById('searchUser').addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => applyFilters(), 300);
+});
+
+// Keyboard shortcut: / to focus search
+document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        document.getElementById('searchUser').focus();
+    }
+    if (e.key === 'Escape') {
+        document.getElementById('searchUser').blur();
+    }
+});
+
+// Filters
+document.getElementById('filterEnabled').addEventListener('change', applyFilters);
+document.getElementById('filterGroup').addEventListener('change', applyFilters);
+
+function applyFilters() {
+    const search = document.getElementById('searchUser').value.trim();
+    const enabled = document.getElementById('filterEnabled').value;
+    const group = document.getElementById('filterGroup').value;
+    
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (enabled) params.set('enabled', enabled);
+    if (group) params.set('group', group);
+    
+    location.href = '/panel/users?' + params.toString();
+    }
+
+// Toggle user (optimistic update)
+async function toggleUser(userId, enabled) {
+    const row = document.querySelector(`tr[data-userid="${userId}"], .mobile-user-card[data-userid="${userId}"]`);
+    const toggle = row ? row.querySelector('.toggle-switch input') : null;
+    
+    try {
+    const res = await fetch(`/api/users/${userId}/${enabled ? 'enable' : 'disable'}`, {
+        method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (!res.ok) throw new Error('Failed');
+        showToast(enabled ? i18n.turnedOn : i18n.turnedOff);
+    } catch (e) {
+        if (toggle) toggle.checked = !enabled;
+        showToast(i18n.error, 'error');
+    }
+}
+
+// Copy subscription
+function copySubscription(token) {
+    const url = `${baseUrl}/api/files/${token}`;
+    navigator.clipboard.writeText(url).then(() => {
+        showToast(i18n.linkCopied);
+    }).catch(() => {
+        showToast(i18n.copyError, 'error');
+    });
+}
+
+
+// Sort by field
+function sortBy(field) {
+    const params = new URLSearchParams(window.location.search);
+    
+    if (currentSortBy === field) {
+        const newOrder = currentSortOrder === 'desc' ? 'asc' : 'desc';
+        params.set('sortOrder', newOrder);
+    } else {
+        params.set('sortBy', field);
+        params.set('sortOrder', 'desc');
+    }
+    
+    params.set('page', '1');
+    
+    location.href = '/panel/users?' + params.toString();
+}
+</script>

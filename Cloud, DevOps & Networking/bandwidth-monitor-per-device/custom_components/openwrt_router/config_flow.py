@@ -1,0 +1,683 @@
+"""Config flow for the OpenWrt Router integration."""
+
+from __future__ import annotations
+
+import asyncio
+import ipaddress
+import logging
+import re
+from typing import Any, ClassVar
+
+import voluptuous as vol
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .api import (
+    OpenWrtAPI,
+    OpenWrtAuthError,
+    OpenWrtConnectionError,
+    OpenWrtResponseError,
+    OpenWrtRpcdSetupError,
+    OpenWrtTimeoutError,
+)
+from .const import (
+    CONF_PROTOCOL,
+    CONF_TOPOLOGY_PORT_DEBUG,
+    DEFAULT_PORT,
+    DEFAULT_PROTOCOL,
+    DEFAULT_TOPOLOGY_PORT_DEBUG,
+    DEFAULT_USERNAME,
+    DOMAIN,
+    ERROR_ACL_ALREADY_CURRENT,
+    ERROR_ACL_DEPLOY_FAILED,
+    ERROR_ACL_DEPLOY_NO_CHANGE,
+    ERROR_CANNOT_CONNECT,
+    ERROR_INVALID_AUTH,
+    ERROR_INVALID_HOST,
+    ERROR_RPCD_SETUP,
+    ERROR_TIMEOUT,
+    ERROR_UNKNOWN,
+    PROTOCOL_HTTP,
+    PROTOCOL_HTTPS,
+    PROTOCOL_HTTPS_INSECURE,
+)
+from .ssl_util import ssl_context_for_protocol
+
+_LOGGER = logging.getLogger(__name__)
+
+# Grace periods around the ACL-deploy rpcd restart (tests patch these to 0).
+_ACL_RECHECK_GRACE_S: float = 2.0
+_ACL_LOGIN_RETRY_DELAY_S: float = 1.5
+
+
+def _validate_host(host: str) -> str | None:
+    """Validate host input against SSRF-prone values.
+
+    Rejects loopback, link-local, and unspecified IP addresses, as well as
+    hostnames containing characters outside the allowed set.
+
+    Args:
+        host: Raw host string from user input.
+
+    Returns:
+        An error key string if the host is invalid, or None if it is acceptable.
+    """
+    host = host.strip()
+    if not host:
+        return ERROR_INVALID_HOST
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_loopback or addr.is_link_local or addr.is_unspecified:
+            return ERROR_INVALID_HOST
+        return None
+    except ValueError:
+        pass
+    if not re.match(r"^[a-zA-Z0-9._\-]{1,253}$", host):
+        return ERROR_INVALID_HOST
+    return None
+
+
+class OpenWrtOptionsFlow(OptionsFlow):
+    """Options flow — topology debug flag."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        opts = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_TOPOLOGY_PORT_DEBUG,
+                    default=opts.get(
+                        CONF_TOPOLOGY_PORT_DEBUG, DEFAULT_TOPOLOGY_PORT_DEBUG
+                    ),
+                ): bool,
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
+
+
+class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle the config flow for OpenWrt Router.
+
+    Steps:
+        user → checklist → create entry
+
+    The unique_id is derived from the router's host:port (see
+    :meth:`_compute_unique_id`). Host-based identity guarantees that routers at
+    different (static) IPs are always treated as separate entries — identical
+    hardware (e.g. multiple Cudy WR3000) that reports the same or an empty MAC
+    in ``system board`` can therefore no longer collide into a false
+    ``already_configured`` abort. Re-adding the same host is still rejected as a
+    duplicate; a router moved to a new IP counts as a new entry (acceptable for
+    the static-IP router setups this integration targets).
+    """
+
+    VERSION = 2
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OpenWrtOptionsFlow:
+        """Return the options flow handler."""
+        return OpenWrtOptionsFlow()
+
+    _CAPABILITY_LABELS: ClassVar[dict[str, str]] = {
+        "system_info": "System-Info (CPU, RAM, Uptime)",
+        "network_wireless": "WLAN-Status (Radios/SSIDs via netifd oder iwinfo)",
+        "network_dump": "Netzwerk-Interfaces (WAN/LAN)",
+        "file_read": "Datei-Lesezugriff (Konfiguration, DHCP)",
+        "luci_rpc_dhcp": "DHCP-Leases (Client-IPs)",
+        "iwinfo": "Signal-Stärke (iwinfo)",
+        "uci_get": "UCI-Konfiguration",
+        "hostapd_clients": "WLAN-Clients (hostapd)",
+        "lldp_neighbors": "LLDP-Nachbarn (Router-zu-Router-Verkabelung, optional)",
+    }
+
+    # LLDP is optional and NOT ACL-related: a miss must not trigger the rpcd/ACL
+    # install hint. It gets its own recommendation and never blocks the add flow.
+    _LLDP_CAP: str = "lldp_neighbors"
+
+    _REQUIRED_CAPS: frozenset[str] = frozenset(
+        {
+            "system_info",
+            "network_dump",
+            "network_wireless",
+        }
+    )
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        super().__init__()
+        self._board_info: dict[str, Any] = {}
+        self._capabilities: dict[str, bool] = {}
+        self._user_data: dict[str, Any] = {}
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the initial user-facing setup step.
+
+        Presents a form asking for host, port, protocol, username and password.
+        On submission, attempts to login and read the board info.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host: str = user_input[CONF_HOST].strip()
+            port: int = user_input[CONF_PORT]
+            protocol: str = user_input[CONF_PROTOCOL]
+            username: str = user_input[CONF_USERNAME].strip()
+            password: str = user_input[CONF_PASSWORD]
+
+            host_error = _validate_host(host)
+            if host_error:
+                errors["host"] = host_error
+            else:
+                try:
+                    board_info = await self._validate_input(
+                        host, port, username, password, protocol
+                    )
+
+                except OpenWrtAuthError:
+                    _LOGGER.debug("Config flow: authentication failed for %s", host)
+                    errors["base"] = ERROR_INVALID_AUTH
+
+                except OpenWrtTimeoutError:
+                    _LOGGER.debug("Config flow: timeout connecting to %s", host)
+                    errors["base"] = ERROR_TIMEOUT
+
+                except OpenWrtConnectionError:
+                    _LOGGER.debug("Config flow: cannot connect to %s", host)
+                    errors["base"] = ERROR_CANNOT_CONNECT
+
+                except OpenWrtResponseError:
+                    _LOGGER.debug("Config flow: unexpected response from %s", host)
+                    errors["base"] = ERROR_CANNOT_CONNECT
+
+                except Exception:
+                    _LOGGER.exception("Config flow: unexpected error for %s", host)
+                    errors["base"] = ERROR_UNKNOWN
+
+                else:
+                    unique_id = self._compute_unique_id(board_info, host, port)
+
+                    await self.async_set_unique_id(unique_id)
+                    self._abort_if_unique_id_configured(
+                        updates={
+                            CONF_HOST: host,
+                            CONF_PORT: port,
+                        }
+                    )
+
+                    title = board_info.get("hostname") or host
+                    _LOGGER.info(
+                        "Config flow: connected to %s (model: %s, unique_id: %s)",
+                        title,
+                        board_info.get("model", "unknown"),
+                        unique_id,
+                    )
+
+                    self._board_info = board_info
+                    self._user_data = {
+                        CONF_HOST: host,
+                        CONF_PORT: port,
+                        CONF_PROTOCOL: protocol,
+                        CONF_USERNAME: username,
+                        CONF_PASSWORD: password,
+                    }
+                    return await self.async_step_checklist()
+
+        schema = self._build_user_schema(user_input)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    async def async_step_checklist(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show capability checklist and let user proceed or retry."""
+        host = self._user_data.get(CONF_HOST, "")
+        errors: dict[str, str] = {}
+        deployed = False
+        # LLDP is optional and is NOT provisioned by the ACL deploy, so it must
+        # stay out of the before/after comparison below — otherwise a router
+        # without lldpd makes every successful deploy look like a no-op.
+        missing_before = {
+            cap
+            for cap in self._CAPABILITY_LABELS
+            if cap != self._LLDP_CAP and not self._capabilities.get(cap)
+        }
+
+        if user_input is not None:
+            if user_input.get("deploy_acl"):
+                from .acl_provisioning import AclDeployError, check_and_deploy_acl
+
+                session = async_get_clientsession(self.hass)
+                protocol = self._user_data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)
+                deploy_api = OpenWrtAPI(
+                    host=host,
+                    port=self._user_data[CONF_PORT],
+                    username=self._user_data[CONF_USERNAME],
+                    password=self._user_data[CONF_PASSWORD],
+                    session=session,
+                    protocol=protocol,
+                    ssl_context=ssl_context_for_protocol(protocol),
+                )
+                try:
+                    await deploy_api.login()
+                    deployed = await check_and_deploy_acl(deploy_api)
+                except AclDeployError:
+                    _LOGGER.warning("ACL deploy to %s failed", host, exc_info=True)
+                    errors["base"] = ERROR_ACL_DEPLOY_FAILED
+                except Exception:
+                    _LOGGER.exception("ACL deploy: unexpected error for %s", host)
+                    errors["base"] = ERROR_ACL_DEPLOY_FAILED
+                finally:
+                    await deploy_api.async_close()
+                if deployed:
+                    # rpcd restarts after a deploy — give it a moment before
+                    # logging in again for the re-check below.
+                    await asyncio.sleep(_ACL_RECHECK_GRACE_S)
+                elif not errors:
+                    # ensure_acl found the deployed ACL already up to date.
+                    errors["base"] = ERROR_ACL_ALREADY_CURRENT
+                # fall through → re-run capability check and re-show form
+            elif user_input.get("action") != "retry":
+                title = self._board_info.get("hostname") or host
+                return self.async_create_entry(title=title, data=self._user_data)
+
+        session = async_get_clientsession(self.hass)
+        protocol = self._user_data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)
+        api = OpenWrtAPI(
+            host=host,
+            port=self._user_data[CONF_PORT],
+            username=self._user_data[CONF_USERNAME],
+            password=self._user_data[CONF_PASSWORD],
+            session=session,
+            protocol=protocol,
+            ssl_context=ssl_context_for_protocol(protocol),
+        )
+        try:
+            try:
+                await api.login()
+            except Exception:  # noqa: BLE001 — rpcd may still be restarting
+                await asyncio.sleep(_ACL_LOGIN_RETRY_DELAY_S)
+                await api.login()
+            self._capabilities = await api.check_capabilities()
+        except Exception:  # noqa: BLE001
+            self._capabilities = {}
+        finally:
+            await api.async_close()
+
+        lines: list[str] = []
+        missing_required: list[str] = []
+        missing_optional: list[str] = []
+
+        for cap, label in self._CAPABILITY_LABELS.items():
+            ok = self._capabilities.get(cap, False)
+            icon = "✅" if ok else "ℹ️" if cap == self._LLDP_CAP else "❌"
+            lines.append(f"{icon} {label}")
+            if not ok and cap != self._LLDP_CAP:
+                # LLDP is handled separately — it never counts as a missing
+                # ubus/ACL capability, so it can't degrade the checklist status.
+                if cap in self._REQUIRED_CAPS:
+                    missing_required.append(label)
+                else:
+                    missing_optional.append(label)
+
+        checklist_text = "\n".join(lines)
+
+        # Dedicated, non-blocking LLDP recommendation (not an error).
+        lldp_hint = ""
+        if not self._capabilities.get(self._LLDP_CAP, False):
+            lldp_hint = (
+                "\n\nℹ️ **LLDP nicht erkannt** (optional). Für zuverlässige "
+                "Router-zu-Router-Verkabelungserkennung auf allen OpenWrt-Routern "
+                "lldpd installieren und starten:\n"
+                "```\n"
+                "opkg update\n"
+                "opkg install lldpd\n"
+                "/etc/init.d/lldpd enable\n"
+                "/etc/init.d/lldpd start\n"
+                "```\n"
+                "Ohne LLDP funktioniert alles weiter — nur die Router-zu-Router-"
+                "Erkennung ist dann weniger sicher."
+            )
+
+        deploy_note = ""
+        if deployed:
+            missing_after = {
+                cap
+                for cap in self._CAPABILITY_LABELS
+                if cap != self._LLDP_CAP and not self._capabilities.get(cap)
+            }
+            if not missing_after or missing_after < missing_before:
+                deploy_note = (
+                    "✅ **ACL erfolgreich deployt** — Berechtigungen wurden "
+                    "aktualisiert und erneut geprüft.\n\n"
+                )
+            else:
+                errors["base"] = ERROR_ACL_DEPLOY_NO_CHANGE
+
+        install_hint = ""
+        if missing_required or missing_optional:
+            # Build a self-contained, always-correct manual deploy command from
+            # the actual ACL content (no stale scp of a file the user doesn't have).
+            import json
+
+            from .acl_provisioning import ACL_FILE_PATH, RPCD_ACL_CONTENT
+
+            acl_json = json.dumps(RPCD_ACL_CONTENT, indent=2)
+            install_hint = (
+                f"\n\n**Am einfachsten:** Häkchen unten setzen — die ACL wird "
+                f"automatisch via ubus (bzw. SSH-Fallback) auf den Router geschrieben. "
+                f"Der SSH-Fallback braucht aktives Passwort-Login (dropbear). Falls aus, "
+                f"einmalig auf dem Router:\n"
+                f"```\n"
+                f"uci set dropbear.@dropbear[0].PasswordAuth='on'\n"
+                f"uci commit dropbear && /etc/init.d/dropbear restart\n"
+                f"```\n"
+                f"**Alternativ manuell** (per SSH direkt auf dem Router — kein scp nötig):\n"
+                f"```\n"
+                f"cat > {ACL_FILE_PATH} <<'EOF'\n"
+                f"{acl_json}\n"
+                f"EOF\n"
+                f"/etc/init.d/rpcd restart\n"
+                f"```"
+            )
+
+        if missing_required:
+            status = (
+                f"⚠️ **Kritische Berechtigungen fehlen** — die Integration kann nicht "
+                f"vollständig arbeiten."
+                f"{install_hint}"
+            )
+        elif missing_optional:
+            status = (
+                f"ℹ️ Optionale Funktionen nicht via ubus verfügbar — Grundfunktionen OK.\n"
+                f"Für die fehlenden Calls wird der SSH-Fallback genutzt (etwas höhere "
+                f"Router-Last). Empfehlung: rpcd-ACL wie unten aktualisieren."
+                f"{install_hint}"
+            )
+        else:
+            status = "✅ Alle Berechtigungen vorhanden — optimale Konfiguration."
+
+        status += lldp_hint
+
+        has_missing = bool(missing_required or missing_optional)
+        schema = vol.Schema(
+            {vol.Optional("deploy_acl", default=False): bool} if has_missing else {}
+        )
+
+        return self.async_show_form(
+            step_id="checklist",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "host": host,
+                "model": self._board_info.get("model", ""),
+                "checklist": checklist_text,
+                "status": deploy_note + status,
+            },
+        )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Diagnose why re-auth was triggered, then route to the right sub-step."""
+        reauth_entry = self._get_reauth_entry()
+        host: str = reauth_entry.data[CONF_HOST]
+        port: int = reauth_entry.data[CONF_PORT]
+        username: str = reauth_entry.data[CONF_USERNAME]
+        password: str = reauth_entry.data[CONF_PASSWORD]
+        protocol: str = reauth_entry.data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)
+
+        try:
+            await self._validate_input(host, port, username, password, protocol)
+        except OpenWrtResponseError:
+            return await self.async_step_reauth_rpcd_setup()
+        except (OpenWrtConnectionError, OpenWrtTimeoutError):
+            return await self.async_step_reauth_cannot_connect()
+        except OpenWrtAuthError:
+            return await self.async_step_reauth_confirm()
+        except Exception:
+            _LOGGER.exception("Re-auth: unexpected error during diagnosis for %s", host)
+            return await self.async_step_reauth_confirm()
+        else:
+            _LOGGER.debug(
+                "Re-auth: existing credentials for %s still valid, reloading", host
+            )
+            return self.async_update_reload_and_abort(reauth_entry)
+
+    async def async_step_reauth_rpcd_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show rpcd setup instructions with a 'I've fixed it — retry' button."""
+        reauth_entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host: str = reauth_entry.data[CONF_HOST]
+            port: int = reauth_entry.data[CONF_PORT]
+            username: str = reauth_entry.data[CONF_USERNAME]
+            password: str = reauth_entry.data[CONF_PASSWORD]
+            protocol: str = reauth_entry.data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)
+
+            try:
+                await self._validate_input(host, port, username, password, protocol)
+            except OpenWrtResponseError:
+                errors["base"] = ERROR_RPCD_SETUP
+            except (OpenWrtConnectionError, OpenWrtTimeoutError):
+                return await self.async_step_reauth_cannot_connect()
+            except OpenWrtAuthError:
+                return await self.async_step_reauth_confirm()
+            except Exception:
+                _LOGGER.exception("Re-auth rpcd setup: unexpected error")
+                errors["base"] = ERROR_UNKNOWN
+            else:
+                return self.async_update_reload_and_abort(reauth_entry)
+
+        return self.async_show_form(
+            step_id="reauth_rpcd_setup",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "host": reauth_entry.data.get(CONF_HOST, ""),
+            },
+        )
+
+    async def async_step_reauth_cannot_connect(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show 'router unreachable' message with a retry button."""
+        reauth_entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host: str = reauth_entry.data[CONF_HOST]
+            port: int = reauth_entry.data[CONF_PORT]
+            username: str = reauth_entry.data[CONF_USERNAME]
+            password: str = reauth_entry.data[CONF_PASSWORD]
+            protocol: str = reauth_entry.data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)
+
+            try:
+                await self._validate_input(host, port, username, password, protocol)
+            except OpenWrtRpcdSetupError:
+                return await self.async_step_reauth_rpcd_setup()
+            except (OpenWrtConnectionError, OpenWrtTimeoutError):
+                errors["base"] = ERROR_CANNOT_CONNECT
+            except OpenWrtAuthError:
+                return await self.async_step_reauth_confirm()
+            except Exception:
+                _LOGGER.exception("Re-auth cannot connect: unexpected error")
+                errors["base"] = ERROR_UNKNOWN
+            else:
+                return self.async_update_reload_and_abort(reauth_entry)
+
+        return self.async_show_form(
+            step_id="reauth_cannot_connect",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "host": reauth_entry.data.get(CONF_HOST, ""),
+            },
+        )
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the re-auth form and validate new credentials."""
+        errors: dict[str, str] = {}
+        reauth_entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            host: str = reauth_entry.data[CONF_HOST]
+            port: int = reauth_entry.data[CONF_PORT]
+            username: str = reauth_entry.data[CONF_USERNAME]
+            password: str = user_input[CONF_PASSWORD]
+            protocol: str = reauth_entry.data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)
+
+            try:
+                await self._validate_input(host, port, username, password, protocol)
+
+            except OpenWrtRpcdSetupError:
+                return await self.async_step_reauth_rpcd_setup()
+            except OpenWrtAuthError:
+                errors["base"] = ERROR_INVALID_AUTH
+            except (OpenWrtConnectionError, OpenWrtTimeoutError):
+                errors["base"] = ERROR_CANNOT_CONNECT
+            except Exception:
+                _LOGGER.exception("Re-auth: unexpected error")
+                errors["base"] = ERROR_UNKNOWN
+            else:
+                return self.async_update_reload_and_abort(
+                    reauth_entry,
+                    data_updates={CONF_PASSWORD: password},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "host": reauth_entry.data.get(CONF_HOST, ""),
+                "username": reauth_entry.data.get(CONF_USERNAME, ""),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_unique_id(board_info: dict[str, Any], host: str, port: int) -> str:
+        """Derive the config-entry unique_id for a router.
+
+        Host-based on purpose: the router MAC returned by ``system board`` is
+        unreliable as an identity key — OpenWrt's ``system board`` usually has
+        no top-level ``mac`` field (→ empty), and identical hardware can report
+        the same placeholder/board MAC. Keying on the MAC therefore risks
+        aborting a genuinely different router as ``already_configured``.
+
+        The host (a static IP for these setups) is unique per router, so
+        ``host:port`` is the stable, collision-free key. The MAC is kept only in
+        ``board_info`` for display/diagnostics, never as the identity.
+
+        Args:
+            board_info: Board info from :meth:`_validate_input` (unused for the
+                key; accepted so callers pass the full context and future logic
+                can incorporate a verified-unique MAC if ever needed).
+            host: Router host (already stripped).
+            port: Router ubus port.
+
+        Returns:
+            A stable per-router unique_id string, e.g. ``10.10.10.2_80``.
+        """
+        return f"{host.strip().lower()}_{port}"
+
+    async def _validate_input(
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        protocol: str = DEFAULT_PROTOCOL,
+    ) -> dict[str, Any]:
+        """Create a temporary API client and test the connection."""
+        session = async_get_clientsession(self.hass)
+        api = OpenWrtAPI(
+            host=host,
+            port=port,
+            username=username,
+            password=password,
+            session=session,
+            protocol=protocol,
+            ssl_context=ssl_context_for_protocol(protocol),
+        )
+        return await api.test_connection()
+
+    @staticmethod
+    def _build_user_schema(
+        user_input: dict[str, Any] | None,
+    ) -> vol.Schema:
+        """Build the data entry schema for the user step (includes protocol)."""
+        defaults = user_input or {}
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_HOST,
+                    default=defaults.get(CONF_HOST, ""),
+                ): str,
+                vol.Required(
+                    CONF_PORT,
+                    default=defaults.get(CONF_PORT, DEFAULT_PORT),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+                vol.Required(
+                    CONF_PROTOCOL,
+                    default=defaults.get(CONF_PROTOCOL, DEFAULT_PROTOCOL),
+                ): vol.In(
+                    {
+                        PROTOCOL_HTTP: "HTTP (Port 80, unsicher)",
+                        PROTOCOL_HTTPS: "HTTPS (Port 443, Zertifikat prüfen)",
+                        PROTOCOL_HTTPS_INSECURE: "HTTPS Self-Signed (Port 443, Zertifikat ignorieren)",
+                    }
+                ),
+                vol.Required(
+                    CONF_USERNAME,
+                    default=defaults.get(CONF_USERNAME, DEFAULT_USERNAME),
+                ): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+    @staticmethod
+    def _build_protocol_schema() -> vol.Schema:
+        """Kept for backward compatibility — protocol is now part of the user step."""
+        return vol.Schema(
+            {
+                vol.Required(
+                    CONF_PROTOCOL,
+                    default=DEFAULT_PROTOCOL,
+                ): vol.In(
+                    {
+                        PROTOCOL_HTTP: "HTTP (Port 80, unsecure)",
+                        PROTOCOL_HTTPS: "HTTPS (Port 443, verify certificate)",
+                        PROTOCOL_HTTPS_INSECURE: "HTTPS Self-Signed (Port 443, ignore certificate errors)",
+                    }
+                ),
+            }
+        )

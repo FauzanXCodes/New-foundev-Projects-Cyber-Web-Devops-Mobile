@@ -1,0 +1,14 @@
+﻿{
+    "id":  "phishing-url-detector",
+    "name":  "Phishing URL Detector",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/samjudahj/Phishing-Website-Detector",
+    "stack":  "Python; sklearn; Flask",
+    "goal":  "Lexical + host features, WHOIS/SSL signals, model comparison and browser-check API.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "app.py",
+    "expectedFileCount":  4,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  7
+}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "http-server-from-scratch",
+    "name":  "HTTP Server from Scratch",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/shuveb/zerohttpd",
+    "stack":  "C/Go; sockets",
+    "goal":  "Parse requests, serve static files, handle keep-alive, concurrency and benchmark vs nginx.",
+    "license":  "BSD-2-Clause",
+    "licenseWarning":  null,
+    "entry":  "01_iterative/main.c",
+    "expectedFileCount":  7,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  15
+}

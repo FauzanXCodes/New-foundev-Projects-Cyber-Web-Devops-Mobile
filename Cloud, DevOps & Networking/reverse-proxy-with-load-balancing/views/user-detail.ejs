@@ -1,0 +1,309 @@
+<% const viewDateLocale = typeof dateLocale !== 'undefined' ? dateLocale : undefined; %>
+<div class="page-header">
+    <a href="/panel/users" class="btn btn-back"><i class="ti ti-chevron-left"></i> <%= t('common.backToList') %></a>
+</div>
+
+<div class="row">
+    <div class="col-8">
+        <div class="card">
+            <div class="card-header">
+                <h2><%= t('users.user') %> <%= user.userId %></h2>
+                <% const isExpired = user.expireAt && new Date(user.expireAt).getTime() < Date.now(); %>
+                <span class="badge badge-<%= isExpired ? 'danger' : (user.enabled ? 'success' : 'secondary') %> badge-lg">
+                    <%= isExpired ? t('common.expired') : (user.enabled ? t('common.active') : t('common.inactive')) %>
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label><%= t('users.userId').replace(/\s*\*$/, '') %></label>
+                        <code class="value"><%= user.userId %></code>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.username') %></label>
+                        <span class="value"><%= user.username || '—' %></span>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.comment') %></label>
+                        <span class="value"><%= user.comment || '—' %></span>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.hysteriaPassword') %></label>
+                        <code class="value"><%= user.password %></code>
+                    </div>
+                </div>
+                
+                <h3 class="section-title"><%= t('users.groups') %></h3>
+                <div class="groups-list">
+                    <% if (user.groups && user.groups.length > 0) { %>
+                        <% user.groups.forEach(group => { %>
+                            <span class="group-tag" style="background: <%= group.color %>20; border-color: <%= group.color %>; color: <%= group.color %>">
+                                <%= group.name %>
+                            </span>
+                        <% }); %>
+                    <% } else { %>
+                        <span class="text-muted"><%= t('users.noGroupsAccess') %></span>
+                    <% } %>
+                </div>
+                
+                <h3 class="section-title"><%= t('users.limits') %></h3>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label><%= t('users.traffic') %></label>
+                        <% const usedBytes = (user.traffic?.tx || 0) + (user.traffic?.rx || 0); %>
+                        <% const limitBytes = user.trafficLimit || 0; %>
+                        <span class="value"><%= formatTraffic(usedBytes, { decimals: 2 }) %> / <%= limitBytes > 0 ? formatTraffic(limitBytes, { decimals: 0 }) : '∞' %></span>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.devices') %></label>
+                        <% 
+                            let deviceLimit = user.maxDevices;
+                            let deviceLimitStr = '∞';
+                            if (deviceLimit === 0) {
+                                const groupLimits = (user.groups || []).filter(g => g.maxDevices > 0).map(g => g.maxDevices);
+                                if (groupLimits.length > 0) {
+                                    deviceLimit = Math.min(...groupLimits);
+                                    deviceLimitStr = deviceLimit + ' ' + t('users.deviceFromGroup');
+                                }
+                            } else if (deviceLimit > 0) {
+                                deviceLimitStr = deviceLimit.toString();
+                            }
+                        %>
+                        <span class="value"><%= deviceLimitStr %></span>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.txRx') %></label>
+                        <span class="value">
+                            <i class="ti ti-arrow-up" style="color:var(--success)"></i> <%= formatTraffic(user.traffic?.tx || 0, { decimals: 2 }) %> / 
+                            <i class="ti ti-arrow-down" style="color:var(--info)"></i> <%= formatTraffic(user.traffic?.rx || 0, { decimals: 2 }) %>
+                        </span>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.createdAt') %></label>
+                        <span class="value"><%= user.createdAt ? new Date(user.createdAt).toLocaleString(viewDateLocale, { dateStyle: 'medium', timeStyle: 'short' }) : '—' %></span>
+                    </div>
+                    <div class="detail-item">
+                        <label><%= t('users.expires') %></label>
+                        <span class="value"><%= user.expireAt ? new Date(user.expireAt).toLocaleString(viewDateLocale, { dateStyle: 'medium', timeStyle: 'short' }) : t('users.forever') %></span>
+                    </div>
+                </div>
+                
+                <% if (typeof hwidEnabled !== 'undefined' && hwidEnabled) { %>
+                <h3 class="section-title"><%= t('users.hwidDevices') %></h3>
+                <% 
+                    let hwidLimitDisp = '—';
+                    if (typeof hwidLimit !== 'undefined') {
+                        if (hwidLimit < 0) hwidLimitDisp = '∞';
+                        else if (hwidLimit > 0) hwidLimitDisp = String(hwidLimit);
+                        else {
+                            const gl = (user.groups || []).filter(g => g.maxDevices > 0).map(g => g.maxDevices);
+                            hwidLimitDisp = gl.length ? String(Math.min(...gl)) : '—';
+                        }
+                    }
+                    const hwidCnt = typeof hwidCount !== 'undefined' ? hwidCount : 0;
+                %>
+                <p class="hint" style="margin-top:0"><%= t('users.hwidDevicesSummary') %> <strong><%= hwidCnt %> / <%= hwidLimitDisp %></strong></p>
+                <% if (hwidDevices && hwidDevices.length > 0) { %>
+                <div style="overflow-x:auto;">
+                    <table class="table table-sm" id="hwidDeviceTable">
+                        <thead>
+                            <tr>
+                                <th><%= t('users.hwidModel') %></th>
+                                <th>OS</th>
+                                <th><%= t('users.hwidLastSeen') %></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% hwidDevices.forEach(function(d) { %>
+                            <tr data-hwid="<%- encodeURIComponent(d.hwid) %>">
+                                <td><code style="font-size:11px"><%= d.deviceModel || '—' %></code></td>
+                                <td><small><%= [d.platform, d.osVersion].filter(Boolean).join(' ') || '—' %></small></td>
+                                <td><small><%= d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString(viewDateLocale, { dateStyle: 'short', timeStyle: 'short' }) : '—' %></small></td>
+                                <td><button type="button" class="btn btn-sm btn-danger" onclick="unlinkHwid(this.closest('tr').dataset.hwid)"><%= t('users.unlinkDevice') %></button></td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                </div>
+                <% } else { %>
+                <p class="text-muted"><%= t('users.noHwidDevices') %></p>
+                <% } %>
+                <% if (hwidCnt > 0) { %>
+                <button type="button" class="btn btn-sm btn-secondary mt-1" onclick="unlinkAllHwid()"><%= t('users.unlinkAllHwidDevices') %></button>
+                <% } %>
+                <% } %>
+                
+                <h3 class="section-title"><%= t('users.availableNodes') %> (<%= effectiveNodes?.length || 0 %>)</h3>
+                <div class="nodes-list">
+                    <% if (effectiveNodes && effectiveNodes.length > 0) { %>
+                        <% effectiveNodes.forEach(node => { %>
+                        <div class="node-badge">
+                            <span class="node-name"><%= node.name %></span>
+                            <span class="node-ip"><%= node.type === 'virtual'
+                                ? 'virtual / balancer'
+                                : (node.type === 'cdn' ? (node.cdn?.domain || 'CDN edge') : (node.ip || '—')) %></span>
+                        </div>
+                        <% }); %>
+                    <% } else { %>
+                        <span class="text-muted"><%= t('users.noNodes') %></span>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-4">
+        <div class="card">
+            <div class="card-header">
+                <h2><%= t('common.actions') %></h2>
+            </div>
+            <div class="card-body">
+                <div class="actions-list">
+                    <% if (!isExpired) { %>
+                        <% if (user.enabled) { %>
+                        <button class="btn btn-warning btn-block" onclick="toggleUser(false)">
+                            <%= t('users.disableUser') %>
+                        </button>
+                        <% } else { %>
+                        <button class="btn btn-success btn-block" onclick="toggleUser(true)">
+                            <%= t('users.enableUser') %>
+                        </button>
+                        <% } %>
+                    <% } %>
+                    
+                    <a href="/panel/users/<%= user.userId %>/edit" class="btn btn-primary btn-block">
+                        <%= t('users.editUser') %>
+                    </a>
+                    
+                    <button class="btn btn-block" onclick="copySubscription()">
+                        <i class="ti ti-clipboard"></i> <%= t('users.copySubscription') %>
+                    </button>
+                    
+                    <a href="<%= baseUrl %>/api/files/<%= user.subscriptionToken %>" 
+                       target="_blank" class="btn btn-block">
+                        <i class="ti ti-external-link"></i> <%= t('users.openSubscription') %>
+                    </a>
+                    
+                    <button class="btn btn-block" onclick="resetTraffic()">
+                        <i class="ti ti-refresh"></i> <%= t('users.resetTraffic') %>
+                    </button>
+                    
+                    <hr>
+                    
+                    <button class="btn btn-danger btn-block" onclick="deleteUser()">
+                        <%= t('users.deleteUser') %>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-2">
+            <div class="card-header">
+                <h2><%= t('users.subscriptionLink') %></h2>
+            </div>
+            <div class="card-body">
+                <div id="qrcode" style="text-align:center;margin-bottom:12px;"></div>
+                <p class="hint mb-1"><%= t('users.universalLink') %></p>
+                <input type="text" readonly class="input-readonly" 
+                       value="<%= baseUrl %>/api/files/<%= user.subscriptionToken %>" id="subLink">
+                <button class="btn btn-sm btn-block mt-1" onclick="copySubscription()"><%= t('common.copy') %></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+<script>
+const userId = <%- JSON.stringify(user.userId) %>;
+const i18n = {
+    error: <%- JSON.stringify(t("common.error")) %>,
+    confirmDelete: <%- JSON.stringify(t("users.confirmDelete")) %> + ' ' + userId + '?',
+    linkCopied: <%- JSON.stringify(t("users.linkCopied")) %>,
+    confirmUnlinkHwid: <%- JSON.stringify(t("users.confirmUnlinkHwid")) %>,
+    confirmUnlinkAllHwid: <%- JSON.stringify(t("users.confirmUnlinkAllHwid")) %>,
+    confirmResetTraffic: <%- JSON.stringify(t("users.confirmResetTraffic")) %>,
+};
+
+async function unlinkHwid(hwid) {
+    if (!hwid || !confirm(i18n.confirmUnlinkHwid)) return;
+    const res = await fetch('/api/users/' + encodeURIComponent(userId) + '/devices/' + encodeURIComponent(hwid), {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    if (res.ok) location.reload();
+    else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || i18n.error);
+    }
+}
+
+async function unlinkAllHwid() {
+    if (!confirm(i18n.confirmUnlinkAllHwid)) return;
+    const res = await fetch('/api/users/' + encodeURIComponent(userId) + '/devices', {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    if (res.ok) location.reload();
+    else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || i18n.error);
+    }
+}
+
+async function toggleUser(enabled) {
+    const res = await fetch(`/api/users/${userId}/${enabled ? 'enable' : 'disable'}`, {
+        method: 'POST',
+        credentials: 'include'
+    });
+    if (res.ok) location.reload();
+    else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || i18n.error);
+    }
+}
+
+async function resetTraffic() {
+    if (!confirm(i18n.confirmResetTraffic)) return;
+    const res = await fetch(`/api/users/${userId}/reset-traffic`, {
+        method: 'POST',
+        credentials: 'include'
+    });
+    if (res.ok) location.reload();
+    else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || i18n.error);
+    }
+}
+
+async function deleteUser() {
+    if (!confirm(i18n.confirmDelete)) return;
+    
+    const res = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    if (res.ok) location.href = '/panel/users';
+    else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || i18n.error);
+    }
+}
+
+function copySubscription() {
+    const link = document.getElementById('subLink').value;
+    navigator.clipboard.writeText(link).then(() => {
+        alert(i18n.linkCopied);
+    }).catch(() => {
+    document.getElementById('subLink').select();
+    document.execCommand('copy');
+    alert(i18n.linkCopied);
+    });
+}
+
+const subUrl = document.getElementById('subLink').value;
+QRCode.toCanvas(document.createElement('canvas'), subUrl, { width: 180, margin: 1 }, (err, canvas) => {
+    if (!err) document.getElementById('qrcode').appendChild(canvas);
+});
+</script>

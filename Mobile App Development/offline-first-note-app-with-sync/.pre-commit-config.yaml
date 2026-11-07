@@ -1,0 +1,101 @@
+# Pre-commit hooks for todo.
+#
+# This repo previously used a hand-written .git/hooks/pre-commit installed by
+# scripts/install_hooks.sh. It moved to the pre-commit framework when the
+# 250-line file-length gate was added, so the *checks* live in one place with
+# one install path.
+#
+# Only non-mutating checks belong here. pre-commit stashes unstaged changes
+# for the duration of the run and restores them with `git apply` afterwards;
+# a hook that rewrites a tracked file inside that window makes the restore
+# conflict, which aborts the commit AND drops the developer's uncommitted
+# edit. scripts/bump_patch_version.sh rewrites pubspec.yaml, so it stays out
+# of this file and runs from the wrapper hook instead -- see
+# scripts/install_hooks.sh.
+#
+# fail_fast so a later check cannot run after an earlier one has already
+# rejected the commit.
+#
+# Install with:  scripts/install_hooks.sh
+# The hooks are `language: system` because they are plain bash/python already
+# on this machine; pre-commit must not build an isolated env for them.
+fail_fast: true
+repos:
+  - repo: local
+    hooks:
+      # Gate first: a local crdt_sync override left in place makes CI build a
+      # library this checkout has never tested against, silently and in both
+      # directions. Blocking the commit is the only thing that prevents it.
+      #
+      # always_run/pass_filenames rather than `files:`: a poisoned pubspec can
+      # arrive by pull, merge or --no-verify, and a staged-only trigger would
+      # then never look at it again for any commit that does not happen to
+      # touch pubspec.yaml. The old hand-written hook checked it every time;
+      # narrowing that to staged-only silently widened the hole this gate
+      # exists to close.
+      - id: no-crdt-sync-override
+        name: no local crdt_sync dependency_override
+        entry: scripts/check_no_crdt_sync_override.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # The shared 250-line cap. Checks only the files in the commit, so an
+      # unrelated commit never breaks; exits 1 rather than warning. No
+      # baseline and no allowlist -- those are suppressions. The exemption
+      # list (generated/vendored/data files) lives with the checker in
+      # ~/src/utils/file_length/config.py so the gate and the survey cannot
+      # disagree.
+      - id: file-length
+        name: file length <= 250 lines
+        entry: scripts/check_file_length.sh
+        language: system
+
+      # Four markdown namespaces (README / CLAUDE* / DOCS* / TODO*), plus the
+      # rule that a TODO carries "REMOVE ME AFTER FINISH" and nothing else may.
+      # Shared gate in ~/src/utils owns the namespaces and the exemption list, so
+      # one repo's idea of a valid name cannot drift from every other repo's.
+      # Since the 2026-09-11 reorganisation ~ holds eleven visible entries and
+      # home-tidy sweeps anything else to inbox/ within the hour. The migration's
+      # rewriter matched *literal* /home/kuhy/<name> strings, so paths assembled
+      # at run time survived it -- the todo wrapper exported to a dead ~/todo for
+      # a day while its MCP read ~/src/todo. This gate matches the shape, so it
+      # stays correct as repos come and go.
+      - id: home-path-layout
+        name: home-relative paths stay inside the ~ layout
+        entry: bash scripts/check_home_paths.sh
+        language: system
+        pass_filenames: true
+
+      - id: md-naming
+        name: markdown naming convention
+        entry: scripts/check_md_naming.sh
+        language: system
+        files: \.(md|markdown)$
+
+      # Every dependency on its ecosystem's newest STABLE release, exact-pinned
+      # so the question is mechanically answerable at all.
+      #
+      # `files:` is what keeps this cheap: a commit touching only source makes
+      # ZERO network requests, and manifest commits mostly hit a 6h disk cache.
+      #
+      # Runs WITHOUT --strict on purpose. Offline it degrades to the cached
+      # answer and passes with a loud banner; `--no-verify` is banned here, so
+      # a hook that hard-failed on a flaky connection would leave no way to
+      # commit at all. CI, always online, is the strict authority.
+      - id: dependency-freshness
+        name: dependencies on newest stable
+        entry: scripts/check_dependency_freshness.sh
+        language: system
+        pass_filenames: true
+        files: >-
+          (pubspec\.(yaml|lock)|pyproject\.toml|requirements.*\.txt|uv\.lock
+          |package\.json|package-lock\.json|pnpm-lock\.yaml
+          |Cargo\.(toml|lock)|go\.(mod|sum)
+          |\.fvmrc|\.nvmrc|\.python-version)$
+      - id: repo-contract
+        name: repo contract (CLAUDE.md Commands + test_changed)
+        entry: scripts/check_repo_contract.sh
+        language: system
+        pass_filenames: false
+        files: ^(CLAUDE\.md|AGENTS\.md|scripts/test_changed\.sh)$

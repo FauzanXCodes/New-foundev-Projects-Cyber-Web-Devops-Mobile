@@ -1,0 +1,14 @@
+﻿{
+    "id":  "flashcards-with-spaced-repetition",
+    "name":  "Flashcards with Spaced Repetition",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/alyssaxuu/carden",
+    "stack":  "React Native; SQLite",
+    "goal":  "Deck creation, SM-2 scheduling algorithm, offline study and stats.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "server/add_card.php",
+    "expectedFileCount":  45,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  110
+}

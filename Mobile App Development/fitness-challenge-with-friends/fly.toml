@@ -1,0 +1,31 @@
+# Rally API on Fly.io. One machine only: the data is a single JSON file on a volume, so a second
+# machine would have its own separate copy. Deploy with `fly deploy --ha=false`.
+app = "rally-friends"
+primary_region = "lax"
+
+[env]
+  APPLE_TEAM_ID = "B7H47WD4BU"
+  BUNDLE_ID = "com.jean.fitnesschallenge"
+  # The newest build approved in TestFlight. Raise it after each release so older copies offer the update.
+  LATEST_BUILD = "10"
+
+[mounts]
+  source = "rally_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

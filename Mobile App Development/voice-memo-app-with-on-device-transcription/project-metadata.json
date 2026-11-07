@@ -1,0 +1,14 @@
+﻿{
+    "id":  "voice-memo-app-with-on-device-transcription",
+    "name":  "Voice Memo App with On-Device Transcription",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/altner/Image-Voice-Memos",
+    "stack":  "Kotlin; Whisper.cpp/ML Kit",
+    "goal":  "Record, transcribe offline, search across transcripts and share.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "docs/index.html",
+    "expectedFileCount":  24,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  53
+}

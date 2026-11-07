@@ -1,0 +1,778 @@
+/**
+ * SSH service for Hysteria node management
+ *
+ * Uses SSHPool for connection reuse.
+ * Falls back to direct connection if pool unavailable.
+ *
+ * Direct mode is hardened against avalanches (issue #70):
+ * - Global concurrency cap: at most MAX_CONCURRENT_DIRECT handshakes at once,
+ *   bounding CPU usage from DH key-exchange on weak hardware.
+ * - Bounded retries with exponential backoff (mirrors sshPoolService).
+ *
+ * Configuration:
+ * - readyTimeout / maxRetries are inherited from sshPool settings, so the
+ *   admin tunes both pool and direct paths from one place in the UI.
+ * - MAX_CONCURRENT_DIRECT is an expert-only CPU safety cap, exposed as the
+ *   SSH_DIRECT_MAX_CONCURRENT env var (default 3). Not surfaced in the UI to
+ *   avoid foot-guns: setting it too high re-introduces the avalanche risk.
+ *
+ * Note: We intentionally do NOT share clients across NodeSSH instances via
+ * in-flight dedup. Each instance owns its directClient and ends it on
+ * disconnect(); sharing would let one instance close the socket out from
+ * under another. Same-node parallel SSH is rare in this codebase (cascade
+ * health-check, sync, etc. iterate distinct nodes), and the semaphore alone
+ * is sufficient to prevent the avalanche described in issue #70.
+ */
+
+const { Client } = require('ssh2');
+const sshPool = require('./sshPoolService');
+const logger = require('../utils/logger');
+const cryptoService = require('./cryptoService');
+
+// Hard cap to keep CPU usage bounded on weak hardware (1 vCPU).
+// Each SSH handshake involves DH key-exchange which is CPU-heavy on Node.js.
+const MAX_CONCURRENT_DIRECT = (() => {
+    const raw = parseInt(process.env.SSH_DIRECT_MAX_CONCURRENT, 10);
+    return (Number.isFinite(raw) && raw > 0) ? raw : 3;
+})();
+
+// Fallback defaults used only until sshPool.config is populated.
+const FALLBACK_READY_TIMEOUT_MS = 15000;
+const FALLBACK_MAX_RETRIES = 2;
+
+function getDirectReadyTimeoutMs() {
+    // sshPool.config.connectTimeout is stored in milliseconds (defaults 15000).
+    const t = sshPool?.config?.connectTimeout;
+    return (Number.isFinite(t) && t > 0) ? t : FALLBACK_READY_TIMEOUT_MS;
+}
+
+function getDirectMaxRetries() {
+    const r = sshPool?.config?.maxRetries;
+    return (Number.isFinite(r) && r >= 0) ? r : FALLBACK_MAX_RETRIES;
+}
+
+class NodeSSH {
+    constructor(node) {
+        this.node = node;
+        this.usePool = true;
+        this.directClient = null;
+    }
+
+    /**
+     * Connect to node via SSH (via pool or direct)
+     */
+    async connect() {
+        if (this.usePool) {
+            try {
+                await sshPool.getConnection(this.node);
+                return;
+            } catch (error) {
+                if (error && error.message === 'SSH Pool disabled') {
+                    logger.debug(`[SSH] Pool disabled, using direct for ${this.node.name}`);
+                } else {
+                    logger.warn(`[SSH] Pool error for ${this.node.name} (${error?.message || 'unknown'}), falling back to direct`);
+                }
+                this.usePool = false;
+            }
+        }
+
+        return this.connectDirect();
+    }
+
+    /**
+     * Direct connection (used when pool is disabled or temporarily failing).
+     * A global semaphore caps simultaneous handshakes so a burst of callers
+     * cannot saturate CPU during network instability.
+     */
+    async connectDirect() {
+        await NodeSSH._acquireDirectSlot();
+        try {
+            this.directClient = await this._connectDirectWithRetry();
+        } finally {
+            NodeSSH._releaseDirectSlot();
+        }
+    }
+
+    /**
+     * Open a single SSH client with bounded retries and exponential backoff.
+     * Mirrors the retry pattern in sshPoolService.createConnection.
+     */
+    async _connectDirectWithRetry(attempt = 0) {
+        const maxRetries = getDirectMaxRetries();
+        try {
+            return await this._openDirectClient();
+        } catch (err) {
+            if (attempt < maxRetries) {
+                const delay = Math.pow(2, attempt) * 500;
+                logger.warn(`[SSH] ${this.node.name}: direct retry ${attempt + 1}/${maxRetries} in ${delay}ms (${err.message})`);
+                await new Promise(r => setTimeout(r, delay));
+                return this._connectDirectWithRetry(attempt + 1);
+            }
+            logger.error(`[SSH] Direct connection failed for ${this.node.name}: ${err.message}`);
+            throw err;
+        }
+    }
+
+    /**
+     * One handshake attempt. Resolves with a ready Client or rejects.
+     */
+    _openDirectClient() {
+        return new Promise((resolve, reject) => {
+            const client = new Client();
+
+            const config = {
+                host: this.node.ip,
+                port: this.node.ssh?.port || 22,
+                username: this.node.ssh?.username || 'root',
+                readyTimeout: getDirectReadyTimeoutMs(),
+            };
+
+            if (this.node.ssh?.privateKey) {
+                config.privateKey = cryptoService.decryptPrivateKey(this.node.ssh.privateKey);
+            } else if (this.node.ssh?.password) {
+                config.password = cryptoService.decryptSafe(this.node.ssh.password);
+            } else {
+                reject(new Error('SSH: no key or password provided'));
+                return;
+            }
+
+            let settled = false;
+            client
+                .on('ready', () => {
+                    if (settled) return;
+                    settled = true;
+                    logger.info(`[SSH] Connected (direct) to ${this.node.name} (${this.node.ip})`);
+                    resolve(client);
+                })
+                .on('error', (err) => {
+                    if (settled) return;
+                    settled = true;
+                    try { client.end(); } catch (_) {}
+                    reject(err);
+                })
+                .connect(config);
+        });
+    }
+
+    /**
+     * Acquire a slot from the global direct-connection semaphore.
+     * Blocks (queues) when MAX_CONCURRENT_DIRECT handshakes are already in flight.
+     */
+    static _acquireDirectSlot() {
+        if (NodeSSH._activeDirect < MAX_CONCURRENT_DIRECT) {
+            NodeSSH._activeDirect++;
+            return Promise.resolve();
+        }
+        return new Promise(resolve => NodeSSH._waitQueue.push(resolve));
+    }
+
+    /**
+     * Release a slot and wake the next waiter, if any.
+     */
+    static _releaseDirectSlot() {
+        const next = NodeSSH._waitQueue.shift();
+        if (next) {
+            // Slot count stays the same: we hand it to the next waiter.
+            next();
+        } else {
+            NodeSSH._activeDirect = Math.max(0, NodeSSH._activeDirect - 1);
+        }
+    }
+
+    /**
+     * Close connection
+     */
+    disconnect() {
+        if (this.directClient) {
+            this.directClient.end();
+            this.directClient = null;
+        }
+        // Pool connections are NOT closed - they are reused
+    }
+
+    /**
+     * Execute command on remote server
+     */
+    async exec(command) {
+        if (this.usePool) {
+            return sshPool.exec(this.node, command);
+        }
+        
+        // Legacy direct execution
+        return new Promise((resolve, reject) => {
+            if (!this.directClient) {
+                reject(new Error('SSH not connected'));
+                return;
+            }
+            
+            this.directClient.exec(command, (err, stream) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                let stdout = '';
+                let stderr = '';
+                
+                stream
+                    .on('close', (code) => {
+                        resolve({ code, stdout, stderr });
+                    })
+                    .on('data', (data) => {
+                        stdout += data.toString();
+                    })
+                    .stderr.on('data', (data) => {
+                        stderr += data.toString();
+                    });
+            });
+        });
+    }
+
+    /**
+     * Write file to remote server
+     */
+    async writeFile(remotePath, content) {
+        if (this.usePool) {
+            return sshPool.writeFile(this.node, remotePath, content);
+        }
+        
+        // Legacy direct write
+        return new Promise((resolve, reject) => {
+            if (!this.directClient) {
+                reject(new Error('SSH not connected'));
+                return;
+            }
+            
+            this.directClient.sftp((err, sftp) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                const writeStream = sftp.createWriteStream(remotePath);
+                
+                writeStream
+                    .on('close', () => {
+                        logger.info(`[SSH] Written file ${remotePath} to ${this.node.name}`);
+                        resolve();
+                    })
+                    .on('error', (err) => {
+                        reject(err);
+                    });
+                
+                writeStream.write(content);
+                writeStream.end();
+            });
+        });
+    }
+
+    /**
+     * Read file from remote server
+     */
+    async readFile(remotePath) {
+        if (this.usePool) {
+            return sshPool.readFile(this.node, remotePath);
+        }
+        
+        // Legacy direct read
+        return new Promise((resolve, reject) => {
+            if (!this.directClient) {
+                reject(new Error('SSH not connected'));
+                return;
+            }
+            
+            this.directClient.sftp((err, sftp) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                let content = '';
+                const readStream = sftp.createReadStream(remotePath);
+                
+                readStream
+                    .on('data', (data) => {
+                        content += data.toString();
+                    })
+                    .on('close', () => {
+                        resolve(content);
+                    })
+                    .on('error', (err) => {
+                        reject(err);
+                    });
+            });
+        });
+    }
+
+    /**
+     * Check Hysteria service status
+     * Performs multiple checks to ensure service is actually running
+     */
+    async checkHysteriaStatus() {
+        try {
+            // Wait for service to stabilize after restart
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Check 1: systemctl is-active
+            const result = await this.exec('systemctl is-active hysteria-server 2>/dev/null || systemctl is-active hysteria 2>/dev/null || echo "unknown"');
+            const status = result.stdout.trim();
+            
+            logger.debug(`[SSH] ${this.node.name} hysteria status: ${status}`);
+            
+            if (status !== 'active') {
+                return false;
+            }
+            
+            // Check 2: Verify service didn't crash immediately after start
+            // Check journal for errors in last 10 seconds
+            const journalCheck = await this.exec(`
+                journalctl -u hysteria-server -u hysteria --since "10 seconds ago" --no-pager 2>/dev/null | grep -iE "(fatal|error|failed|panic)" | head -5
+            `);
+            
+            if (journalCheck.stdout.trim()) {
+                logger.warn(`[SSH] ${this.node.name} has errors in journal: ${journalCheck.stdout.trim()}`);
+                return false;
+            }
+            
+            // Check 3: Verify the process is actually listening on the expected port
+            const port = this.node.port || 443;
+            const portCheck = await this.exec(`ss -ulnp | grep -E ":${port}\\s" | head -1`);
+            
+            if (!portCheck.stdout.trim()) {
+                logger.warn(`[SSH] ${this.node.name} is not listening on port ${port}`);
+                return false;
+            }
+            
+            logger.debug(`[SSH] ${this.node.name} all checks passed, service is healthy`);
+            return true;
+        } catch (error) {
+            logger.warn(`[SSH] ${this.node.name} status check failed: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Restart Hysteria service
+     */
+    async restartHysteria() {
+        try {
+            let result = await this.exec('systemctl restart hysteria-server 2>/dev/null || systemctl restart hysteria 2>/dev/null');
+            
+            if (result.code !== 0) {
+                logger.error(`[SSH] Hysteria restart error on ${this.node.name}: ${result.stderr}`);
+                return false;
+            }
+            
+            logger.info(`[SSH] Hysteria restarted on ${this.node.name}`);
+            return true;
+        } catch (error) {
+            logger.error(`[SSH] Restart error: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Reload Hysteria config
+     */
+    async reloadHysteria() {
+        try {
+            const result = await this.exec('systemctl restart hysteria-server 2>&1 || systemctl restart hysteria 2>&1');
+            
+            logger.debug(`[SSH] ${this.node.name} restart output: ${result.stdout} ${result.stderr}`);
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            const statusResult = await this.exec('systemctl is-active hysteria-server 2>/dev/null || systemctl is-active hysteria 2>/dev/null');
+            const isActive = statusResult.stdout.trim() === 'active';
+            
+            if (isActive) {
+                logger.info(`[SSH] Hysteria restarted and running on ${this.node.name}`);
+            return true;
+            } else {
+                // Try to get logs for diagnostics
+                const logsResult = await this.exec('journalctl -u hysteria-server -n 10 --no-pager 2>/dev/null || journalctl -u hysteria -n 10 --no-pager 2>/dev/null');
+                logger.error(`[SSH] Hysteria failed to start on ${this.node.name}. Logs: ${logsResult.stdout}`);
+                return false;
+            }
+        } catch (error) {
+            logger.error(`[SSH] Restart error: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Upload file content to a remote path (alias for writeFile)
+     */
+    async uploadContent(content, remotePath) {
+        // Ensure parent directory exists
+        const dir = remotePath.substring(0, remotePath.lastIndexOf('/'));
+        if (dir) {
+            await this.exec(`mkdir -p ${dir} 2>/dev/null || true`);
+        }
+        return this.writeFile(remotePath, content);
+    }
+
+    /**
+     * Update config on node
+     */
+    async updateConfig(configContent) {
+        try {
+            const configPath = this.node.paths?.config || '/etc/hysteria/config.yaml';
+            
+            await this.exec(`cp ${configPath} ${configPath}.bak 2>/dev/null || true`);
+            await this.writeFile(configPath, configContent);
+            
+            const checkResult = await this.exec(`/usr/local/bin/hysteria check -c ${configPath} 2>&1 || true`);
+            
+            // If check failed - rollback
+            if (checkResult.stdout.includes('error') || checkResult.stderr.includes('error')) {
+                logger.error(`[SSH] Config error on ${this.node.name}: ${checkResult.stdout}`);
+                await this.exec(`mv ${configPath}.bak ${configPath}`);
+                return false;
+            }
+            
+            return await this.reloadHysteria();
+        } catch (error) {
+            logger.error(`[SSH] Config update error: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Setup port hopping via iptables
+     */
+    async setupPortHopping(portRange) {
+        try {
+            const mainPort = this.node.port || 443;
+            const [startPort, endPort] = portRange.split('-').map(Number);
+            
+            const script = `
+# Clear old rules
+iptables -D INPUT -p udp --dport ${startPort}:${endPort} -j ACCEPT 2>/dev/null || true
+ip6tables -D INPUT -p udp --dport ${startPort}:${endPort} -j ACCEPT 2>/dev/null || true
+iptables -t nat -D PREROUTING -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || true
+ip6tables -t nat -D PREROUTING -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || true
+
+# Clear legacy interface-specific rules
+for iface in eth0 eth1 ens3 ens5 enp0s3 eno1; do
+    iptables -t nat -D PREROUTING -i $iface -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || true
+    ip6tables -t nat -D PREROUTING -i $iface -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || true
+done
+
+# Open hop range in firewall before redirecting it
+iptables -C INPUT -p udp --dport ${startPort}:${endPort} -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport ${startPort}:${endPort} -j ACCEPT
+ip6tables -C INPUT -p udp --dport ${startPort}:${endPort} -j ACCEPT 2>/dev/null || ip6tables -I INPUT -p udp --dport ${startPort}:${endPort} -j ACCEPT 2>/dev/null || true
+
+# Add new rules (no interface binding)
+iptables -t nat -C PREROUTING -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || iptables -t nat -A PREROUTING -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort}
+ip6tables -t nat -C PREROUTING -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || ip6tables -t nat -A PREROUTING -p udp --dport ${startPort}:${endPort} -j REDIRECT --to-port ${mainPort} 2>/dev/null || true
+
+# Open ports in UFW
+if command -v ufw &> /dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow ${startPort}:${endPort}/udp 2>/dev/null || true
+fi
+
+# Save rules
+if command -v netfilter-persistent &> /dev/null; then
+    netfilter-persistent save 2>/dev/null
+elif command -v iptables-save &> /dev/null; then
+    mkdir -p /etc/iptables
+    iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    ip6tables-save > /etc/iptables/rules.v6 2>/dev/null || true
+fi
+
+echo "Port hopping: ${startPort}-${endPort} -> ${mainPort}"
+`;
+            
+            await this.exec(script);
+            
+            logger.info(`[SSH] Port hopping configured on ${this.node.name}: ${portRange} -> ${mainPort}`);
+            return true;
+        } catch (error) {
+            logger.error(`[SSH] Port hopping setup error: ${error.message}`);
+            return false;
+        }
+    }
+    
+    /**
+     * Get current network speed (bytes/sec)
+     */
+    async getNetworkSpeed() {
+        try {
+            const getNetStats = async () => {
+                const result = await this.exec(`cat /proc/net/dev | grep -E '(eth|ens|enp|eno)' | head -1`);
+                const line = result.stdout.trim();
+                
+                if (!line) return null;
+                
+                const data = line.replace(/^[^:]+:\s*/, '');
+                const parts = data.trim().split(/\s+/);
+                
+                const rxBytes = parseInt(parts[0]) || 0;
+                const txBytes = parseInt(parts[8]) || 0;
+                
+                return { rx: rxBytes, tx: txBytes, time: Date.now() };
+            };
+            
+            const stats1 = await getNetStats();
+            if (!stats1) {
+                return { success: false, error: 'Network interface not found' };
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            const stats2 = await getNetStats();
+            if (!stats2) {
+                return { success: false, error: 'Network interface not found' };
+            }
+            
+            const timeDiff = (stats2.time - stats1.time) / 1000;
+            const rxSpeed = Math.round((stats2.rx - stats1.rx) / timeDiff);
+            const txSpeed = Math.round((stats2.tx - stats1.tx) / timeDiff);
+            
+            return { 
+                success: true, 
+                rx: rxSpeed,
+                tx: txSpeed,
+            };
+        } catch (error) {
+            logger.error(`[SSH] Network speed error on ${this.node.name}: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+    
+    /**
+     * Check if TLS certificate files exist and are valid on the node.
+     * Also detects incomplete chains (CA-issued leaf without intermediates) so
+     * that ensureCertificates() can re-upload from the panel — this self-heals
+     * nodes provisioned before the issue #63 fix where /etc/hysteria/cert.pem
+     * contained only the leaf certificate.
+     * @returns {Object} { exists: boolean, valid: boolean, error?: string }
+     */
+    async checkCertificates() {
+        try {
+            const certPath = this.node.paths?.cert || '/etc/hysteria/cert.pem';
+            const keyPath = this.node.paths?.key || '/etc/hysteria/key.pem';
+            
+            // Self-signed certs (used when node has no domain) are 1-cert and that's
+            // fine — they're identified by issuer == subject. CA-issued leaf-only
+            // certs are reported as INCOMPLETE_CHAIN so they get re-uploaded.
+            const result = await this.exec(`
+if [ -f "${certPath}" ] && [ -s "${certPath}" ] && [ -f "${keyPath}" ] && [ -s "${keyPath}" ]; then
+    if openssl x509 -in "${certPath}" -noout 2>/dev/null; then
+        CERT_COUNT=$(grep -c "BEGIN CERTIFICATE" "${certPath}" 2>/dev/null || echo 0)
+        SUBJECT=$(openssl x509 -in "${certPath}" -noout -subject 2>/dev/null | sed 's/^subject= *//')
+        ISSUER=$(openssl x509 -in "${certPath}" -noout -issuer 2>/dev/null | sed 's/^issuer= *//')
+        if [ "$CERT_COUNT" -lt 2 ] && [ "$SUBJECT" != "$ISSUER" ]; then
+            echo "INCOMPLETE_CHAIN"
+        else
+            echo "VALID"
+            openssl x509 -in "${certPath}" -noout -enddate 2>/dev/null | grep notAfter
+        fi
+    else
+        echo "INVALID"
+    fi
+else
+    echo "MISSING"
+fi
+            `);
+            
+            const output = result.stdout.trim();
+            
+            if (output.includes('INCOMPLETE_CHAIN')) {
+                logger.warn(`[SSH] ${this.node.name}: TLS chain incomplete (leaf only) — will re-upload from panel`);
+                return { exists: true, valid: false, error: 'Incomplete TLS chain (intermediates missing)' };
+            } else if (output.includes('VALID')) {
+                return { exists: true, valid: true };
+            } else if (output.includes('INVALID')) {
+                return { exists: true, valid: false, error: 'Certificate is invalid or corrupted' };
+            } else {
+                return { exists: false, valid: false, error: 'Certificate files missing' };
+            }
+        } catch (error) {
+            logger.error(`[SSH] Certificate check error on ${this.node.name}: ${error.message}`);
+            return { exists: false, valid: false, error: error.message };
+        }
+    }
+
+    /**
+     * Upload TLS certificates to the node
+     * @param {string} cert - Certificate content (PEM)
+     * @param {string} key - Private key content (PEM)
+     * @returns {boolean} Success status
+     */
+    async uploadCertificates(cert, key) {
+        try {
+            const certPath = this.node.paths?.cert || '/etc/hysteria/cert.pem';
+            const keyPath = this.node.paths?.key || '/etc/hysteria/key.pem';
+            
+            await this.exec('mkdir -p /etc/hysteria');
+            
+            await this.writeFile(certPath, cert);
+            await this.writeFile(keyPath, key);
+            
+            await this.exec(`
+chmod 644 ${certPath}
+chmod 600 ${keyPath}
+if id "hysteria" &>/dev/null; then
+    chown hysteria:hysteria ${certPath} ${keyPath}
+fi
+            `);
+            
+            logger.info(`[SSH] Certificates uploaded to ${this.node.name}`);
+            return true;
+        } catch (error) {
+            logger.error(`[SSH] Certificate upload error on ${this.node.name}: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Ensure valid certificates exist on the node
+     * If useTlsFiles is true and certs are missing/invalid, tries to copy from panel
+     * @param {Object} panelCerts - { cert, key } from panel, or null
+     * @returns {Object} { success: boolean, action: string, error?: string }
+     */
+    async ensureCertificates(panelCerts) {
+        const certStatus = await this.checkCertificates();
+        
+        if (certStatus.exists && certStatus.valid) {
+            return { success: true, action: 'existing' };
+        }
+        
+        if (!panelCerts || !panelCerts.cert || !panelCerts.key) {
+            return { 
+                success: false, 
+                action: 'failed', 
+                error: 'Certificates missing on node and panel certs not available' 
+            };
+        }
+        
+        logger.info(`[SSH] ${this.node.name}: certificates ${certStatus.exists ? 'invalid' : 'missing'}, uploading from panel`);
+        
+        const uploaded = await this.uploadCertificates(panelCerts.cert, panelCerts.key);
+        
+        if (uploaded) {
+            return { success: true, action: 'uploaded' };
+        } else {
+            return { success: false, action: 'failed', error: 'Failed to upload certificates' };
+        }
+    }
+
+    /**
+     * Get system stats from node
+     */
+    async getSystemStats() {
+        try {
+            const result = await this.exec(`
+echo "===CPUSAMPLE==="
+head -1 /proc/stat
+echo "===LOADAVG==="
+cat /proc/loadavg
+echo "===CORES==="
+nproc
+echo "===MEM==="
+free -b | grep -E "^Mem:"
+echo "===DISK==="
+df -B1 / | tail -1
+echo "===UPTIME==="
+cat /proc/uptime | cut -d' ' -f1
+            `);
+            
+            const output = result.stdout || '';
+            const lines = output.split('\n');
+            
+            let cpu = { percent: 0, load1: 0, load5: 0, load15: 0, cores: 1 };
+            let mem = { total: 0, used: 0, free: 0, percent: 0 };
+            let disk = { total: 0, used: 0, free: 0, percent: 0 };
+            let uptime = 0;
+
+            let curSample = null;
+            let section = '';
+            for (const line of lines) {
+                if (line.includes('===CPUSAMPLE===')) { section = 'cpusample'; continue; }
+                if (line.includes('===LOADAVG===')) { section = 'loadavg'; continue; }
+                if (line.includes('===CORES===')) { section = 'cores'; continue; }
+                if (line.includes('===MEM===')) { section = 'mem'; continue; }
+                if (line.includes('===DISK===')) { section = 'disk'; continue; }
+                if (line.includes('===UPTIME===')) { section = 'uptime'; continue; }
+
+                if (section === 'cpusample' && line.startsWith('cpu ')) {
+                    const parts = line.trim().split(/\s+/).slice(1).map(Number);
+                    const idle = (parts[3] || 0) + (parts[4] || 0);
+                    const total = parts.reduce((a, b) => a + b, 0);
+                    curSample = { idle, total };
+                }
+
+                if (section === 'loadavg' && line.trim()) {
+                    const parts = line.trim().split(/\s+/);
+                    cpu.load1 = parseFloat(parts[0]) || 0;
+                    cpu.load5 = parseFloat(parts[1]) || 0;
+                    cpu.load15 = parseFloat(parts[2]) || 0;
+                }
+                
+                if (section === 'cores' && line.trim()) {
+                    cpu.cores = parseInt(line.trim()) || 1;
+                }
+                
+                if (section === 'mem' && line.trim()) {
+                    // Mem: total used free shared buff/cache available
+                    const parts = line.trim().split(/\s+/);
+                    const total = parseInt(parts[1]) || 0;
+                    const used = parseInt(parts[2]) || 0;
+                    const free = parseInt(parts[3]) || 0;
+                    mem = {
+                        total,
+                        used,
+                        free,
+                        percent: total > 0 ? Math.round((used / total) * 100) : 0,
+                    };
+                }
+                
+                if (section === 'disk' && line.trim()) {
+                    // /dev/xxx 123456 78901 45678 50% /
+                    const parts = line.trim().split(/\s+/);
+                    const total = parseInt(parts[1]) || 0;
+                    const used = parseInt(parts[2]) || 0;
+                    const free = parseInt(parts[3]) || 0;
+                    disk = {
+                        total,
+                        used,
+                        free,
+                        percent: total > 0 ? Math.round((used / total) * 100) : 0,
+                    };
+                }
+                
+                if (section === 'uptime' && line.trim()) {
+                    uptime = Math.floor(parseFloat(line.trim()) || 0);
+                }
+            }
+            
+            const nodeKey = this.node._id?.toString() || this.node.ip;
+            const prev = NodeSSH._cpuSamples.get(nodeKey);
+            if (curSample && prev) {
+                const dIdle = curSample.idle - prev.idle;
+                const dTotal = curSample.total - prev.total;
+                cpu.percent = dTotal > 0 ? Math.min(Math.round((1 - dIdle / dTotal) * 100), 100) : 0;
+            } else {
+                cpu.percent = Math.min(Math.round((cpu.load1 / cpu.cores) * 100), 100);
+            }
+            if (curSample) NodeSSH._cpuSamples.set(nodeKey, curSample);
+
+            return { success: true, cpu, mem, disk, uptime };
+        } catch (error) {
+            logger.error(`[SSH] System stats error on ${this.node.name}: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+}
+
+NodeSSH._cpuSamples = new Map();
+
+// Direct-connection semaphore (issue #70 hardening).
+// _activeDirect: number of handshakes currently in progress.
+// _waitQueue:    resolvers blocked by the semaphore, FIFO.
+NodeSSH._activeDirect = 0;
+NodeSSH._waitQueue = [];
+
+module.exports = NodeSSH;

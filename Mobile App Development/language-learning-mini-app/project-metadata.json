@@ -1,0 +1,14 @@
+﻿{
+    "id":  "language-learning-mini-app",
+    "name":  "Language Learning Mini App",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/SalahHassan202/projects_by_dart",
+    "stack":  "Flutter; SQLite",
+    "goal":  "Vocabulary decks, quiz modes, streak and audio pronunciation via TTS.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "Quiz App/Quiz App.dart",
+    "expectedFileCount":  4,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  5
+}

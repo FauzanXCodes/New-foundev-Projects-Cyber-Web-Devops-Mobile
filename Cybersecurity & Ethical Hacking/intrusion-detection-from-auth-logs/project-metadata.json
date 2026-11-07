@@ -1,0 +1,14 @@
+﻿{
+    "id":  "intrusion-detection-from-auth-logs",
+    "name":  "Intrusion Detection from Auth Logs",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/221-bashar/log-analysis-api",
+    "stack":  "Python; Pandas; sklearn",
+    "goal":  "Parse auth logs, detect brute-force/IP-spray patterns and anomaly-based outliers.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "main.py",
+    "expectedFileCount":  7,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  29
+}

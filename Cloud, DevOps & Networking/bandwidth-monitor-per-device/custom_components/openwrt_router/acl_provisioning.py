@@ -1,0 +1,338 @@
+"""acl_provisioning.py — Auto-deploy rpcd ACL to OpenWrt routers.
+
+When a router is added to Home Assistant, this module checks if the
+rpcd ACL file exists on the router. If missing, it deploys it via the
+ubus file API (no SSH required; asyncssh fallback when file/write is blocked).
+
+The ACL grants access to the ubus methods needed by the integration:
+hostapd, network.wireless, network.interface, luci-rpc, iwinfo, system.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import shlex
+from typing import TYPE_CHECKING
+
+from .api import (
+    OpenWrtAuthError,
+    OpenWrtConnectionError,
+    OpenWrtMethodNotFoundError,
+    OpenWrtResponseError,
+    OpenWrtTimeoutError,
+)
+
+if TYPE_CHECKING:
+    from .api import OpenWrtAPI
+
+_LOGGER = logging.getLogger(__name__)
+
+ACL_FILE_PATH = "/usr/share/rpcd/acl.d/ha-openwrt-router.json"
+
+# Bump whenever RPCD_ACL_CONTENT below changes. Used only for log messages —
+# staleness is detected by comparing the deployed file's actual content to
+# RPCD_ACL_CONTENT, not by this number.
+ACL_VERSION = 5
+
+# Marker echoed by the SSH deploy command — _run_ssh() returns None for empty
+# stdout even on exit code 0, so success must be detectable from stdout alone.
+_SSH_DEPLOY_MARKER = "HA_ACL_DEPLOYED"
+
+
+class AclDeployError(Exception):
+    """Raised when the rpcd ACL could not be deployed by any available path."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        """reason: "write_blocked" | "ssh_failed" | "unreachable"."""
+        super().__init__(message)
+        self.reason = reason
+
+
+RPCD_ACL_CONTENT: dict = {
+    "root": {
+        "description": "Full access for Home Assistant openwrt_router integration",
+        "read": {
+            "file": {
+                # rpcd's file object enforces read access per PATH (stat/list are
+                # broad, read is not). These are exactly the read-only system
+                # paths the integration reads via ubus file/read — without them
+                # every read falls back to SSH. No secrets, no broad "/*".
+                "/etc/openwrt_release": ["read"],
+                "/etc/config/ddns": ["read"],
+                "/var/run/ddns": ["list"],
+                "/var/run/ddns/*": ["read"],
+                # file/list on the directory itself needs "list" on the exact
+                # path — the /sys/class/net/* glob below does not cover it.
+                "/sys/class/net": ["list"],
+                "/sys/class/net/*": ["read"],  # brforward, statistics/*, brport/port_no
+                "/proc/net/arp": ["read"],
+                "/proc/net/nf_conntrack": ["read"],
+                "/proc/sys/net/netfilter/nf_conntrack_count": ["read"],
+                "/tmp/opkg_list": ["read"],
+                # Let ensure_acl() verify the deployed ACL via ubus on every
+                # start — without this the staleness check needs SSH forever.
+                # Deliberately read-only: file/write on acl.d would let any
+                # rpcd HTTP session widen its own permissions.
+                ACL_FILE_PATH: ["read"],
+            },
+            "ubus": {
+                "file": ["read", "stat", "list", "exec"],
+                "hostapd.*": ["get_clients", "get_status"],
+                "network.wireless": ["status", "up", "down"],
+                "network.device": ["status"],
+                "network.interface": ["dump"],
+                "network.interface.*": ["status", "statistics"],
+                "network.interface.wan": ["status", "statistics"],
+                "luci-rpc": [
+                    "getDHCPLeases",
+                    "getHostHints",
+                    "getWirelessDevices",
+                ],
+                "iwinfo": [
+                    "info",
+                    "assoclist",
+                    "devices",
+                    "scan",
+                    "freqlist",
+                ],
+                "system": ["board", "info"],
+                "uci": ["get"],
+                "rc": ["list"],
+                "service": ["list", "get_data"],
+            },
+        },
+        "write": {
+            "file": {
+                # rpcd restart after an ACL (re)deploy — file/exec enforces
+                # per-command, so only exactly this init script is allowed.
+                "/etc/init.d/rpcd": ["exec"],
+            },
+            "ubus": {
+                "network.wireless": ["up", "down"],
+            },
+        },
+    }
+}
+
+
+async def ensure_acl(api: OpenWrtAPI) -> bool:
+    """Ensure the rpcd ACL on the router exists AND matches the current content.
+
+    Runs on first install AND on every startup/update (called from
+    ``async_setup_entry``).  Unlike a pure existence check, this reads the
+    deployed file back and compares it to ``RPCD_ACL_CONTENT`` — so an ACL that
+    was widened by an integration update (new ubus methods) is re-written on the
+    next start instead of silently staying stale.
+
+    Deploys via the ubus file API (file/read + file/write + file/exec); when the
+    router blocks ubus file/write, an SSH fallback with the same credentials is
+    attempted (see :func:`_deploy_acl_ssh`).
+
+    Args:
+        api: Authenticated OpenWrtAPI instance.
+
+    Returns:
+        True if the ACL was (re)written (caller should refresh the coordinator).
+        False if it was already current or present-but-unverifiable (nothing to do).
+
+    Raises:
+        AclDeployError: A deploy was needed but failed on every available path.
+            ``async_setup_entry`` catches this (best-effort at startup); the
+            config flow surfaces it to the user.
+    """
+    # Read the currently deployed ACL and decide whether a (re)deploy is needed.
+    # file/read returns {"data": "<content>"} on success and raises
+    # OpenWrtMethodNotFoundError when the file is missing (ubus NOT_FOUND = 4)
+    # OR when the ACL blocks file/read on this path (converted in _call after
+    # the confirming re-login) — both cases proceed to a deploy attempt.
+    try:
+        current = await api._call("file", "read", {"path": ACL_FILE_PATH})
+        current_str = current.get("data") if isinstance(current, dict) else current
+        try:
+            if (
+                isinstance(current_str, str)
+                and json.loads(current_str) == RPCD_ACL_CONTENT
+            ):
+                _LOGGER.debug(
+                    "rpcd ACL on %s is up to date (v%s) — nothing to do",
+                    api._host,
+                    ACL_VERSION,
+                )
+                return False
+            reason = "outdated"  # content differs from what this version expects
+        except (ValueError, TypeError):
+            reason = "corrupted"  # present but not valid JSON
+    except OpenWrtMethodNotFoundError:
+        reason = "missing"  # file does not exist yet (first install)
+    except (
+        OpenWrtAuthError,
+        OpenWrtResponseError,
+        OpenWrtConnectionError,
+        OpenWrtTimeoutError,
+    ) as err:
+        # file/read blocked by ACL or file module unavailable. Fall back to a
+        # cheap existence probe to distinguish "missing" from "present but
+        # unreadable".
+        _LOGGER.debug(
+            "Cannot read ACL on %s via file/read (%s) — probing existence",
+            api._host,
+            err,
+        )
+        try:
+            await api._call("file", "stat", {"path": ACL_FILE_PATH})
+        except OpenWrtMethodNotFoundError:
+            reason = "missing"
+        except (
+            OpenWrtAuthError,
+            OpenWrtResponseError,
+            OpenWrtConnectionError,
+            OpenWrtTimeoutError,
+        ):
+            reason = "unverifiable"
+        else:
+            if isinstance(err, (OpenWrtConnectionError, OpenWrtTimeoutError)):
+                # Transient read failure while the file demonstrably exists —
+                # do not rewrite the ACL (and restart rpcd) on a network blip.
+                _LOGGER.debug(
+                    "rpcd ACL exists on %s, file/read failed transiently (%s) "
+                    "— leaving as-is",
+                    api._host,
+                    err,
+                )
+                return False
+            # The file exists but reading it is permission-denied. Every ACL
+            # shipped since v5 grants file/read on its own path, so a deployed
+            # ACL we cannot read back is by definition older than what this
+            # version ships. Leaving it "as-is" (as ≤v1.26.3 did) kept such
+            # routers in the SSH fallback — with its recurring HA notification
+            # and 300s polling — forever.
+            reason = "outdated"
+
+    return await _deploy_acl(api, reason)
+
+
+async def _deploy_acl(api: OpenWrtAPI, reason: str) -> bool:
+    """Write the ACL via ubus file/write (SSH fallback) and restart rpcd.
+
+    On a rejected ubus file/write — the chicken-and-egg case where deploying
+    the ACL requires exactly the file permissions the ACL would grant — the
+    SSH fallback writes the file with the same credentials instead.
+
+    Args:
+        api: Authenticated OpenWrtAPI instance.
+        reason: Why we are (re)deploying ("missing" / "outdated" / ...), logged.
+
+    Returns:
+        True once the ACL file was written (via ubus or SSH).
+
+    Raises:
+        AclDeployError: Neither ubus file/write nor the SSH fallback succeeded.
+    """
+    acl_json = json.dumps(RPCD_ACL_CONTENT, indent=2)
+    try:
+        await api._call("file", "write", {"path": ACL_FILE_PATH, "data": acl_json})
+        _LOGGER.info(
+            "Deployed rpcd ACL v%s to %s:%s (%s)",
+            ACL_VERSION,
+            api._host,
+            ACL_FILE_PATH,
+            reason,
+        )
+    except (OpenWrtConnectionError, OpenWrtTimeoutError) as err:
+        raise AclDeployError(
+            "unreachable", f"router unreachable during ACL deploy: {err}"
+        ) from err
+    except (OpenWrtAuthError, OpenWrtResponseError, OpenWrtMethodNotFoundError) as err:
+        # Permission-shaped rejection: an ACL-blocked file/write surfaces as
+        # OpenWrtMethodNotFoundError (converted in _call after the confirming
+        # re-login); a router without the rpcd file module looks the same.
+        # Either way the ubus path is unusable — try SSH.
+        _LOGGER.debug(
+            "ubus file/write rejected on %s (%s) — trying SSH fallback", api._host, err
+        )
+        if await _deploy_acl_ssh(api, reason):
+            return True
+        _LOGGER.warning(
+            "Cannot deploy ACL (%s) to %s via ubus file/write (%s) or SSH. "
+            "Deploy it manually: scp ha-openwrt-router.json root@%s:%s",
+            reason,
+            api._host,
+            err,
+            api._host,
+            ACL_FILE_PATH,
+        )
+        raise AclDeployError(
+            "write_blocked", f"ubus file/write rejected and SSH fallback failed: {err}"
+        ) from err
+
+    # Restart rpcd so it reloads the ACL directory. Non-fatal on failure —
+    # rpcd applies the file on its next restart/reload anyway.
+    try:
+        await api._call(
+            "file",
+            "exec",
+            {"command": "/etc/init.d/rpcd", "params": ["restart"]},
+        )
+        _LOGGER.debug("Restarted rpcd on %s", api._host)
+    except (
+        OpenWrtAuthError,
+        OpenWrtResponseError,
+        OpenWrtMethodNotFoundError,
+        OpenWrtConnectionError,
+        OpenWrtTimeoutError,
+    ) as err:
+        _LOGGER.debug(
+            "Could not restart rpcd on %s (non-fatal, ACL active after next restart): %s",
+            api._host,
+            err,
+        )
+
+    return True
+
+
+async def _deploy_acl_ssh(api: OpenWrtAPI, reason: str) -> bool:
+    """Write the ACL file via SSH when ubus file/write is blocked.
+
+    Uses the integration's existing SSH machinery (asyncssh — the password
+    never leaves the process). One remote command writes the file, echoes a
+    success marker and restarts rpcd; the marker is mandatory because
+    ``_run_ssh`` returns None for empty stdout even on exit code 0.
+
+    Returns:
+        True only when the marker was seen in stdout (file written and rpcd
+        restart triggered on the router).
+    """
+    acl_json = json.dumps(RPCD_ACL_CONTENT, indent=2)
+    remote_cmd = (
+        f"printf '%s' {shlex.quote(acl_json)} > {ACL_FILE_PATH} "
+        f"&& echo {_SSH_DEPLOY_MARKER} "
+        f"&& /etc/init.d/rpcd restart >/dev/null 2>&1"
+    )
+    out = await api._run_ssh(remote_cmd, timeout=15.0)
+    if out and _SSH_DEPLOY_MARKER in out:
+        _LOGGER.info(
+            "Deployed rpcd ACL v%s to %s:%s via SSH fallback (%s), rpcd restarted",
+            ACL_VERSION,
+            api._host,
+            ACL_FILE_PATH,
+            reason,
+        )
+        return True
+    _LOGGER.debug(
+        "SSH fallback deploy on %s did not confirm success (stdout=%r)",
+        api._host,
+        out,
+    )
+    return False
+
+
+async def check_and_deploy_acl(api: OpenWrtAPI) -> bool:
+    """Backwards-compatible alias for :func:`ensure_acl`.
+
+    Retained so the config_flow "deploy_acl" repair action and any external
+    callers keep working unchanged. Prefer ``ensure_acl`` in new code.
+    Like ``ensure_acl`` it raises :class:`AclDeployError` when a needed deploy
+    fails on every path.
+    """
+    return await ensure_acl(api)

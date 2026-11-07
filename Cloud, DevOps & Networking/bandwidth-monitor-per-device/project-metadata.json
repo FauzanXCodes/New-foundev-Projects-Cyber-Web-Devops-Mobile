@@ -1,0 +1,14 @@
+﻿{
+    "id":  "bandwidth-monitor-per-device",
+    "name":  "Bandwidth Monitor per Device",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/magicx78/ha-openwrt-router",
+    "stack":  "Python; SNMP; InfluxDB",
+    "goal":  "Poll router counters, per-device usage graphs and quota alerts.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "custom_components/openwrt_router/__init__.py",
+    "expectedFileCount":  49,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  151
+}

@@ -1,0 +1,49 @@
+<div class="chatContainer" ng-controller="ChatController">
+  <!-- Chat Collaborators -->
+  <div class='chat-collaborators-container chat-container'>
+    <h4 class="chatSubTitle"> Collaborators In Room</h4>
+    <div class="friendsContainer">
+      <div class='single-friend-container' ng-repeat="friend in usersInRoom">
+        <div class="thumbnailAndName"class="col-sm-12">
+          <table>
+            <tr>
+              <td class='image'>
+                <img class='avatar-72' ng-src="{{ friend.githubAvatar }}&s=72&id=chat"></img>
+              </td>
+              <td class='name'>
+                 <span class="username">{{friend.username}}</span>
+              </td>
+              <td class='buttons'>
+                 <div class="chatMediaButtons btn-group btn-group-xs pull-right" role="group" aria-label="...">
+                  <button ng-if="username === friend.username"  ng-click="emitStartVideo()" type="button" class="btn btn-default btn-sm camera-button">
+                    <span id="videoButton" class='glyphicon glyphicon-facetime-video'></span>
+                  </button>
+<!--                   <button type="button" class="btn btn-default btn-sm">
+                    <span class='glyphicon glyphicon-volume-off'></span>
+                  </button> -->
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Chat Message -->
+  <div class='chat-content-container chat-container'>
+    <h4 class="chatSubTitle"> Chat </h4>
+    <div id="gluedChatContent" class="chatContent1" scroll-glue="!glued">
+      <div class="messageContainer" ng-repeat="message in messages">
+        <div id={{message.createdAt}} class="row">
+          <div class="col-sm-5"><div class="username">{{message.username}}</div></div>
+          <div class="col-sm-7"><div class="timestamp"> {{message.timeAgo}}</div></div>
+        </div>
+        <span class="messageText" ng-bind-html="message.message| linky: '_blank'">{{message.message}}</span>
+      </div>
+    </div>
+    <div class="chatInputForm">
+        <input placeholder="Say Hello" type="text" ng-model="chatMessage" ng-enter="sendChat()">
+    </div>
+  </div>
+</div>
+<div ui-view="video"></div>

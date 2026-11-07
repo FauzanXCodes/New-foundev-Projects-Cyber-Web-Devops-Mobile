@@ -1,0 +1,34 @@
+version: '2.1'
+services:
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - API_GATEWAY_URL=${API_GATEWAY_URL}
+        - API_GATEWAY_PORT=${API_GATEWAY_PORT}
+    ports:
+      - 80:80
+    env_file:
+      - .env
+
+  notifications-service:
+    build: ./notifications-service
+    env_file:
+      - .env
+
+  movie-service:
+    build: ./movie-service
+    #access to db running on host machine
+    network_mode: "host"
+    env_file:
+      - .env
+
+  api-service:
+    build: ./api-service
+    container_name: api-gateway
+    ports:
+      - ${API_GATEWAY_PORT}:${API_GATEWAY_PORT}
+    env_file:
+      - .env
+

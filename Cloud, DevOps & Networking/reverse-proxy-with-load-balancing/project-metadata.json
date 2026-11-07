@@ -1,0 +1,14 @@
+﻿{
+    "id":  "reverse-proxy-with-load-balancing",
+    "name":  "Reverse Proxy with Load Balancing",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/ClickDevTech/CELERITY-panel",
+    "stack":  "Go/Node",
+    "goal":  "Round-robin/least-conn upstreams, health checks, rate limiting and request logging.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "cc-agent/main.go",
+    "expectedFileCount":  53,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  299
+}

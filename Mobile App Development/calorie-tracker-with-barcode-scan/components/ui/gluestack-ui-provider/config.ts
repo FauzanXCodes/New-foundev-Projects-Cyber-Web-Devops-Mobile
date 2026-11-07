@@ -1,0 +1,324 @@
+"use client"
+import { vars } from "nativewind"
+
+/**
+ * Gluestack UI token scales. These are NativeWind CSS vars consumed by
+ * `bg-primary-500`, `border-outline-200` etc. The app's canonical palette
+ * lives in `src/theme/themes.ts`; this file mirrors it for gluestack.
+ * Key surfaces (card border, primary button) are overridden in `global.css`
+ * to `var(--app-border)` / `var(--app-primary)` so drift is not visible,
+ * but keep primary-500 and outline-200 close to the theme when editing.
+ *
+ * To add a theme: extend `src/theme/themes.ts` + `src/theme/css.ts` + `global.css`
+ * and add a matching block here if gluestack components need that theme's vars.
+ * Or generate this file from `src/theme/css.ts` in a build step.
+ */
+export const config = {
+  light: vars({
+    "--color-primary-0": "225 226 231",
+    "--color-primary-50": "213 214 219",
+    "--color-primary-100": "169 177 214",
+    "--color-primary-200": "120 128 160",
+    "--color-primary-300": "90 100 140",
+    "--color-primary-400": "52 84 138",
+    "--color-primary-500": "52 84 138",
+    "--color-primary-600": "40 68 115",
+    "--color-primary-700": "33 52 92",
+    "--color-primary-800": "26 27 38",
+    "--color-primary-900": "20 22 30",
+    "--color-primary-950": "15 16 22",
+
+    /* Secondary  */
+    "--color-secondary-0": "255 255 255",
+    "--color-secondary-50": "249 250 251",
+    "--color-secondary-100": "241 245 249",
+    "--color-secondary-200": "226 232 240",
+    "--color-secondary-300": "203 213 225",
+    "--color-secondary-400": "148 163 184",
+    "--color-secondary-500": "100 116 139",
+    "--color-secondary-600": "71 85 105",
+    "--color-secondary-700": "51 65 85",
+    "--color-secondary-800": "30 41 59",
+    "--color-secondary-900": "15 23 42",
+    "--color-secondary-950": "2 6 23",
+
+    /* Tertiary */
+    "--color-tertiary-0": "255 250 245",
+    "--color-tertiary-50": "255 242 229",
+    "--color-tertiary-100": "255 233 213",
+    "--color-tertiary-200": "254 209 170",
+    "--color-tertiary-300": "253 180 116",
+    "--color-tertiary-400": "251 157 75",
+    "--color-tertiary-500": "231 129 40",
+    "--color-tertiary-600": "215 117 31",
+    "--color-tertiary-700": "180 98 26",
+    "--color-tertiary-800": "130 73 23",
+    "--color-tertiary-900": "108 61 19",
+    "--color-tertiary-950": "84 49 18",
+
+    /* Error */
+    "--color-error-0": "254 233 233",
+    "--color-error-50": "254 226 226",
+    "--color-error-100": "254 202 202",
+    "--color-error-200": "252 165 165",
+    "--color-error-300": "248 113 113",
+    "--color-error-400": "239 68 68",
+    "--color-error-500": "140 67 81",
+    "--color-error-600": "120 55 68",
+    "--color-error-700": "100 45 56",
+    "--color-error-800": "80 35 45",
+    "--color-error-900": "60 27 34",
+    "--color-error-950": "40 18 22",
+
+    /* Success */
+    "--color-success-0": "228 255 244",
+    "--color-success-50": "202 255 232",
+    "--color-success-100": "162 241 192",
+    "--color-success-200": "132 211 162",
+    "--color-success-300": "102 181 132",
+    "--color-success-400": "72 151 102",
+    "--color-success-500": "52 131 82",
+    "--color-success-600": "42 121 72",
+    "--color-success-700": "32 111 62",
+    "--color-success-800": "22 101 52",
+    "--color-success-900": "20 83 45",
+    "--color-success-950": "27 50 36",
+
+    /* Warning */
+    "--color-warning-0": "255 249 245",
+    "--color-warning-50": "255 244 236",
+    "--color-warning-100": "255 231 213",
+    "--color-warning-200": "254 205 170",
+    "--color-warning-300": "253 173 116",
+    "--color-warning-400": "251 149 75",
+    "--color-warning-500": "143 94 21",
+    "--color-warning-600": "120 78 18",
+    "--color-warning-700": "100 64 15",
+    "--color-warning-800": "80 52 12",
+    "--color-warning-900": "60 39 9",
+    "--color-warning-950": "40 26 6",
+
+    /* Info */
+    "--color-info-0": "236 248 254",
+    "--color-info-50": "199 235 252",
+    "--color-info-100": "162 221 250",
+    "--color-info-200": "124 207 248",
+    "--color-info-300": "87 194 246",
+    "--color-info-400": "50 180 244",
+    "--color-info-500": "52 84 138",
+    "--color-info-600": "40 68 115",
+    "--color-info-700": "33 52 92",
+    "--color-info-800": "26 27 38",
+    "--color-info-900": "20 22 30",
+    "--color-info-950": "15 16 22",
+
+    /* Typography */
+    "--color-typography-0": "255 255 255",
+    "--color-typography-50": "225 226 231",
+    "--color-typography-100": "213 214 219",
+    "--color-typography-200": "169 177 214",
+    "--color-typography-300": "120 128 160",
+    "--color-typography-400": "90 100 140",
+    "--color-typography-500": "86 90 110",
+    "--color-typography-600": "52 59 88",
+    "--color-typography-700": "40 45 70",
+    "--color-typography-800": "26 27 38",
+    "--color-typography-900": "52 59 88",
+    "--color-typography-950": "26 27 38",
+
+    /* Outline, Tokyo ink 1.5px rule */
+    "--color-outline-0": "255 255 255",
+    "--color-outline-50": "225 226 231",
+    "--color-outline-100": "213 214 219",
+    "--color-outline-200": "169 177 214",
+    "--color-outline-300": "120 128 160",
+    "--color-outline-400": "90 100 140",
+    "--color-outline-500": "65 72 104",
+    "--color-outline-600": "41 46 66",
+    "--color-outline-700": "36 40 59",
+    "--color-outline-800": "26 27 38",
+    "--color-outline-900": "20 22 30",
+    "--color-outline-950": "15 16 22",
+
+    /* Background, Tokyo paper */
+    "--color-background-0": "225 226 231",
+    "--color-background-50": "255 255 255",
+    "--color-background-100": "213 214 219",
+    "--color-background-200": "169 177 214",
+    "--color-background-300": "120 128 160",
+    "--color-background-400": "90 100 140",
+    "--color-background-500": "65 72 104",
+    "--color-background-600": "41 46 66",
+    "--color-background-700": "36 40 59",
+    "--color-background-800": "26 27 38",
+    "--color-background-900": "20 22 30",
+    "--color-background-950": "15 16 22",
+
+    /* Background Special */
+    "--color-background-error": "254 241 241",
+    "--color-background-warning": "255 243 234",
+    "--color-background-success": "237 252 242",
+    "--color-background-muted": "247 248 247",
+    "--color-background-info": "235 248 254",
+
+    /* Focus Ring Indicator, Tokyo ink */
+    "--color-indicator-primary": "52 84 138",
+    "--color-indicator-info": "52 84 138",
+    "--color-indicator-error": "140 67 81",
+  }),
+  dark: vars({
+    "--color-primary-0": "192 202 245",
+    "--color-primary-50": "170 185 240",
+    "--color-primary-100": "145 168 235",
+    "--color-primary-200": "122 162 247",
+    "--color-primary-300": "100 140 220",
+    "--color-primary-400": "90 120 200",
+    "--color-primary-500": "122 162 247",
+    "--color-primary-600": "138 180 248",
+    "--color-primary-700": "155 195 255",
+    "--color-primary-800": "192 202 245",
+    "--color-primary-900": "210 220 255",
+    "--color-primary-950": "225 232 255",
+
+    /* Secondary  */
+    "--color-secondary-0": "26 27 38",
+    "--color-secondary-50": "36 40 59",
+    "--color-secondary-100": "41 46 66",
+    "--color-secondary-200": "65 72 104",
+    "--color-secondary-300": "73 82 120",
+    "--color-secondary-400": "86 90 110",
+    "--color-secondary-500": "100 105 130",
+    "--color-secondary-600": "120 128 160",
+    "--color-secondary-700": "140 148 180",
+    "--color-secondary-800": "169 177 214",
+    "--color-secondary-900": "192 202 245",
+    "--color-secondary-950": "213 214 219",
+
+    /* Tertiary */
+    "--color-tertiary-0": "84 49 18",
+    "--color-tertiary-50": "108 61 19",
+    "--color-tertiary-100": "130 73 23",
+    "--color-tertiary-200": "180 98 26",
+    "--color-tertiary-300": "215 117 31",
+    "--color-tertiary-400": "231 129 40",
+    "--color-tertiary-500": "251 157 75",
+    "--color-tertiary-600": "253 180 116",
+    "--color-tertiary-700": "254 209 170",
+    "--color-tertiary-800": "255 233 213",
+    "--color-tertiary-900": "255 242 229",
+    "--color-tertiary-950": "255 250 245",
+
+    /* Error */
+    "--color-error-0": "26 27 38",
+    "--color-error-50": "60 40 50",
+    "--color-error-100": "80 50 60",
+    "--color-error-200": "100 60 70",
+    "--color-error-300": "140 67 81",
+    "--color-error-400": "180 80 95",
+    "--color-error-500": "247 118 142",
+    "--color-error-600": "250 140 160",
+    "--color-error-700": "253 160 180",
+    "--color-error-800": "254 190 200",
+    "--color-error-900": "254 210 220",
+    "--color-error-950": "254 233 233",
+
+    /* Success */
+    "--color-success-0": "27 50 36",
+    "--color-success-50": "20 83 45",
+    "--color-success-100": "22 101 52",
+    "--color-success-200": "32 111 62",
+    "--color-success-300": "42 121 72",
+    "--color-success-400": "52 131 82",
+    "--color-success-500": "122 162 247",
+    "--color-success-600": "138 180 248",
+    "--color-success-700": "155 195 255",
+    "--color-success-800": "192 202 245",
+    "--color-success-900": "202 255 232",
+    "--color-success-950": "228 255 244",
+
+    /* Warning */
+    "--color-warning-0": "40 30 15",
+    "--color-warning-50": "60 45 20",
+    "--color-warning-100": "80 60 25",
+    "--color-warning-200": "100 75 30",
+    "--color-warning-300": "140 95 35",
+    "--color-warning-400": "180 120 45",
+    "--color-warning-500": "224 175 104",
+    "--color-warning-600": "235 190 130",
+    "--color-warning-700": "245 205 160",
+    "--color-warning-800": "255 225 190",
+    "--color-warning-900": "255 235 210",
+    "--color-warning-950": "255 249 245",
+
+    /* Info */
+    "--color-info-0": "26 27 38",
+    "--color-info-50": "36 40 59",
+    "--color-info-100": "41 46 66",
+    "--color-info-200": "65 72 104",
+    "--color-info-300": "122 162 247",
+    "--color-info-400": "138 180 248",
+    "--color-info-500": "122 162 247",
+    "--color-info-600": "155 195 255",
+    "--color-info-700": "170 205 255",
+    "--color-info-800": "192 202 245",
+    "--color-info-900": "210 220 255",
+    "--color-info-950": "225 232 255",
+
+    /* Typography, Tokyo night text */
+    "--color-typography-0": "26 27 38",
+    "--color-typography-50": "36 40 59",
+    "--color-typography-100": "41 46 66",
+    "--color-typography-200": "65 72 104",
+    "--color-typography-300": "86 90 110",
+    // 140 148 180 clears AA 4.5:1 on the #24283b card ground, not just the
+    // page background; the previous value carried tiny metadata text that
+    // sits on cards (chat timestamps).
+    "--color-typography-400": "140 148 180",
+    "--color-typography-500": "169 177 214",
+    "--color-typography-600": "192 202 245",
+    "--color-typography-700": "203 214 250",
+    "--color-typography-800": "215 226 255",
+    "--color-typography-900": "192 202 245",
+    "--color-typography-950": "255 255 255",
+
+    /* Outline, Tokyo ink */
+    "--color-outline-0": "26 27 38",
+    "--color-outline-50": "36 40 59",
+    "--color-outline-100": "41 46 66",
+    "--color-outline-200": "65 72 104",
+    "--color-outline-300": "86 90 110",
+    "--color-outline-400": "120 128 160",
+    "--color-outline-500": "169 177 214",
+    "--color-outline-600": "192 202 245",
+    "--color-outline-700": "213 214 219",
+    "--color-outline-800": "225 226 231",
+    "--color-outline-900": "243 243 243",
+    "--color-outline-950": "253 254 254",
+
+    /* Background, Tokyo void */
+    "--color-background-0": "26 27 38",
+    "--color-background-50": "36 40 59",
+    "--color-background-100": "41 46 66",
+    "--color-background-200": "65 72 104",
+    "--color-background-300": "73 82 120",
+    "--color-background-400": "86 90 110",
+    "--color-background-500": "120 128 160",
+    "--color-background-600": "169 177 214",
+    "--color-background-700": "192 202 245",
+    "--color-background-800": "213 214 219",
+    "--color-background-900": "225 226 231",
+    "--color-background-950": "255 255 255",
+
+    /* Background Special */
+    "--color-background-error": "45 35 45",
+    "--color-background-warning": "45 40 35",
+    "--color-background-success": "35 45 50",
+    "--color-background-muted": "36 40 59",
+    "--color-background-info": "36 40 59",
+
+    /* Focus Ring Indicator, Tokyo ink */
+    "--color-indicator-primary": "122 162 247",
+    "--color-indicator-info": "122 162 247",
+    "--color-indicator-error": "247 118 142",
+  }),
+}

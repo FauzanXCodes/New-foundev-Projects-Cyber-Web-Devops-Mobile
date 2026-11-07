@@ -1,0 +1,14 @@
+﻿{
+    "id":  "hotel-reservation-system",
+    "name":  "Hotel Reservation System",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/tramyardg/hotel-mgmt-system",
+    "stack":  "Laravel; MySQL",
+    "goal":  "Room types, availability calendar, booking + cancellation with refund rules.",
+    "license":  "Apache-2.0",
+    "licenseWarning":  null,
+    "entry":  "index.php",
+    "expectedFileCount":  46,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  80
+}

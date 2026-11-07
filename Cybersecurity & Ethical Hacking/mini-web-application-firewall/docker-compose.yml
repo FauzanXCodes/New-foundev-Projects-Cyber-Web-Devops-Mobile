@@ -1,0 +1,22 @@
+services:
+  miniwaf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: miniwaf:latest
+    container_name: miniwaf-service
+    ports:
+      - "8083:8083"
+    environment:
+      - MINIWAF_ENVIRONMENT=production
+      - MINIWAF_DEBUG=false
+      - MINIWAF_MODE=BLOCK
+      - MINIWAF_ANOMALY_THRESHOLD=5
+      - MINIWAF_PARANOIA_LEVEL=1
+      - MINIWAF_RATE_LIMIT_ENABLED=true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp

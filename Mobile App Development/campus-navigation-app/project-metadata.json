@@ -1,0 +1,14 @@
+﻿{
+    "id":  "campus-navigation-app",
+    "name":  "Campus Navigation App",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/AKP-shadow/ssn-campus-navigation-application-using-flutter",
+    "stack":  "Flutter; Google Maps SDK",
+    "goal":  "Outdoor route + indoor floor plans for buildings, POI search and AR-style arrow hint.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "lib/main.dart",
+    "expectedFileCount":  11,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  81
+}

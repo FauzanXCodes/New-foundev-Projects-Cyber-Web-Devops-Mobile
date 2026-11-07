@@ -1,0 +1,1180 @@
+"""Tests for the OpenWrt API client (api.py)."""
+
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
+import pytest
+
+from custom_components.openwrt_router.api import (
+    OpenWrtAPI,
+    OpenWrtAuthError,
+    OpenWrtConnectionError,
+    OpenWrtMethodNotFoundError,
+    OpenWrtResponseError,
+    OpenWrtTimeoutError,
+    UBUS_STATUS_METHOD_NOT_FOUND,
+    UBUS_STATUS_NO_DATA,
+    UBUS_STATUS_NOT_FOUND,
+    UBUS_STATUS_OK,
+    UBUS_STATUS_PERMISSION_DENIED,
+)
+from custom_components.openwrt_router.const import DEFAULT_SESSION_ID
+
+from conftest import (
+    MOCK_BOARD_INFO,
+    MOCK_SESSION_TOKEN,
+    MOCK_SYSTEM_INFO,
+    MOCK_UBUS_RESPONSES,
+    MOCK_WIRELESS_STATUS,
+    MOCK_IWINFO_INFO,
+)
+
+
+# =====================================================================
+# Helpers
+# =====================================================================
+
+
+def _make_raw_call_response(status_code=200, json_data=None, raise_on_json=False):
+    """Build a mock response for _raw_call tests."""
+    resp = AsyncMock()
+    resp.status = status_code
+    if raise_on_json:
+        resp.json = AsyncMock(side_effect=ValueError("bad json"))
+    else:
+        resp.json = AsyncMock(return_value=json_data or {})
+
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(return_value=resp)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
+
+
+def _make_api_with_response(
+    status_code=200, json_data=None, raise_on_json=False, side_effect=None
+):
+    """Create an API instance with a mock session returning a specific response."""
+    session = MagicMock()
+    if side_effect:
+        # side_effect must be a sync function that raises (not async),
+        # because aiohttp session.post() returns an async CM directly
+        session.post = MagicMock(side_effect=side_effect)
+    else:
+        cm = _make_raw_call_response(status_code, json_data, raise_on_json)
+        session.post = MagicMock(return_value=cm)
+    api = OpenWrtAPI(
+        host="192.168.1.1",
+        port=80,
+        username="root",
+        password="test",
+        session=session,
+        protocol="http",
+    )
+    api._token = MOCK_SESSION_TOKEN
+    return api
+
+
+# =====================================================================
+# check_capabilities — wireless satisfied via iwinfo fallback (v1.23.0)
+# =====================================================================
+
+
+class TestCheckCapabilitiesWireless:
+    def _api(self):
+        return OpenWrtAPI(
+            host="192.168.1.1",
+            port=80,
+            username="root",
+            password="test",
+            session=MagicMock(),
+            protocol="http",
+        )
+
+    @pytest.mark.asyncio
+    async def test_wireless_green_when_only_iwinfo_works(self):
+        """Cudy firmware: network.wireless/status errors (rc 2) but iwinfo works.
+
+        The wireless capability must still be reported available.
+        """
+        api = self._api()
+
+        async def _call(obj, method, params, *a, **k):
+            if obj == "network.wireless":
+                raise OpenWrtResponseError("ubus error 2")  # INVALID_ARGUMENT
+            return {}  # everything else (incl. iwinfo/devices) succeeds
+
+        api._call = AsyncMock(side_effect=_call)
+        api.probe_lldp = AsyncMock(return_value="unavailable")  # skip SSH lldpcli
+        caps = await api.check_capabilities()
+        assert caps["network_wireless"] is True
+        assert caps["iwinfo"] is True
+
+    @pytest.mark.asyncio
+    async def test_wireless_green_when_only_uci_works(self):
+        """Stock Cudy: no netifd/iwinfo/hostapd, but UCI is readable.
+
+        The runtime reads wireless via UCI in that case, so the capability
+        must be reported available (no false 'critical' alarm).
+        """
+        api = self._api()
+
+        async def _call(obj, method, params, *a, **k):
+            if obj in ("network.wireless", "iwinfo") or obj.startswith("hostapd"):
+                raise OpenWrtResponseError("blocked")
+            return {}  # uci/get and system succeed
+
+        api._call = AsyncMock(side_effect=_call)
+        api.probe_lldp = AsyncMock(return_value="unavailable")  # skip SSH lldpcli
+        caps = await api.check_capabilities()
+        assert caps["network_wireless"] is True
+        assert caps["iwinfo"] is False
+
+    @pytest.mark.asyncio
+    async def test_wireless_red_when_all_sources_fail(self):
+        api = self._api()
+
+        async def _call(obj, method, params, *a, **k):
+            # No wireless source at all: netifd, iwinfo, hostapd AND uci fail.
+            if (
+                obj in ("network.wireless", "iwinfo", "uci")
+                or obj.startswith("hostapd")
+            ):
+                raise OpenWrtResponseError("blocked")
+            return {}
+
+        api._call = AsyncMock(side_effect=_call)
+        api.probe_lldp = AsyncMock(return_value="unavailable")  # skip SSH lldpcli
+        caps = await api.check_capabilities()
+        assert caps["network_wireless"] is False
+        assert caps["iwinfo"] is False
+
+
+class TestResetAclBlocked:
+    """reset_acl_blocked() must clear cached ACL-blocked methods so they are
+    re-probed after an ACL (re)deploy (setup path)."""
+
+    def _api(self):
+        return OpenWrtAPI(
+            host="10.0.0.1",
+            port=80,
+            username="root",
+            password="x",
+            session=MagicMock(),
+            protocol="http",
+        )
+
+    def test_clears_cached_blocks(self):
+        api = self._api()
+        api._acl_blocked.add(("file", "read"))
+        api._acl_blocked.add(("network.wireless", "status"))
+        assert api._acl_blocked
+        api.reset_acl_blocked()
+        assert api._acl_blocked == set()
+
+    def test_noop_when_empty(self):
+        api = self._api()
+        api.reset_acl_blocked()
+        assert api._acl_blocked == set()
+
+
+class TestStaInterfaceDetailsUciFallback:
+    """UCI fallback of get_sta_interface_details must skip disabled wifi-ifaces
+    so a leftover-disabled mesh/sta entry can't flip a wired AP to wireless."""
+
+    def _api(self):
+        return OpenWrtAPI(
+            host="10.0.0.1",
+            port=80,
+            username="root",
+            password="x",
+            session=MagicMock(),
+            protocol="http",
+        )
+
+    @pytest.mark.asyncio
+    async def test_uci_fallback_skips_disabled(self):
+        api = self._api()
+        # iwinfo/info returns no STA candidates -> forces the UCI fallback path.
+        api._call = AsyncMock(return_value={})
+        api.get_uci_wireless = AsyncMock(
+            return_value={
+                "m0": {".type": "wifi-iface", "mode": "mesh",
+                       "ssid": "bh", "disabled": "1"},   # disabled -> skipped
+                "m1": {".type": "wifi-iface", "mode": "mesh",
+                       "ssid": "bh2", "disabled": "0"},   # enabled -> kept
+                "s0": {".type": "wifi-iface", "mode": "sta",
+                       "ssid": "rep"},                    # no disabled key -> kept
+            }
+        )
+        result = await api.get_sta_interface_details()
+        ifnames = {r["ifname"] for r in result}
+        assert "m0" not in ifnames
+        assert "m1" in ifnames
+        assert "s0" in ifnames
+
+
+# =====================================================================
+# Parsing Tests (pure functions)
+# =====================================================================
+
+
+class TestParseDhcpLeases:
+    def test_normal(self):
+        raw = (
+            "1741600000 b8:27:eb:aa:bb:cc 192.168.1.100 raspberrypi 01:b8:27:eb:aa:bb:cc\n"
+            "1741600001 ac:de:48:11:22:33 192.168.1.101 myphone *\n"
+            "1741600002 00:11:22:33:44:55 192.168.1.102 * *\n"
+        )
+        leases = OpenWrtAPI._parse_dhcp_leases(raw)
+        assert leases["B8:27:EB:AA:BB:CC"] == {
+            "ip": "192.168.1.100",
+            "hostname": "raspberrypi",
+            "expires": 1741600000,
+        }
+        assert leases["AC:DE:48:11:22:33"] == {
+            "ip": "192.168.1.101",
+            "hostname": "myphone",
+            "expires": 1741600001,
+        }
+        assert leases["00:11:22:33:44:55"] == {
+            "ip": "192.168.1.102",
+            "hostname": "",
+            "expires": 1741600002,
+        }
+
+    def test_empty(self):
+        assert OpenWrtAPI._parse_dhcp_leases("") == {}
+        assert OpenWrtAPI._parse_dhcp_leases("\n\n") == {}
+
+    def test_malformed_lines_ignored(self):
+        assert OpenWrtAPI._parse_dhcp_leases("bad\nonly two fields\n") == {}
+
+    def test_uppercase_mac(self):
+        raw = "1741600000 AA:BB:CC:DD:EE:FF 10.0.0.1 laptop *\n"
+        leases = OpenWrtAPI._parse_dhcp_leases(raw)
+        assert "AA:BB:CC:DD:EE:FF" in leases
+
+
+class TestParseWirelessStatus:
+    def test_normal(self, mock_api):
+        radios = mock_api._parse_wireless_status(MOCK_WIRELESS_STATUS)
+        assert len(radios) == 3
+        ssids = [r["ssid"] for r in radios]
+        assert "OpenWrt-Home" in ssids
+        assert "OpenWrt-Home-5G" in ssids
+        assert "Guest-WiFi" in ssids
+
+    def test_empty(self, mock_api):
+        assert mock_api._parse_wireless_status({}) == []
+
+    def test_non_dict_values_skipped(self, mock_api):
+        assert mock_api._parse_wireless_status({"radio0": "not a dict"}) == []
+
+
+class TestParseIwinfoInfo:
+    def test_normal(self, mock_api):
+        radios = mock_api._parse_iwinfo_info(MOCK_IWINFO_INFO)
+        assert len(radios) == 2
+        bands = {r["ssid"]: r["band"] for r in radios}
+        assert bands["OpenWrt-Home"] == "2.4g"
+        assert bands["OpenWrt-Home-5G"] == "5g"
+
+    def test_empty(self, mock_api):
+        assert mock_api._parse_iwinfo_info({}) == []
+
+
+class TestDetectBand:
+    def test_frequency_24ghz(self, mock_api):
+        assert mock_api._detect_band("wlan0", {"frequency": 2412}) == "2.4g"
+
+    def test_frequency_5ghz(self, mock_api):
+        assert mock_api._detect_band("wlan1", {"frequency": 5200}) == "5g"
+
+    def test_frequency_6ghz(self, mock_api):
+        assert mock_api._detect_band("wlan2", {"frequency": 6100}) == "6g"
+
+    def test_hwmode_bgn(self, mock_api):
+        assert mock_api._detect_band("wlan0", {"hwmode": "bgn"}) == "2.4g"
+
+    def test_hwmode_ac(self, mock_api):
+        assert mock_api._detect_band("wlan0", {"hwmode": "ac"}) == "5g"
+
+    def test_keyword_radio0(self, mock_api):
+        assert mock_api._detect_band("radio0", {}) == "2.4g"
+
+    def test_keyword_radio1(self, mock_api):
+        assert mock_api._detect_band("radio1", {}) == "5g"
+
+    def test_unknown(self, mock_api):
+        # Note: "some_iface" contains "ac" which matches 5GHz keyword
+        # Use a name that doesn't match any keywords
+        assert mock_api._detect_band("eth0", {}) == "unknown"
+
+
+class TestIsGuestSsid:
+    def test_guest(self, mock_api):
+        assert mock_api._is_guest_ssid("Guest-WiFi") is True
+
+    def test_not_guest(self, mock_api):
+        assert mock_api._is_guest_ssid("HomeNet") is False
+
+    def test_case_insensitive(self, mock_api):
+        assert mock_api._is_guest_ssid("GUEST-NET") is True
+
+    def test_visitor(self, mock_api):
+        assert mock_api._is_guest_ssid("Visitor-Access") is True
+
+
+class TestExtractPlatformArchitecture:
+    def test_from_target(self, mock_api):
+        board = {"release": {"target": "ath79"}}
+        assert mock_api._extract_platform_architecture(board) == "ath79"
+
+    def test_from_board_name(self, mock_api):
+        board = {"board_name": "glinet,gl-mt3000", "release": {}}
+        assert mock_api._extract_platform_architecture(board) == "glinet"
+
+    def test_from_kernel_x86(self, mock_api):
+        board = {"kernel": "6.1.0-x86_64", "board_name": "", "release": {}}
+        assert mock_api._extract_platform_architecture(board) == "x86_64"
+
+    def test_from_kernel_arm(self, mock_api):
+        board = {"kernel": "5.15-ARM", "board_name": "", "release": {}}
+        assert mock_api._extract_platform_architecture(board) == "arm"
+
+    def test_unknown_fallback(self, mock_api):
+        assert mock_api._extract_platform_architecture({}) == "unknown"
+
+
+# =====================================================================
+# SSL / URL Construction
+# =====================================================================
+
+
+class TestSSLContext:
+    def test_http_returns_none(self):
+        session = MagicMock()
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=80,
+            username="root",
+            password="test",
+            session=session,
+            protocol="http",
+        )
+        assert api._ssl_context is None
+
+    def test_https_returns_context(self):
+        session = MagicMock()
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=443,
+            username="root",
+            password="test",
+            session=session,
+            protocol="https",
+        )
+        assert api._ssl_context is not None
+        assert api._ssl_context.check_hostname is True
+
+    def test_https_insecure(self):
+        import ssl
+
+        session = MagicMock()
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=443,
+            username="root",
+            password="test",
+            session=session,
+            protocol="https-insecure",
+        )
+        assert api._ssl_context is not None
+        assert api._ssl_context.check_hostname is False
+        assert api._ssl_context.verify_mode == ssl.CERT_NONE
+
+    def test_injected_context_is_used_verbatim(self):
+        """HA callers inject a pre-built context — no context is built here."""
+        import ssl
+
+        session = MagicMock()
+        injected = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=443,
+            username="root",
+            password="test",
+            session=session,
+            protocol="https",
+            ssl_context=injected,
+        )
+        assert api._ssl_context is injected
+
+    def test_injected_context_ignored_for_http(self):
+        import ssl
+
+        session = MagicMock()
+        injected = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=80,
+            username="root",
+            password="test",
+            session=session,
+            protocol="http",
+            ssl_context=injected,
+        )
+        assert api._ssl_context is None
+
+
+class TestURLConstruction:
+    def test_ipv4(self):
+        session = MagicMock()
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=80,
+            username="root",
+            password="test",
+            session=session,
+            protocol="http",
+        )
+        assert api._ubus_url == "http://192.168.1.1:80/ubus"
+
+    def test_ipv6(self):
+        session = MagicMock()
+        api = OpenWrtAPI(
+            host="::1",
+            port=80,
+            username="root",
+            password="test",
+            session=session,
+            protocol="http",
+        )
+        assert api._ubus_url == "http://[::1]:80/ubus"
+
+    def test_https_scheme(self):
+        session = MagicMock()
+        api = OpenWrtAPI(
+            host="192.168.1.1",
+            port=443,
+            username="root",
+            password="test",
+            session=session,
+            protocol="https",
+        )
+        assert api._ubus_url.startswith("https://")
+
+
+# =====================================================================
+# _raw_call Error Handling
+# =====================================================================
+
+
+def _make_error_cm(error):
+    """Create a mock async CM whose __aenter__ raises the given error."""
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(side_effect=error)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm
+
+
+class TestRawCallErrors:
+    @pytest.mark.asyncio
+    async def test_connection_error(self):
+        err = aiohttp.ClientConnectorError(
+            connection_key=MagicMock(), os_error=OSError("refused")
+        )
+        api = _make_api_with_response()
+        api._session.post = MagicMock(return_value=_make_error_cm(err))
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtConnectionError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_timeout_error(self):
+        api = _make_api_with_response()
+        api._session.post = MagicMock(
+            return_value=_make_error_cm(asyncio.TimeoutError())
+        )
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtTimeoutError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_client_error(self):
+        api = _make_api_with_response()
+        api._session.post = MagicMock(
+            return_value=_make_error_cm(aiohttp.ClientError("generic"))
+        )
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtConnectionError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_http_403(self):
+        api = _make_api_with_response(
+            json_data={"jsonrpc": "2.0", "id": 1, "result": [0, {}]},
+            status_code=403,
+        )
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtAuthError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_http_500(self):
+        api = _make_api_with_response(status_code=500)
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtResponseError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_json_parse_failure(self):
+        api = _make_api_with_response(raise_on_json=True)
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtResponseError, match="parse JSON"):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_malformed_result(self):
+        api = _make_api_with_response(json_data={"jsonrpc": "2.0", "id": 1})
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtResponseError, match="Malformed"):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_ubus_status_method_not_found(self):
+        envelope = {"jsonrpc": "2.0", "id": 1, "result": [3, None]}
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("system", "nonexistent", {})
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_ubus_status_not_found(self):
+        envelope = {"jsonrpc": "2.0", "id": 1, "result": [4, None]}
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("nosuch", "obj", {})
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_ubus_status_no_data(self):
+        envelope = {"jsonrpc": "2.0", "id": 1, "result": [5, None]}
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("iwinfo", "assoclist", {})
+        result = await api._raw_call(payload)
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_ubus_status_permission_denied(self):
+        envelope = {"jsonrpc": "2.0", "id": 1, "result": [6, None]}
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("system", "info", {})
+        with pytest.raises(OpenWrtAuthError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_rpcd_error_minus32002(self):
+        """Fix 4: rpcd -32002 must raise OpenWrtAuthError (triggers re-login retry)."""
+        envelope = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32002, "message": "Access denied"},
+        }
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtAuthError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_rpcd_error_minus32002_not_method_not_found(self):
+        """Fix 4: OpenWrtMethodNotFoundError must NOT be raised for -32002."""
+        envelope = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32002, "message": "Access denied"},
+        }
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("network.wireless", "status", {})
+        try:
+            await api._raw_call(payload)
+        except OpenWrtAuthError:
+            pass  # Expected — fix is in place
+        except OpenWrtMethodNotFoundError:
+            pytest.fail(
+                "Fix 4 regression: -32002 must not raise OpenWrtMethodNotFoundError"
+            )
+
+    @pytest.mark.asyncio
+    async def test_generic_ubus_error(self):
+        envelope = {"jsonrpc": "2.0", "id": 1, "result": [9, None]}
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtResponseError):
+            await api._raw_call(payload)
+
+    @pytest.mark.asyncio
+    async def test_generic_jsonrpc_error(self):
+        envelope = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {"code": -32600, "message": "Invalid request"},
+        }
+        api = _make_api_with_response(json_data=envelope)
+        payload = api._build_call("system", "board", {})
+        with pytest.raises(OpenWrtResponseError):
+            await api._raw_call(payload)
+
+
+# =====================================================================
+# Session / Authentication
+# =====================================================================
+
+
+class TestLogin:
+    @pytest.mark.asyncio
+    async def test_login_success(self, mock_api):
+        mock_api._token = DEFAULT_SESSION_ID  # Reset
+        await mock_api.login()
+        assert mock_api._token == MOCK_SESSION_TOKEN
+        assert mock_api._login_failure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_login_invalid_token(self):
+        envelope = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": [0, {"ubus_rpc_session": DEFAULT_SESSION_ID}],
+        }
+        api = _make_api_with_response(json_data=envelope)
+        with pytest.raises(OpenWrtAuthError, match="invalid session token"):
+            await api.login()
+        assert api._login_failure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_login_response_error_becomes_auth_error(self):
+        api = _make_api_with_response(status_code=500)
+        with pytest.raises(OpenWrtAuthError, match="Login failed"):
+            await api.login()
+        assert api._login_failure_count == 1
+
+    @pytest.mark.asyncio
+    async def test_login_failure_count_resets_on_success(self, mock_api):
+        mock_api._login_failure_count = 3
+        mock_api._token = DEFAULT_SESSION_ID
+        await mock_api.login()
+        assert mock_api._login_failure_count == 0
+
+
+class TestSessionDestroyOnRelogin:
+    """Regression: re-login must destroy the previous rpcd session.
+
+    Without this, every re-login (proactive refresh + ACL -32002 retries) left a
+    long-lived orphan session behind. They accumulated and leaked rpcd memory
+    until the router OOM-killed processes — the root cause of the camera outage.
+    """
+
+    _OLD = "OLDSESSIONOLDSESSIONOLDSESSION01"
+
+    def _api_with_raw(self, recorded: list):
+        api = _make_api_with_response(json_data={})
+
+        async def _raw(payload):
+            recorded.append(payload["params"])
+            if payload["params"][2] == "login":
+                return {"ubus_rpc_session": MOCK_SESSION_TOKEN}
+            return {}
+
+        api._raw_call = AsyncMock(side_effect=_raw)
+        return api
+
+    @pytest.mark.asyncio
+    async def test_relogin_destroys_previous_session(self):
+        calls: list = []
+        api = self._api_with_raw(calls)
+        api._token = self._OLD  # a real, non-default session is active
+
+        assert await api.login() is True
+        assert api._token == MOCK_SESSION_TOKEN
+
+        destroys = [p for p in calls if p[2] == "destroy"]
+        assert len(destroys) == 1
+        params = destroys[0]
+        assert params[0] == MOCK_SESSION_TOKEN  # authed with the NEW session
+        assert params[1] == "session"
+        assert params[3] == {"ubus_rpc_session": self._OLD}
+
+    @pytest.mark.asyncio
+    async def test_first_login_does_not_destroy(self):
+        calls: list = []
+        api = self._api_with_raw(calls)
+        api._token = DEFAULT_SESSION_ID  # nothing to free yet
+
+        await api.login()
+        assert [p for p in calls if p[2] == "destroy"] == []
+
+    @pytest.mark.asyncio
+    async def test_destroy_failure_does_not_break_login(self):
+        api = _make_api_with_response(json_data={})
+
+        async def _raw(payload):
+            if payload["params"][2] == "login":
+                return {"ubus_rpc_session": MOCK_SESSION_TOKEN}
+            raise OpenWrtConnectionError("router briefly unreachable")
+
+        api._raw_call = AsyncMock(side_effect=_raw)
+        api._token = self._OLD
+
+        # destroy raises internally but must be swallowed
+        assert await api.login() is True
+        assert api._token == MOCK_SESSION_TOKEN
+
+    @pytest.mark.asyncio
+    async def test_async_close_destroys_active_session(self):
+        calls: list = []
+        api = self._api_with_raw(calls)
+        api._token = MOCK_SESSION_TOKEN
+
+        await api.async_close()
+
+        destroys = [p for p in calls if p[2] == "destroy"]
+        assert len(destroys) == 1
+        assert destroys[0][3] == {"ubus_rpc_session": MOCK_SESSION_TOKEN}
+        assert api._token == DEFAULT_SESSION_ID
+
+
+class TestAutoRelogin:
+    @pytest.mark.asyncio
+    async def test_relogin_on_auth_error(self, mock_api):
+        """_call should re-login and retry when first call returns auth error."""
+        call_count = 0
+
+        async def _side_effect(payload):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OpenWrtAuthError("expired")
+            return MOCK_BOARD_INFO
+
+        mock_api._raw_call = AsyncMock(side_effect=_side_effect)
+        mock_api.login = AsyncMock()
+
+        result = await mock_api._call("system", "board", {})
+        assert result == MOCK_BOARD_INFO
+        mock_api.login.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_relogin_when_disabled(self, mock_api):
+        mock_api._raw_call = AsyncMock(side_effect=OpenWrtAuthError("expired"))
+        mock_api.login = AsyncMock()
+
+        with pytest.raises(OpenWrtAuthError):
+            await mock_api._call("system", "board", {}, retry_on_auth=False)
+        mock_api.login.assert_not_awaited()
+
+
+class TestAclBlockCache:
+    """ACL-blocked methods are cached so they stop triggering re-logins.
+
+    On ACL-restricted routers a -32002 on every poll used to re-login each
+    time, spawning rpcd sessions endlessly. Once a method is confirmed blocked
+    (authenticated OK but still denied) it must be remembered and short-circuited.
+    """
+
+    @pytest.mark.asyncio
+    async def test_blocked_method_cached_and_skips_relogin(self, mock_api):
+        import time
+
+        mock_api._token_expires_at = (
+            time.monotonic() + 3600
+        )  # valid → no proactive refresh
+        mock_api._raw_call = AsyncMock(side_effect=OpenWrtAuthError("rpcd -32002"))
+        mock_api.login = AsyncMock()
+
+        # First call: one confirming re-login, still denied → cached + MethodNotFound
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await mock_api._call("hostapd.phy0-ap0", "get_clients", {})
+        assert ("hostapd.phy0-ap0", "get_clients") in mock_api._acl_blocked
+        assert mock_api.login.await_count == 1
+
+        # Second call: short-circuited, NO further re-login
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await mock_api._call("hostapd.phy0-ap0", "get_clients", {})
+        assert mock_api.login.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_blocked_file_path_does_not_block_other_paths(self, mock_api):
+        """A denied file path must not short-circuit reads of permitted paths.
+
+        rpcd enforces file ACLs per PATH. Regression: the cache keyed on
+        (object, method) only, so ONE uncovered /proc entry sent every
+        file/read of the session into the SSH fallback — massively raising
+        router load on routers with an outdated ACL.
+        """
+        import time
+
+        mock_api._token_expires_at = time.monotonic() + 3600
+        mock_api.login = AsyncMock()
+
+        blocked_path = "/proc/net/nf_conntrack"
+
+        async def _raw(payload):
+            params = payload["params"][3]
+            if params.get("path") == blocked_path:
+                raise OpenWrtAuthError("rpcd -32002")
+            return {"data": "ok"}
+
+        mock_api._raw_call = AsyncMock(side_effect=_raw)
+
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await mock_api._call("file", "read", {"path": blocked_path})
+        assert ("file", "read", blocked_path) in mock_api._acl_blocked
+
+        # A different, permitted path must still go through.
+        result = await mock_api._call("file", "read", {"path": "/proc/net/arp"})
+        assert result == {"data": "ok"}
+
+        # The blocked path stays short-circuited (no new _raw_call).
+        raw_calls_before = mock_api._raw_call.await_count
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await mock_api._call("file", "read", {"path": blocked_path})
+        assert mock_api._raw_call.await_count == raw_calls_before
+
+    @pytest.mark.asyncio
+    async def test_blocked_uci_config_does_not_block_other_configs(self, mock_api):
+        """A denied uci config must not short-circuit reads of permitted configs.
+
+        rpcd enforces uci ACLs per CONFIG file. Regression (v1.26.4): the
+        cache keyed on ("uci", "get") only, so the denied ddns probe killed
+        the uci wireless fallback for the rest of the session and pushed
+        every later poll into the SSH fallback.
+        """
+        import time
+
+        mock_api._token_expires_at = time.monotonic() + 3600
+        mock_api.login = AsyncMock()
+
+        async def _raw(payload):
+            params = payload["params"][3]
+            if params.get("config") == "ddns":
+                raise OpenWrtAuthError("rpcd -32002")
+            return {"values": {}}
+
+        mock_api._raw_call = AsyncMock(side_effect=_raw)
+
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await mock_api._call("uci", "get", {"config": "ddns"})
+        assert ("uci", "get", "ddns") in mock_api._acl_blocked
+
+        # A different, permitted config must still go through.
+        result = await mock_api._call("uci", "get", {"config": "wireless"})
+        assert result == {"values": {}}
+
+        # The blocked config stays short-circuited (no new _raw_call).
+        raw_calls_before = mock_api._raw_call.await_count
+        with pytest.raises(OpenWrtMethodNotFoundError):
+            await mock_api._call("uci", "get", {"config": "ddns"})
+        assert mock_api._raw_call.await_count == raw_calls_before
+
+    @pytest.mark.asyncio
+    async def test_transient_auth_error_is_not_cached(self, mock_api):
+        import time
+
+        mock_api._token_expires_at = time.monotonic() + 3600
+        calls = {"n": 0}
+
+        async def _raw(payload):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OpenWrtAuthError("expired session")
+            return {"ok": True}
+
+        mock_api._raw_call = AsyncMock(side_effect=_raw)
+        mock_api.login = AsyncMock()
+
+        result = await mock_api._call("system", "board", {})
+        assert result == {"ok": True}
+        assert ("system", "board") not in mock_api._acl_blocked
+
+
+class TestEnsureFreshToken:
+    @pytest.mark.asyncio
+    async def test_no_refresh_when_token_valid(self, mock_api):
+        """No re-login when token has plenty of time left."""
+        import time
+
+        mock_api._token_expires_at = time.monotonic() + 3600
+        mock_api.login = AsyncMock()
+        await mock_api._ensure_fresh_token()
+        mock_api.login.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_refresh_when_token_expired(self, mock_api):
+        """Re-login triggered when token is past expiry."""
+        import time
+
+        mock_api._token_expires_at = time.monotonic() - 1  # already expired
+        mock_api.login = AsyncMock()
+        await mock_api._ensure_fresh_token()
+        mock_api.login.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_refresh_within_margin(self, mock_api):
+        """Re-login triggered when within SESSION_REFRESH_MARGIN_SECONDS."""
+        import time
+        from custom_components.openwrt_router.const import (
+            SESSION_REFRESH_MARGIN_SECONDS,
+        )
+
+        mock_api._token_expires_at = (
+            time.monotonic() + SESSION_REFRESH_MARGIN_SECONDS - 10
+        )
+        mock_api.login = AsyncMock()
+        await mock_api._ensure_fresh_token()
+        mock_api.login.assert_awaited_once()
+
+
+# =====================================================================
+# High-Level API Methods
+# =====================================================================
+
+
+class TestGetRouterInfo:
+    @pytest.mark.asyncio
+    async def test_success(self, mock_api):
+        result = await mock_api.get_router_info()
+        assert result["model"] == "GL.iNet GL-MT3000"
+        assert result["hostname"] == "OpenWrt-Dev"
+        assert result["mac"] == "aa:bb:cc:dd:ee:ff"
+        assert result["platform_architecture"] == "mediatek/filogic"
+
+    @pytest.mark.asyncio
+    async def test_access_denied_fallback(self, mock_api):
+        mock_api._call = AsyncMock(side_effect=OpenWrtAuthError("access denied"))
+        result = await mock_api.get_router_info()
+        assert result["model"] == "OpenWrt Router"
+
+
+class TestGetRouterStatus:
+    @pytest.mark.asyncio
+    async def test_success(self, mock_api):
+        result = await mock_api.get_router_status()
+        assert result["uptime"] == 86400
+        # 65536 / 65536 * 100 = 100.0
+        assert result["cpu_load"] == 100.0
+        # 131072 / 65536 * 100 = 200.0
+        assert result["cpu_load_5min"] == 200.0
+        # 98304 / 65536 * 100 = 150.0
+        assert result["cpu_load_15min"] == 150.0
+        assert result["memory"]["total"] == 268435456
+
+
+class TestGetDhcpLeases:
+    @pytest.mark.asyncio
+    async def test_success(self, mock_api):
+        leases = await mock_api.get_dhcp_leases()
+        assert "B8:27:EB:AA:BB:01" in leases
+        assert leases["B8:27:EB:AA:BB:01"]["ip"] == "192.168.1.101"
+
+
+class TestTestConnection:
+    @pytest.mark.asyncio
+    async def test_success(self, mock_api):
+        result = await mock_api.test_connection()
+        assert result["model"] == "GL.iNet GL-MT3000"
+
+
+class TestSetWifiState:
+    @pytest.mark.asyncio
+    async def test_enable(self, mock_api):
+        result = await mock_api.set_wifi_state("default_radio0", enabled=True)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_disable(self, mock_api):
+        result = await mock_api.set_wifi_state("default_radio0", enabled=False)
+        assert result is True
+
+
+class TestReloadWifi:
+    @pytest.mark.asyncio
+    async def test_success(self, mock_api):
+        result = await mock_api.reload_wifi()
+        assert result is True
+
+
+class TestReboot:
+    @pytest.mark.asyncio
+    async def test_ubus_reboot(self, mock_api):
+        with patch.object(mock_api, "_call", AsyncMock(return_value={})) as call:
+            assert await mock_api.reboot() is True
+        call.assert_awaited_once_with("system", "reboot", {})
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_ssh_when_ubus_blocked(self, mock_api):
+        ssh = AsyncMock(return_value=(0, "", b""))
+        with (
+            patch.object(
+                mock_api,
+                "_call",
+                AsyncMock(side_effect=OpenWrtMethodNotFoundError("no system/reboot")),
+            ),
+            patch.object(mock_api, "_run_ssh_detached", ssh),
+        ):
+            assert await mock_api.reboot() is True
+        assert "reboot" in ssh.await_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_ssh_on_timeout(self, mock_api):
+        # The router can drop the connection while going down — inconclusive,
+        # so the SSH fallback still gets its turn.
+        ssh = AsyncMock(return_value=(0, "", b""))
+        with (
+            patch.object(
+                mock_api, "_call", AsyncMock(side_effect=OpenWrtTimeoutError("gone"))
+            ),
+            patch.object(mock_api, "_run_ssh_detached", ssh),
+        ):
+            assert await mock_api.reboot() is True
+        ssh.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_both_paths_fail(self, mock_api):
+        with (
+            patch.object(
+                mock_api, "_call", AsyncMock(side_effect=OpenWrtAuthError("acl"))
+            ),
+            patch.object(
+                mock_api,
+                "_run_ssh_detached",
+                AsyncMock(return_value=(255, "", b"Permission denied")),
+            ),
+        ):
+            assert await mock_api.reboot() is False
+
+
+class TestBuildCall:
+    def test_payload_structure(self, mock_api):
+        payload = mock_api._build_call("system", "board", {"foo": "bar"})
+        assert payload["jsonrpc"] == "2.0"
+        assert payload["method"] == "call"
+        params = payload["params"]
+        assert params[0] == MOCK_SESSION_TOKEN  # token
+        assert params[1] == "system"
+        assert params[2] == "board"
+        assert params[3] == {"foo": "bar"}
+
+    def test_default_session(self, mock_api):
+        payload = mock_api._build_call("session", "login", {}, use_default_session=True)
+        assert payload["params"][0] == DEFAULT_SESSION_ID
+
+    def test_rpc_id_increments(self, mock_api):
+        p1 = mock_api._build_call("a", "b", {})
+        p2 = mock_api._build_call("a", "b", {})
+        assert p2["id"] > p1["id"]
+
+
+# =====================================================================
+# Fix 3: luci-rpc DHCP Leases — dhcp_leases key (OpenWrt 25)
+# =====================================================================
+
+
+class TestGetDhcpLeasesLuciRpc:
+    """Fix 3: _get_dhcp_leases_luci_rpc handles dhcp_leases/leases/list responses."""
+
+    @pytest.mark.asyncio
+    async def test_openwrt25_dhcp_leases_key(self, mock_api):
+        """Fix 3: OpenWrt 25 returns 'dhcp_leases' key — must be parsed correctly."""
+        result = {
+            "dhcp_leases": [
+                {
+                    "macaddr": "aa:bb:cc:dd:ee:01",
+                    "ipaddr": "192.168.1.101",
+                    "hostname": "host1",
+                    "expires": 1741700000,
+                },
+            ]
+        }
+        mock_api._call = AsyncMock(return_value=result)
+        leases = await mock_api._get_dhcp_leases_luci_rpc()
+        assert "AA:BB:CC:DD:EE:01" in leases
+        assert leases["AA:BB:CC:DD:EE:01"]["ip"] == "192.168.1.101"
+        assert leases["AA:BB:CC:DD:EE:01"]["hostname"] == "host1"
+        assert leases["AA:BB:CC:DD:EE:01"]["expires"] == 1741700000
+
+    @pytest.mark.asyncio
+    async def test_legacy_leases_key(self, mock_api):
+        """Fix 3: Older OpenWrt uses 'leases' key — must still work."""
+        result = {
+            "leases": [
+                {
+                    "macaddr": "bb:cc:dd:ee:ff:01",
+                    "ipaddr": "192.168.1.102",
+                    "hostname": "host2",
+                    "expires": 1741700001,
+                },
+            ]
+        }
+        mock_api._call = AsyncMock(return_value=result)
+        leases = await mock_api._get_dhcp_leases_luci_rpc()
+        assert "BB:CC:DD:EE:FF:01" in leases
+        assert leases["BB:CC:DD:EE:FF:01"]["hostname"] == "host2"
+
+    @pytest.mark.asyncio
+    async def test_direct_list_response(self, mock_api):
+        """Fix 3: Direct list response (no wrapper key) also works."""
+        result = [
+            {
+                "macaddr": "cc:dd:ee:ff:00:01",
+                "ipaddr": "192.168.1.103",
+                "hostname": "host3",
+                "expires": 0,
+            },
+        ]
+        mock_api._call = AsyncMock(return_value=result)
+        leases = await mock_api._get_dhcp_leases_luci_rpc()
+        assert "CC:DD:EE:FF:00:01" in leases
+
+    @pytest.mark.asyncio
+    async def test_dhcp_leases_takes_priority_over_leases(self, mock_api):
+        """Fix 3: 'dhcp_leases' key takes priority when both are present."""
+        result = {
+            "dhcp_leases": [
+                {
+                    "macaddr": "aa:00:00:00:00:01",
+                    "ipaddr": "10.0.0.1",
+                    "hostname": "new",
+                    "expires": 100,
+                },
+            ],
+            "leases": [
+                {
+                    "macaddr": "bb:00:00:00:00:02",
+                    "ipaddr": "10.0.0.2",
+                    "hostname": "old",
+                    "expires": 100,
+                },
+            ],
+        }
+        mock_api._call = AsyncMock(return_value=result)
+        leases = await mock_api._get_dhcp_leases_luci_rpc()
+        assert "AA:00:00:00:00:01" in leases
+        assert "BB:00:00:00:00:02" not in leases  # dhcp_leases wins
+
+    @pytest.mark.asyncio
+    async def test_empty_dhcp_leases_list(self, mock_api):
+        """Fix 3: Empty dhcp_leases list returns empty dict, no crash."""
+        result = {"dhcp_leases": []}
+        mock_api._call = AsyncMock(return_value=result)
+        leases = await mock_api._get_dhcp_leases_luci_rpc()
+        assert leases == {}
+
+    @pytest.mark.asyncio
+    async def test_call_error_returns_empty(self, mock_api):
+        """Fix 3: If _call raises, returns {} gracefully."""
+        mock_api._call = AsyncMock(side_effect=OpenWrtAuthError("blocked"))
+        leases = await mock_api._get_dhcp_leases_luci_rpc()
+        assert leases == {}

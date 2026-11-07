@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+/* [data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: white;
+} */
+
+:root {
+  /* Your default theme */
+  --background: white;
+  --foreground: black;
+  --core-bg: white;
+  --base-bg: #e2e8f0;
+  --sidebar-bg: #1a1b27;
+  --secondary-bg: #2778c8;
+  --light-bg: #e3f2ff;
+  --light-secondary-bg: #e1f0fd;
+  --base-text: black;
+  --secondary-text: #275cab;
+
+  /* for dark theme */
+
+  --core-bg-dark: black;
+  --base-bg-dark: rgb(34, 34, 34);
+  --sidebar-bg-dark: rgb(17 24 39);
+  --secondary-bg-dark: #2778c8;
+  --light-bg-dark: #202020;
+  --light-secondary-bg-dark: #e1f0fd;
+  --base-text-dark: white;
+  --secondary-text-dark: #275cab;
+}
+
+[data-theme="dark"] {
+  --background: black;
+  --foreground: white;
+  --core-bg: black;
+  --base-bg: rgb(34, 34, 34);
+  --sidebar-bg: #1a1b27;
+  --secondary-bg: #2778c8;
+  --light-secondary-bg: #e1f0fd;
+  --base-text: white;
+  --secondary-text: #275cab;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  /* body {
+    @apply bg-background text-foreground;
+  } */
+}
+
+/* scroll bar for all */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.home-events::-webkit-scrollbar {
+  width: 0px;
+  height: 6px;
+}
+
+/* .review-scroll::-webkit-scrollbar-track {
+  background-color: #cfb284;
+  border-radius: 76px;
+} */
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--secondary-bg);
+  border-radius: 10px;
+  cursor: crosshair;
+  height: 50px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 200% 200%;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 3s linear infinite;
+}
+
+.bg-size-200 {
+  background-size: 200% 100%;
+}
+
+.bg-pos-0 {
+  background-position: 0% 0%;
+}
+
+.bg-pos-100 {
+  background-position: 100% 0%;
+}

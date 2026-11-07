@@ -1,0 +1,307 @@
+import * as SQLite from "expo-sqlite"
+import { Platform } from "react-native"
+
+/** Single in-flight open. Avoids duplicate OPFS access handles on web. Covers Strict Mode and parallel boot. */
+let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null
+
+function dbWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("DB timeout")), ms)
+    promise
+      .then((v) => {
+        clearTimeout(t)
+        resolve(v)
+      })
+      .catch((e) => {
+        clearTimeout(t)
+        reject(e)
+      })
+  })
+}
+
+export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+  if (!dbPromise) {
+    dbPromise = dbWithTimeout(openDatabase(), 15000).catch((error) => {
+      dbPromise = null
+      throw error
+    })
+  }
+  return dbWithTimeout(dbPromise, 16000)
+}
+
+function isVfsInitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /VFS|access handle|Failed to initialize|unable to open database file|cannot create file|error code 14|SQLITE_CANTOPEN/i.test(
+    message,
+  )
+}
+
+async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
+  try {
+    const database = await SQLite.openDatabaseAsync("dietinator.db", {
+      useNewConnection: false,
+    })
+    await migrate(database)
+    return database
+  } catch (error) {
+    // On web, the wa-sqlite worker occasionally fails its one-time VFS init.
+    // Opening OPFS sync access handles races the previous page worker being
+    // torn down. The worker is then permanently poisoned and every later call
+    // fails with Invalid VFS state, so the only recovery is a fresh page.
+    // Reload once per tab. The fresh worker then acquires the released handles.
+    if (isVfsInitError(error) && typeof window !== "undefined") {
+      try {
+        if (!sessionStorage.getItem(RELOAD_KEY)) {
+          sessionStorage.setItem(RELOAD_KEY, "1")
+          window.location.reload()
+        }
+      } catch {
+        // sessionStorage can throw in some embedded webviews, so degrade to the
+        // existing behavior. Boot continues and screens show their error states.
+      }
+    }
+    throw error
+  }
+}
+
+const RELOAD_KEY = "dietinator-db-reloaded"
+
+export async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
+  // WAL uses extra OPFS files. Web OPFS allows only one sync handle per file,
+  // so MEMORY journal mode avoids creating/locking -journal rollback files on web.
+  const journalMode = Platform.OS === "web" ? "MEMORY" : "WAL"
+  await database.execAsync(`
+    PRAGMA journal_mode = ${journalMode};
+    PRAGMA temp_store = MEMORY;
+
+    CREATE TABLE IF NOT EXISTS diary_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL,
+      meal_type TEXT NOT NULL,
+      food_id TEXT,
+      food_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      unit TEXT NOT NULL,
+      kcal REAL NOT NULL,
+      protein REAL NOT NULL,
+      carbs REAL NOT NULL,
+      fat REAL NOT NULL,
+      created_at TEXT NOT NULL,
+      yazio_synced INTEGER NOT NULL DEFAULT 0,
+      yazio_item_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_diary_date ON diary_entries(date);
+    CREATE INDEX IF NOT EXISTS idx_diary_date_created ON diary_entries(date, created_at);
+    CREATE INDEX IF NOT EXISTS idx_diary_yazio_item ON diary_entries(yazio_item_id);
+    CREATE INDEX IF NOT EXISTS idx_diary_synced ON diary_entries(yazio_synced);
+    CREATE INDEX IF NOT EXISTS idx_diary_food_id ON diary_entries(food_id);
+    CREATE INDEX IF NOT EXISTS idx_diary_food_amount ON diary_entries(food_id, amount, created_at);
+
+    CREATE TABLE IF NOT EXISTS food_cache (
+      yazio_product_id TEXT PRIMARY KEY NOT NULL,
+      barcode TEXT,
+      name TEXT NOT NULL,
+      producer TEXT,
+      nutrients_json TEXT NOT NULL,
+      serving_json TEXT NOT NULL,
+      servings_json TEXT,
+      base_unit TEXT NOT NULL DEFAULT 'g',
+      cached_at TEXT NOT NULL,
+      is_favorite INTEGER NOT NULL DEFAULT 0,
+      favorite_order INTEGER NOT NULL DEFAULT 0,
+      last_used_at TEXT,
+      last_amount REAL,
+      source TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS deleted_yazio_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      deleted_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_food_barcode ON food_cache(barcode);
+    CREATE INDEX IF NOT EXISTS idx_food_last_used ON food_cache(last_used_at DESC);
+
+    CREATE TABLE IF NOT EXISTS settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      calorie_goal REAL NOT NULL DEFAULT 2000,
+      protein_goal REAL NOT NULL DEFAULT 150,
+      carbs_goal REAL NOT NULL DEFAULT 200,
+      fat_goal REAL NOT NULL DEFAULT 65,
+      units TEXT NOT NULL DEFAULT 'metric',
+      yazio_sync_enabled INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS water_log (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL,
+      amount_ml REAL NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_water_date ON water_log(date);
+    CREATE INDEX IF NOT EXISTS idx_water_date_created ON water_log(date, created_at);
+
+    INSERT OR IGNORE INTO settings (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS ai_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      reasoning TEXT NOT NULL DEFAULT '',
+      tool_calls_json TEXT,
+      tool_call_id TEXT,
+      tool_name TEXT,
+      is_error INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    -- Redundant index from an earlier schema. Id is the rowid alias and already
+    -- indexed by INTEGER PRIMARY KEY. Dropped for existing databases too.
+    DROP INDEX IF EXISTS idx_ai_chat_created;
+
+    CREATE TABLE IF NOT EXISTS meals (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_used_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_meals_last_used ON meals(last_used_at DESC);
+
+    CREATE TABLE IF NOT EXISTS weight_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL UNIQUE,
+      weight_kg REAL NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- Redundant index from an earlier schema. Date is UNIQUE and auto-indexed.
+    -- Dropped for existing databases too.
+    DROP INDEX IF EXISTS idx_weight_date;
+
+    CREATE TABLE IF NOT EXISTS meal_items (
+      meal_id TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      product_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      producer TEXT,
+      amount REAL NOT NULL,
+      base_unit TEXT NOT NULL DEFAULT 'g',
+      nutrients_json TEXT NOT NULL,
+      serving_json TEXT NOT NULL,
+      PRIMARY KEY (meal_id, position)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_meal_items_meal ON meal_items(meal_id);
+  `)
+
+  const settingsColumns = await database.getAllAsync<{ name: string }>(
+    "PRAGMA table_info(settings)",
+  )
+  if (!settingsColumns.some((column) => column.name === "food_database_country")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN food_database_country TEXT NOT NULL DEFAULT ''`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "update_check_enabled")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN update_check_enabled INTEGER NOT NULL DEFAULT 1`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "ai_enabled")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN ai_enabled INTEGER NOT NULL DEFAULT 0`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "ai_provider")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN ai_provider TEXT NOT NULL DEFAULT 'openai'`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "ai_base_url")) {
+    await database.execAsync(`ALTER TABLE settings ADD COLUMN ai_base_url TEXT NOT NULL DEFAULT ''`)
+  }
+  if (!settingsColumns.some((column) => column.name === "ai_model")) {
+    await database.execAsync(`ALTER TABLE settings ADD COLUMN ai_model TEXT NOT NULL DEFAULT ''`)
+  }
+  if (!settingsColumns.some((column) => column.name === "ai_system_prompt")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN ai_system_prompt TEXT NOT NULL DEFAULT ''`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "agent_bridge_rev")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN agent_bridge_rev INTEGER NOT NULL DEFAULT 0`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "theme_preference")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN theme_preference TEXT NOT NULL DEFAULT 'system'`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "water_goal_ml")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN water_goal_ml REAL NOT NULL DEFAULT 2500`,
+    )
+  }
+  if (!settingsColumns.some((column) => column.name === "height_cm")) {
+    await database.execAsync(`ALTER TABLE settings ADD COLUMN height_cm REAL NOT NULL DEFAULT 0`)
+  }
+  if (!settingsColumns.some((column) => column.name === "target_weight_kg")) {
+    await database.execAsync(
+      `ALTER TABLE settings ADD COLUMN target_weight_kg REAL NOT NULL DEFAULT 0`,
+    )
+  }
+
+  const foodCacheColumns = await database.getAllAsync<{ name: string }>(
+    "PRAGMA table_info(food_cache)",
+  )
+  if (!foodCacheColumns.some((column) => column.name === "base_unit")) {
+    await database.execAsync(
+      `ALTER TABLE food_cache ADD COLUMN base_unit TEXT NOT NULL DEFAULT 'g'`,
+    )
+  }
+  if (!foodCacheColumns.some((column) => column.name === "source")) {
+    // Search rows hold per-gram nutrients and are never served cache-first.
+    // Detail rows are normalized per 100 g per ml and are safe to serve locally.
+    await database.execAsync(`ALTER TABLE food_cache ADD COLUMN source TEXT`)
+  }
+  if (!foodCacheColumns.some((column) => column.name === "servings_json")) {
+    // All YAZIO serving options, such as cup, each, serving, and whole, so the
+    // add-food chips survive cache round-trips and offline use.
+    await database.execAsync(`ALTER TABLE food_cache ADD COLUMN servings_json TEXT`)
+  }
+  if (!foodCacheColumns.some((column) => column.name === "last_amount")) {
+    // Base-unit amount used the last time the food was logged. It prefills the
+    // add-food screen so repeat logging remembers the previous portion.
+    await database.execAsync(`ALTER TABLE food_cache ADD COLUMN last_amount REAL`)
+  }
+  if (!foodCacheColumns.some((column) => column.name === "favorite_order")) {
+    await database.execAsync(
+      `ALTER TABLE food_cache ADD COLUMN favorite_order INTEGER NOT NULL DEFAULT 0`,
+    )
+  }
+  await database.execAsync(
+    `CREATE INDEX IF NOT EXISTS idx_food_favorite_order ON food_cache(is_favorite, favorite_order ASC)`,
+  )
+
+  // One-time cleanup from user_version 0 to 1. Drop cached foods whose stored
+  // nutrients look per-gram, where kcal is less than 10. Only legacy rows with
+  // no source marker are ambiguous. Detail rows for water, tea, or diet soda
+  // are genuinely low-cal and must survive, and search rows are per-gram by
+  // design and get normalized on read.
+  const versionRow = await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version")
+  if ((versionRow?.user_version ?? 0) < 1) {
+    await database.execAsync(
+      `DELETE FROM food_cache
+       WHERE source IS NULL
+         AND base_unit IN ('g', 'ml')
+         AND CAST(json_extract(nutrients_json, '$.kcal') AS REAL) < 10`,
+    )
+    await database.execAsync("PRAGMA user_version = 1")
+  }
+}

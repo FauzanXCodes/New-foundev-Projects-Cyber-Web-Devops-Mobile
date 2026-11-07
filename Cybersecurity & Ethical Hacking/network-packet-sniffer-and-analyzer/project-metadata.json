@@ -1,0 +1,14 @@
+﻿{
+    "id":  "network-packet-sniffer-and-analyzer",
+    "name":  "Network Packet Sniffer \u0026 Analyzer",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/HalilDeniz/TrafficWatch",
+    "stack":  "Python; Scapy; Flask",
+    "goal":  "Capture on an interface, protocol breakdown, top talkers and suspicious-pattern flags.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "app/trafficwatch.py",
+    "expectedFileCount":  8,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  17
+}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "uptime-and-status-page-monitor",
+    "name":  "Uptime \u0026 Status Page Monitor",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/lyc8503/UptimeFlare",
+    "stack":  "Node; Postgres; React",
+    "goal":  "HTTP/TCP checks per region, incident timeline, public status page and Slack alerts.",
+    "license":  "Apache-2.0",
+    "licenseWarning":  null,
+    "entry":  "components/MaintenanceAlert.tsx",
+    "expectedFileCount":  34,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  72
+}

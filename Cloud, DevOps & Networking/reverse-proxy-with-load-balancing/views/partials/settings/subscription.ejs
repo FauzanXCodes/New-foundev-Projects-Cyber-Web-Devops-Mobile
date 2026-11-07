@@ -1,0 +1,381 @@
+<!-- ==================== TAB: SUBSCRIPTION ==================== -->
+<div class="tab-content" id="tab-subscription">
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="ti ti-device-mobile"></i> <%= t('settings.subClientApps') || 'Клиентские приложения' %></h2>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="/panel/settings">
+                <input type="hidden" name="_subscriptionSettings" value="1">
+
+                <div class="settings-subsection-title">
+                    <i class="ti ti-photo"></i> <%= t('settings.subBrandingTitle') || 'Брендинг страницы' %>
+                </div>
+
+                <div class="row" style="margin-bottom: 16px;">
+                    <div class="col-8">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label><%= t('settings.subLogoUrl') || 'URL логотипа' %></label>
+                            <input type="url" name="subscription.logoUrl"
+                                   value="<%= settings?.subscription?.logoUrl || '' %>"
+                                   placeholder="https://example.com/logo.png"
+                                   id="subLogoUrlInput"
+                                   oninput="previewLogo(this.value)">
+                            <small class="hint"><%= t('settings.subLogoUrlHint') || 'Ссылка на PNG/SVG/WebP. Оставьте пустым для иконки по умолчанию.' %></small>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label><%= t('settings.subPageTitle') || 'Заголовок страницы' %></label>
+                            <input type="text" name="subscription.pageTitle"
+                                   value="<%= settings?.subscription?.pageTitle || '' %>"
+                                   placeholder="<%= t('settings.subPageTitlePlaceholder') %>">
+                            <small class="hint"><%= t('settings.subPageTitleHint') || 'Текст над логотипом. По умолчанию: «Подключение».' %></small>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0; margin-top: 14px;">
+                            <label><%= t('settings.subPageNote') %></label>
+                            <textarea name="subscription.pageNote" rows="3" maxlength="2000"
+                                      placeholder="<%= t('settings.subPageNotePlaceholder') %>"><%= settings?.subscription?.pageNote || '' %></textarea>
+                            <small class="hint"><%= t('settings.subPageNoteHint') %></small>
+                        </div>
+                    </div>
+                    <div class="col-4" style="display: flex; align-items: center; justify-content: center;">
+                        <div style="width: 100%; min-height: 130px; display: flex; align-items: center; justify-content: center; padding: 18px; border-radius: var(--radius); background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.06)); border: 1px dashed var(--glass-border-strong);">
+                            <div id="logoPreview" style="<%= settings?.subscription?.logoUrl ? '' : 'display:none;' %>">
+                                <img id="logoPreviewImg"
+                                     src="<%= settings?.subscription?.logoUrl || '' %>"
+                                     style="max-height: 80px; max-width: 100%; border-radius: 10px;"
+                                     onerror="this.style.display='none'">
+                            </div>
+                            <div id="logoDefaultPreview" style="text-align: center; color: var(--text-muted); <%= settings?.subscription?.logoUrl ? 'display:none;' : '' %>">
+                                <i class="ti ti-rocket" style="font-size: 38px; opacity: 0.65;"></i>
+                                <div style="font-size: 11.5px; margin-top: 6px;"><%= t('settings.subLogoDefault') %></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="settings-divider">
+
+                <div class="settings-subsection-title">
+                    <i class="ti ti-link"></i> <%= t('settings.subProfileLinksTitle') || 'Hiddify профиль' %>
+                </div>
+
+                <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.55;">
+                    <i class="ti ti-info-circle"></i>
+                    <%= t('settings.subHiddifyProfileHint') %>
+                </p>
+
+                <div class="settings-grid">
+                    <div class="form-group">
+                        <label><%= t('settings.subSupportUrl') || 'Ссылка на поддержку' %></label>
+                        <input type="url" name="subscription.supportUrl"
+                               value="<%= settings?.subscription?.supportUrl || '' %>"
+                               placeholder="https://t.me/yoursupport">
+                        <small class="hint"><%= t('settings.subSupportUrlHint') || 'Кнопка «Поддержка» в Hiddify.' %></small>
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('settings.subWebPageUrl') || 'Ссылка на веб-страницу' %></label>
+                        <input type="url" name="subscription.webPageUrl"
+                               value="<%= settings?.subscription?.webPageUrl || '' %>"
+                               placeholder="https://example.com">
+                        <small class="hint"><%= t('settings.subWebPageUrlHint') || 'Кнопка «Открыть веб-страницу» в Hiddify.' %></small>
+                    </div>
+                    <div class="form-group">
+                        <label><%= t('settings.subUpdateInterval') || 'Интервал обновления' %></label>
+                        <input type="number" name="subscription.updateInterval"
+                               value="<%= settings?.subscription?.updateInterval ?? 12 %>"
+                               min="1" max="168" step="1">
+                        <small class="hint"><%= t('settings.subUpdateIntervalHint') || 'Как часто клиенты автоматически обновляют подписку (в часах). Отправляется в заголовке Profile-Update-Interval.' %></small>
+                    </div>
+                </div>
+
+                <hr class="settings-divider">
+
+                <div class="settings-subsection-title">
+                    <i class="ti ti-grip-horizontal"></i> <%= t('settings.subButtons') || 'Кнопки на странице подписки' %>
+                    <span style="margin-left: auto; font-size: 11.5px; color: var(--text-muted); text-transform: none; letter-spacing: 0; font-weight: 500;" id="subBtnCount"></span>
+                </div>
+
+                <%/* Custom buttons section */%>
+                <div class="form-group">
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.55;">
+                        <i class="ti ti-info-circle"></i>
+                        <%= t('settings.subButtonsHint') %>
+                    </p>
+                    <input type="hidden" name="subscription.buttonsJson" id="subButtonsJson" value="">
+                    <div id="subButtonsList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" id="subAddBtn" class="btn btn-secondary" style="font-size: 13px;" onclick="subAddButton()">
+                            <i class="ti ti-plus"></i> <%= t('settings.subAddButton') || 'Добавить кнопку' %>
+                        </button>
+                        <div style="position: relative; display: inline-block;">
+                            <button type="button" class="btn btn-secondary" style="font-size: 13px;" onclick="this.nextElementSibling.classList.toggle('open')">
+                                <i class="ti ti-template"></i> <%= t('settings.subTemplate') %>
+                            </button>
+                            <div class="tpl-dropdown">
+                                <div class="tpl-section"><%= t('settings.subTplClients') %></div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="Hiddify" data-url="hiddify://import/{url}" data-icon="ti-download"><i class="ti ti-download"></i> Hiddify</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="Streisand" data-url="streisand://import/{url}" data-icon="ti-shield"><i class="ti ti-shield"></i> Streisand</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="V2RayNG" data-url="v2rayng://install-sub?url={url_encoded}" data-icon="ti-brand-android"><i class="ti ti-brand-android"></i> V2RayNG</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="Shadowrocket" data-url="sub://{url_b64}" data-icon="ti-brand-apple"><i class="ti ti-brand-apple"></i> Shadowrocket</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="Clash" data-url="clash://install-config?url={url_encoded}" data-icon="ti-bolt"><i class="ti ti-bolt"></i> Clash / Stash</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="Sing-box" data-url="sing-box://import-remote-profile?url={url_encoded}" data-icon="ti-box-multiple"><i class="ti ti-box-multiple"></i> Sing-box</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="HAPP" data-url="happ://add/{url}" data-icon="ti-rocket"><i class="ti ti-rocket"></i> HAPP</div>
+                                <div class="tpl-section"><%= t('settings.subTplLinks') %></div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="<%= t('settings.subTplSupport') %>" data-url="https://t.me/" data-icon="ti-brand-telegram"><i class="ti ti-brand-telegram"></i> Telegram</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="Email" data-url="mailto:" data-icon="ti-mail"><i class="ti ti-mail"></i> Email</div>
+                                <div class="tpl-item" onclick="subFromTemplate(this)" data-label="<%= t('settings.subTplWebsite') %>" data-url="https://" data-icon="ti-world"><i class="ti ti-world"></i> <%= t('settings.subTplWebsite') %></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-save-bar" style="margin-top: 18px;">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ti ti-device-floppy"></i> <%= t('common.save') %>
+                    </button>
+                </div>
+            </form>
+
+            <style>
+            .sub-btn-row { display: grid; grid-template-columns: 1fr 2fr auto auto; gap: 8px; align-items: center; }
+            .icon-pick-btn { display:flex; align-items:center; justify-content:center; width:42px; height:42px; background: rgba(10, 10, 11, 0.55); border:1px solid var(--glass-border); border-radius:10px; cursor:pointer; color:var(--text-primary); font-size:18px; flex-shrink:0; transition: border-color .15s, background .15s; }
+            .icon-pick-btn:hover { border-color: var(--accent); background: rgba(99,102,241,0.10); }
+            .icon-picker { position:fixed; z-index:9999; width:288px; background: rgba(20, 20, 23, 0.92); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:var(--radius); box-shadow: var(--glass-shadow-lg); padding:10px; display:none; }
+            .icon-picker.open { display:block; }
+            .icon-picker-search { width:100%; padding:9px 12px; border:1px solid var(--glass-border); border-radius:10px; background: rgba(10,10,11,0.55); color:var(--text-primary); font-size:13px; margin-bottom:8px; outline:none; }
+            .icon-picker-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
+            .icon-picker-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; max-height:210px; overflow-y:auto; }
+            .icon-picker-grid::-webkit-scrollbar { width:4px; }
+            .icon-picker-grid::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+            .icon-pick-cell { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:var(--radius-sm); cursor:pointer; font-size:17px; color:var(--text-muted,#aaa); transition: background .1s, color .1s; }
+            .icon-pick-cell:hover { background:linear-gradient(135deg, var(--accent), var(--accent-gradient-end)); color:#fff; }
+            .tpl-dropdown { display:none; position:absolute; left:0; bottom:calc(100% + 6px); min-width:240px; max-height:340px; overflow-y:auto; background: rgba(20, 20, 23, 0.92); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border:1px solid var(--glass-border-strong); border-radius:var(--radius); box-shadow: var(--glass-shadow-lg); z-index:100; padding:6px 0; }
+            .tpl-dropdown.open { display:block; }
+            .tpl-section { padding:8px 14px 4px; font-size:10.5px; color:var(--text-muted,#888); text-transform:uppercase; letter-spacing:.06em; font-weight: 700; }
+            .tpl-item { display:flex; align-items:center; gap:10px; padding:8px 14px; font-size:13px; cursor:pointer; color:var(--text-primary); transition: background .1s; }
+            .tpl-item:hover { background: rgba(99,102,241,0.16); color:#fff; }
+            .tpl-item i { font-size:16px; width:20px; text-align:center; color: var(--accent); }
+            </style>
+
+            <script>
+            (function() {
+                var subI18n = {
+                    search: <%- JSON.stringify(t('settings.subIconSearch')) %>,
+                    btnLabelPh: <%- JSON.stringify(t('settings.subBtnLabelPlaceholder')) %>,
+                    btnUrlPh: <%- JSON.stringify(t('settings.subBtnUrlPlaceholder')) %>,
+                    btnLabelTitle: <%- JSON.stringify(t('settings.subBtnLabelTitle')) %>,
+                    btnUrlTitle: <%- JSON.stringify(t('settings.subBtnUrlTitle')) %>,
+                    pickIcon: <%- JSON.stringify(t('settings.subPickIcon')) %>,
+                    deleteBtn: <%- JSON.stringify(t('settings.subDeleteBtn')) %>,
+                };
+                var ICONS = [
+                    'ti-download','ti-external-link','ti-link','ti-share','ti-send','ti-copy','ti-cloud-download',
+                    'ti-brand-telegram','ti-brand-whatsapp','ti-brand-discord','ti-brand-twitter','ti-brand-github',
+                    'ti-brand-youtube','ti-brand-instagram','ti-brand-tiktok','ti-brand-reddit','ti-brand-facebook',
+                    'ti-brand-apple','ti-brand-android','ti-brand-windows','ti-brand-chrome','ti-brand-safari','ti-brand-firefox',
+                    'ti-device-mobile','ti-device-desktop','ti-device-tablet','ti-devices',
+                    'ti-shield','ti-shield-lock','ti-lock','ti-key','ti-fingerprint',
+                    'ti-wifi','ti-world','ti-globe','ti-server','ti-cloud','ti-network',
+                    'ti-rocket','ti-bolt','ti-flame','ti-star','ti-heart','ti-zap',
+                    'ti-headset','ti-message','ti-mail','ti-phone','ti-messages',
+                    'ti-apps','ti-puzzle','ti-plug','ti-tool','ti-settings','ti-adjustments',
+                    'ti-info-circle','ti-help','ti-book','ti-file','ti-home','ti-user',
+                    'ti-arrow-right','ti-chevron-right','ti-player-play','ti-check','ti-plus',
+                    'ti-photo','ti-camera','ti-qrcode','ti-scan','ti-bell','ti-clock',
+                    'ti-map-pin','ti-compass','ti-antenna-bars-5','ti-satellite',
+                    'ti-currency-dollar','ti-wallet','ti-credit-card','ti-gift',
+                    'ti-brand-speedtest','ti-gauge','ti-chart-line','ti-trending-up',
+                ];
+
+                var MAX_BUTTONS = 10;
+                var initialButtons = <%- JSON.stringify((settings?.subscription?.buttons || []).map(b => ({ label: b.label || '', url: b.url || '', icon: b.icon || '' }))) %>;
+                var list = document.getElementById('subButtonsList');
+                var addBtnEl = document.getElementById('subAddBtn');
+                var countEl = document.getElementById('subBtnCount');
+                var jsonField = document.getElementById('subButtonsJson');
+
+                var picker = document.createElement('div');
+                picker.className = 'icon-picker';
+                picker.innerHTML = '<input type="text" class="icon-picker-search" placeholder=' + JSON.stringify(subI18n.search) + '>'
+                    + '<div class="icon-picker-grid"></div>';
+                document.body.appendChild(picker);
+
+                var pickerSearch = picker.querySelector('.icon-picker-search');
+                var pickerGrid = picker.querySelector('.icon-picker-grid');
+                var pickerTarget = null;
+
+                function renderPickerIcons(filter) {
+                    var f = (filter || '').toLowerCase().replace(/^ti-/, '');
+                    pickerGrid.innerHTML = '';
+                    ICONS.forEach(function(ic) {
+                        if (f && ic.replace('ti-','').indexOf(f) === -1) return;
+                        var cell = document.createElement('div');
+                        cell.className = 'icon-pick-cell';
+                        cell.title = ic;
+                        cell.innerHTML = '<i class="ti ' + ic + '"></i>';
+                        cell.onclick = function() { selectIcon(ic); };
+                        pickerGrid.appendChild(cell);
+                    });
+                }
+
+                pickerSearch.addEventListener('input', function() { renderPickerIcons(this.value); });
+
+                function openPicker(btn, row) {
+                    pickerTarget = { btn: btn, row: row };
+                    pickerSearch.value = '';
+                    renderPickerIcons('');
+                    picker.classList.add('open');
+                    var r = btn.getBoundingClientRect();
+                    var pw = 280, ph = 290;
+                    var left = r.left - pw - 8;
+                    if (left < 8) left = r.right + 8;
+                    var top = r.top;
+                    if (top + ph > window.innerHeight - 8) top = window.innerHeight - ph - 8;
+                    picker.style.left = left + 'px';
+                    picker.style.top = top + 'px';
+                    setTimeout(function(){ pickerSearch.focus(); }, 50);
+                }
+
+                function selectIcon(ic) {
+                    if (!pickerTarget) return;
+                    pickerTarget.row._btnIcon = ic;
+                    pickerTarget.btn.innerHTML = '<i class="ti ' + ic + '"></i>';
+                    pickerTarget.btn.title = subI18n.pickIcon;
+                    picker.classList.remove('open');
+                    pickerTarget = null;
+                    syncJson();
+                }
+
+                document.addEventListener('mousedown', function(e) {
+                    if (picker.classList.contains('open') && !picker.contains(e.target) && (!pickerTarget || e.target !== pickerTarget.btn)) {
+                        picker.classList.remove('open');
+                    }
+                    document.querySelectorAll('.tpl-dropdown.open').forEach(function(d) {
+                        if (!d.contains(e.target) && e.target !== d.previousElementSibling) d.classList.remove('open');
+                    });
+                });
+
+                window.subFromTemplate = function(el) {
+                    subAddButton({ label: el.dataset.label, url: el.dataset.url, icon: el.dataset.icon });
+                    el.closest('.tpl-dropdown').classList.remove('open');
+                };
+
+                function syncJson() {
+                    var btns = [];
+                    list.querySelectorAll('.sub-btn-row').forEach(function(row) {
+                        btns.push({
+                            label: row._labelInp.value,
+                            url: row._urlInp.value,
+                            icon: row._btnIcon || ''
+                        });
+                    });
+                    jsonField.value = JSON.stringify(btns);
+                }
+
+                function updateCount() {
+                    var rows = list.querySelectorAll('.sub-btn-row');
+                    countEl.textContent = rows.length + ' / ' + MAX_BUTTONS;
+                    addBtnEl.disabled = rows.length >= MAX_BUTTONS;
+                }
+
+                window.subAddButton = function(data) {
+                    if (list.querySelectorAll('.sub-btn-row').length >= MAX_BUTTONS) return;
+                    data = data || {};
+                    var iconVal = data.icon || '';
+                    var iconDisplay = iconVal ? '<i class="ti ' + iconVal + '"></i>' : '<i class="ti ti-plus" style="opacity:.4"></i>';
+
+                    var row = document.createElement('div');
+                    row.className = 'sub-btn-row';
+                    row._btnIcon = iconVal;
+
+                    var labelInp = document.createElement('input');
+                    labelInp.type = 'text';
+                    labelInp.placeholder = subI18n.btnLabelPh;
+                    labelInp.value = data.label || '';
+                    labelInp.style.cssText = 'min-width:0;';
+                    labelInp.title = subI18n.btnLabelTitle;
+                    labelInp.oninput = syncJson;
+                    row._labelInp = labelInp;
+
+                    var urlInp = document.createElement('input');
+                    urlInp.type = 'text';
+                    urlInp.placeholder = subI18n.btnUrlPh;
+                    urlInp.value = data.url || '';
+                    urlInp.style.cssText = 'min-width:0; font-size:12px;';
+                    urlInp.title = subI18n.btnUrlTitle;
+                    urlInp.oninput = syncJson;
+                    row._urlInp = urlInp;
+
+                    var iconBtn = document.createElement('div');
+                    iconBtn.className = 'icon-pick-btn';
+                    iconBtn.title = subI18n.pickIcon;
+                    iconBtn.innerHTML = iconDisplay;
+                    iconBtn.onclick = function() { openPicker(iconBtn, row); };
+
+                    var delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'btn btn-danger';
+                    delBtn.style.cssText = 'padding:0.4rem 0.6rem; flex-shrink:0;';
+                    delBtn.title = subI18n.deleteBtn;
+                    delBtn.innerHTML = '<i class="ti ti-trash" style="font-size:14px;"></i>';
+                    delBtn.onclick = function() { row.remove(); updateCount(); syncJson(); };
+
+                    row.appendChild(labelInp);
+                    row.appendChild(urlInp);
+                    row.appendChild(iconBtn);
+                    row.appendChild(delBtn);
+                    list.appendChild(row);
+                    updateCount();
+                    syncJson();
+                };
+
+                initialButtons.forEach(function(b) { window.subAddButton(b); });
+                if (!initialButtons.length) syncJson();
+            })();
+            </script>
+        </div>
+    </div>
+
+    <%- include('hysteria-limit') %>
+
+    <%- include('routing') %>
+
+    <details class="happ-collapse-section" style="margin-top: 1.5rem;">
+        <summary class="happ-collapse-summary">
+            <i class="ti ti-chevron-right"></i>
+            <span><i class="ti ti-shield-x"></i> <%= t('settings.softBlockTitle') %></span>
+        </summary>
+        <%- include('softblock') %>
+    </details>
+
+    <details class="happ-collapse-section" style="margin-top: 1.5rem;">
+        <summary class="happ-collapse-summary">
+            <i class="ti ti-chevron-right"></i>
+            <span><i class="ti ti-rocket"></i> <%= t('settings.happSectionToggle') %></span>
+        </summary>
+        <%- include('happ') %>
+    </details>
+</div>
+
+<style>
+.happ-collapse-section > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+    transition: color 0.15s, border-color 0.15s;
+}
+.happ-collapse-section > summary::-webkit-details-marker { display: none; }
+.happ-collapse-section > summary:hover { color: var(--accent); border-color: var(--accent); }
+.happ-collapse-section > summary > i:first-child { transition: transform 0.2s; }
+.happ-collapse-section[open] > summary > i:first-child { transform: rotate(90deg); }
+.happ-collapse-section > summary span i { color: var(--accent); margin-right: 2px; }
+</style>

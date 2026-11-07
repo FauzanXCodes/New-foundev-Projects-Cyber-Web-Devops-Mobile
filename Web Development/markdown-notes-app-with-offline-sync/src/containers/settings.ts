@@ -1,0 +1,127 @@
+import { ThemeName } from "@0xgg/echomd/theme";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { createContainer } from "unstated-next";
+import { EditorMode } from "../lib/editorMode";
+import { getKeyMap, KeyMap } from "../lib/keymap";
+import { themeManager } from "../themes/manager";
+import { CrossnoteTheme } from "../themes/theme";
+
+type InitialState = object;
+
+function useSettingsContainer(initialState: InitialState) {
+  const [language, setLanguage] = useState<string>(
+    localStorage.getItem("settings/language") || "en-US",
+  );
+  const [editorCursorColor, setEditorCursorColor] = useState<string>(
+    localStorage.getItem("settings/editorCursorColor") ||
+      "rgba(74, 144, 226, 1)",
+  );
+  const [defaultEditorMode, setDefaultEditorMode] = useState<EditorMode>(
+    (localStorage.getItem("settings/defaultEditorMode") as EditorMode) ||
+      EditorMode.Preview,
+  );
+  const [authorName, setAuthorName] = useState<string>(
+    localStorage.getItem("settings/authorName") || "Anonymous",
+  );
+  const [authorEmail, setAuthorEmail] = useState<string>(
+    localStorage.getItem("settings/authorEmail") || "anonymous@example.com",
+  );
+  const [theme, setTheme] = useState<CrossnoteTheme>(
+    themeManager.getTheme(localStorage.getItem("settings/theme")) ||
+      themeManager.selectedTheme,
+  );
+  const [keyMap, setKeyMap] = useState<KeyMap>(
+    getKeyMap(localStorage.getItem("settings/keyMap")) || KeyMap.DEFAULT,
+  );
+  const [plainTextSourceCode, setPlainTextSourceCode] = useState<boolean>(
+    localStorage.getItem("settings/plainTextSourceCode") === "true",
+  );
+
+  const { i18n } = useTranslation();
+
+  const _setLanguage = useCallback(
+    (language: string) => {
+      if (
+        language === "en-US" ||
+        language === "zh-CN" ||
+        language === "zh-TW" ||
+        language === "ja-JP"
+      ) {
+        localStorage.setItem("settings/language", language);
+        setLanguage(language);
+        i18n.changeLanguage(language);
+      } else {
+        localStorage.setItem("settings/language", "en-US");
+        setLanguage("en-US");
+        i18n.changeLanguage("en-US");
+      }
+    },
+    [i18n],
+  );
+
+  const _setEditorCursorColor = useCallback((editorCursorColor: string) => {
+    editorCursorColor = editorCursorColor || "rgba(74, 144, 226, 1)";
+    localStorage.setItem("settings/editorCursorColor", editorCursorColor);
+    setEditorCursorColor(editorCursorColor);
+  }, []);
+
+  const _setDefaultEditorMode = useCallback((editorMode: EditorMode) => {
+    localStorage.setItem("settings/defaultEditorMode", editorMode);
+    setDefaultEditorMode(editorMode);
+  }, []);
+
+  const _setAuthorName = useCallback((authorName: string) => {
+    localStorage.setItem("settings/authorName", authorName);
+    setAuthorName(authorName);
+  }, []);
+
+  const _setAuthorEmail = useCallback((authorEmail: string) => {
+    localStorage.setItem("settings/authorEmail", authorEmail);
+    setAuthorEmail(authorEmail);
+  }, []);
+
+  const _setTheme = useCallback((themeName: string) => {
+    themeManager.selectTheme(themeName);
+    localStorage.setItem("settings/theme", themeManager.selectedTheme.name);
+    setTheme(themeManager.selectedTheme);
+  }, []);
+
+  const _setKeyMap = useCallback((keyMap: KeyMap) => {
+    localStorage.setItem("settings/keyMap", keyMap);
+    setKeyMap(keyMap);
+  }, []);
+
+  const _setPlainTextSourceCode = useCallback((enabled: boolean) => {
+    localStorage.setItem("settings/plainTextSourceCode", String(enabled));
+    setPlainTextSourceCode(enabled);
+  }, []);
+
+  useEffect(() => {
+    const themeName = localStorage.getItem("settings/theme") as ThemeName;
+    if (themeName) {
+      _setTheme(themeName);
+    }
+  }, [_setTheme]);
+
+  return {
+    language,
+    setLanguage: _setLanguage,
+    editorCursorColor,
+    setEditorCursorColor: _setEditorCursorColor,
+    defaultEditorMode,
+    setDefaultEditorMode: _setDefaultEditorMode,
+    authorName,
+    setAuthorName: _setAuthorName,
+    authorEmail,
+    setAuthorEmail: _setAuthorEmail,
+    theme,
+    setTheme: _setTheme,
+    keyMap,
+    setKeyMap: _setKeyMap,
+    plainTextSourceCode,
+    setPlainTextSourceCode: _setPlainTextSourceCode,
+  };
+}
+
+export const SettingsContainer = createContainer(useSettingsContainer);

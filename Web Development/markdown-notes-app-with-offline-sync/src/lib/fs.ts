@@ -1,0 +1,326 @@
+import LightningFS from "@isomorphic-git/lightning-fs";
+import path from "path-browserify";
+import { randomID } from "../utilities/utils";
+import LocalFileSystem, { ReadFileOptions } from "./localFileSystem";
+
+interface AttachLocalDirectory {
+  id: string;
+  directoryHandle: FileSystemDirectoryHandle;
+}
+
+// What the browser file system gives for a path that goes through something
+// other than a folder, had it the check (a folder on the user's disk gives a
+// TypeMismatchError).
+function notAFolder(filePath: string): Error {
+  return Object.assign(new Error(`ENOTDIR: ${filePath}`), { code: "ENOTDIR" });
+}
+
+class FileSystem {
+  private fs: any;
+  private lfs: LocalFileSystem;
+
+  public readFile: (
+    path: string,
+    opts?: ReadFileOptions,
+  ) => Promise<string | Uint8Array>;
+  public writeFile: (path: string, data: string) => Promise<void>;
+  public readdir: (path: string) => Promise<string[]>;
+  public unlink: (path: string) => Promise<void>;
+  public stats: (path: string) => Promise<LightningFS.Stats>;
+  public mkdir: (path: string) => Promise<void>;
+  public exists: (path: string) => Promise<boolean>;
+  public rename: (oldPath: string, newPath: string) => Promise<void>;
+  public rmdir: (path: string) => Promise<void>;
+  public mkdirp: (path: string) => Promise<void>;
+  public storeTree: (path: string) => Promise<void>;
+
+  constructor(fs: any) {
+    this.fs = fs;
+    this.lfs = new LocalFileSystem();
+    this.setUpFSMethods();
+  }
+
+  public async attachLocalDirectory({
+    id = randomID(),
+    directoryHandle,
+  }: AttachLocalDirectory) {
+    return await this.lfs.attachLocalDirectory(id, directoryHandle);
+  }
+
+  public async requestPermission(
+    path: string,
+    mode: FileSystemPermissionMode = "readwrite",
+  ) {
+    await this.lfs.helper(path, mode);
+  }
+
+  public isPathOfLocalFileSystem(path: string) {
+    return this.lfs.isPathOfLocalFileSystem(path);
+  }
+
+  private setUpFSMethods() {
+    // The browser file system puts an entry under whatever its path names, a
+    // note's file included, where the entry is out of sight of every listing
+    // and of git. A folder on the user's disk refuses such a path, and so
+    // does this.
+    const parentMustBeAFolder = async (filePath: string) => {
+      const parent = path.dirname(filePath);
+      let stats: LightningFS.Stats;
+      try {
+        stats = await this.stats(parent);
+      } catch (error) {
+        // No parent at all, which the file system reports itself.
+        return;
+      }
+      if (!stats.isDirectory()) {
+        throw notAFolder(parent);
+      }
+    };
+
+    // Makes a folder on the browser file system whose parent is known to be
+    // a folder.
+    const makeFolder = (folderPath: string) =>
+      new Promise<void>((resolve, reject) => {
+        this.fs.mkdir(folderPath, "0777", (error: Error) => {
+          if (error) {
+            return reject(error);
+          } else {
+            return resolve();
+          }
+        });
+      });
+
+    this.readFile = (path: string, opts?: any) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.readFile(path, opts);
+      } else {
+        return new Promise((resolve, reject) => {
+          this.fs.readFile(path, opts, (error: Error, data: string) => {
+            if (error) {
+              return reject(error);
+            } else {
+              return resolve(data);
+            }
+          });
+        });
+      }
+    };
+    this.writeFile = async (path: string, data: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.writeFile(path, data);
+      } else {
+        // Only a new entry can end up under a file. One already there, as an
+        // earlier version of the app could leave a note, is written over.
+        if (!(await this.exists(path))) {
+          await parentMustBeAFolder(path);
+        }
+        return new Promise((resolve, reject) => {
+          this.fs.writeFile(
+            path,
+            data,
+            { encoding: "utf8" },
+            (error: Error) => {
+              if (error) {
+                return reject(error);
+              } else {
+                return resolve();
+              }
+            },
+          );
+        });
+      }
+    };
+    this.readdir = (path: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.readdir(path);
+      } else {
+        return new Promise((resolve, reject) => {
+          this.fs.readdir(path, (error: Error, files: string[]) => {
+            if (error) {
+              return reject(error);
+            } else {
+              return resolve(files);
+            }
+          });
+        });
+      }
+    };
+    this.unlink = (path: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.unlink(path);
+      } else {
+        return new Promise((resolve, reject) => {
+          this.fs.unlink(path, (error: Error) => {
+            if (error) {
+              return reject(error);
+            } else {
+              return resolve();
+            }
+          });
+        });
+      }
+    };
+    this.stats = (path: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.stats(path);
+      } else {
+        return new Promise((resolve, reject) => {
+          this.fs.stat(path, (error: Error, stats: LightningFS.Stats) => {
+            if (error) {
+              return reject(error);
+            } else {
+              return resolve(stats);
+            }
+          });
+        });
+      }
+    };
+    this.mkdir = async (path: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.mkdir(path);
+      } else {
+        await parentMustBeAFolder(path);
+        return makeFolder(path);
+      }
+    };
+    this.exists = (path: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(path)) {
+        return this.lfs.exists(path);
+      } else {
+        return new Promise((resolve, reject) => {
+          this.fs.stat(path, (error: Error, stats: LightningFS.Stats) => {
+            if (error) {
+              return resolve(false);
+            } else {
+              return resolve(true);
+            }
+          });
+        });
+      }
+    };
+    const rename = async (oldPath: string, newPath: string): Promise<void> => {
+      const stats = await this.stats(oldPath);
+      if (stats.isDirectory()) {
+        await this.mkdirp(newPath);
+      } else {
+        await this.mkdirp(path.dirname(newPath));
+      }
+
+      if (this.lfs.isPathOfLocalFileSystem(newPath)) {
+        return this.lfs.rename(oldPath, newPath);
+      } else {
+        return new Promise((resolve, reject) => {
+          this.fs.rename(oldPath, newPath, (error: Error) => {
+            if (error) {
+              return reject(error);
+            } else {
+              return resolve();
+            }
+          });
+        });
+      }
+    };
+    this.rename = async (oldPath: string, newPath: string) => {
+      const oldPathStat = await this.stats(oldPath);
+      let newPathStat: LightningFS.Stats;
+      if (await this.exists(newPath)) {
+        newPathStat = await this.stats(newPath);
+      } else {
+        newPathStat = null;
+      }
+      if (
+        oldPathStat.isDirectory() ||
+        (newPathStat && newPathStat.isDirectory())
+      ) {
+        const files = await this.readdir(oldPath);
+        // const promises = []; // <= It seems to cause bug if run parallel
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const filePath = path.resolve(oldPath, file);
+          const stats = await this.stats(filePath);
+          if (stats.isDirectory()) {
+            await this.rename(filePath, path.resolve(newPath, file));
+          } else {
+            await rename(filePath, path.resolve(newPath, file));
+          }
+        }
+        // await Promise.all(promises);
+        await this.rmdir(oldPath);
+      } else {
+        await rename(oldPath, newPath);
+      }
+    };
+    const rmdir = (path: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        this.fs.rmdir(path, (error: Error) => {
+          if (error) {
+            return reject(error);
+          } else {
+            return resolve();
+          }
+        });
+      });
+    };
+    // Remove the directory recursively
+    this.rmdir = async (dirPath: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(dirPath)) {
+        return this.lfs.rmdir(dirPath);
+      } else {
+        const files = await this.readdir(dirPath);
+        const promises = [];
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const filePath = path.resolve(dirPath, file);
+          const stats = await this.stats(filePath);
+          if (stats.isDirectory()) {
+            promises.push(this.rmdir(filePath));
+          } else {
+            promises.push(this.unlink(filePath));
+          }
+        }
+        await Promise.all(promises);
+        await rmdir(dirPath);
+      }
+    };
+
+    this.mkdirp = async (dirPath: string) => {
+      if (this.lfs.isPathOfLocalFileSystem(dirPath)) {
+        return this.lfs.mkdir(dirPath);
+      }
+      let stats: LightningFS.Stats | null = null;
+      try {
+        stats = await this.stats(dirPath);
+      } catch (error) {
+        // Not there yet: made below.
+      }
+      if (stats) {
+        // A file of that name is no folder to put anything in.
+        if (!stats.isDirectory()) {
+          throw notAFolder(dirPath);
+        }
+        return;
+      }
+      // The parent is made, or found to be a folder, first, so the folder
+      // itself needs no second look at it.
+      await this.mkdirp(path.dirname(dirPath));
+      await makeFolder(dirPath);
+    };
+
+    // The browser file system writes a file's content at once, but its
+    // directory tree only half a second after the last change to it, and a
+    // page loaded in that time comes back without the files just created,
+    // moved or deleted. Writing it out when the page goes away does not
+    // help: a reload does not wait for it. So whatever changes the files
+    // under a path writes the tree out with this before it reports done. A
+    // folder on the user's disk has no such tree.
+    this.storeTree = async (filePath: string) => {
+      if (!this.lfs.isPathOfLocalFileSystem(filePath)) {
+        await this.fs.promises.flush();
+      }
+    };
+  }
+}
+
+export const fs = new LightningFS("fs");
+export const pfs = new FileSystem(fs);
+(window as any)["pfs"] = pfs;

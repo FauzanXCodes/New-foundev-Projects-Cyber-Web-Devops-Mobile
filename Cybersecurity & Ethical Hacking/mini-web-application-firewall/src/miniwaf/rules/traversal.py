@@ -1,0 +1,67 @@
+"""Path Traversal and Local File Inclusion (LFI) detection rules."""
+
+from miniwaf.models.enums import AttackType, LocationTarget, RuleSeverity
+from miniwaf.models.rules import WAFRule
+
+TRAVERSAL_RULES: list[WAFRule] = [
+    WAFRule(
+        rule_id="RULE-TRAV-001",
+        name="Directory Path Climbing Sequences in URI",
+        category=AttackType.TRAVERSAL,
+        severity=RuleSeverity.CRITICAL,
+        paranoia_level=1,
+        pattern=r"(?:\.\./|\.\.\\|\.\.%2f|\.\.%5c)",
+        target=LocationTarget.URI_PATH,
+        cwe_id="CWE-22",
+        description="Detects parent directory traversal dot-dot-slash patterns in URI.",
+        remediation="Resolve paths against fixed root and verify containment with normpath.",
+    ),
+    WAFRule(
+        rule_id="RULE-TRAV-002",
+        name="Sensitive Unix/Windows System Files",
+        category=AttackType.TRAVERSAL,
+        severity=RuleSeverity.CRITICAL,
+        paranoia_level=1,
+        pattern=r"(?:/etc/(?:passwd|shadow|hosts|issue)|boot\.ini|win\.ini|windows/system32)",
+        target=LocationTarget.URI_PATH,
+        cwe_id="CWE-22",
+        description="Detects direct targeting of known OS credential and configuration files.",
+        remediation="Never allow user input to directly construct filesystem paths.",
+    ),
+    WAFRule(
+        rule_id="RULE-TRAV-003",
+        name="Null Byte Poisoning in File Path",
+        category=AttackType.TRAVERSAL,
+        severity=RuleSeverity.CRITICAL,
+        paranoia_level=1,
+        pattern=r"(?:%00|\x00)",
+        target=LocationTarget.URI_PATH,
+        cwe_id="CWE-22",
+        description="Detects null byte characters used to truncate file extensions.",
+        remediation="Reject inputs containing null bytes immediately.",
+    ),
+    WAFRule(
+        rule_id="RULE-TRAV-004",
+        name="Directory Path Climbing in Query Parameters",
+        category=AttackType.TRAVERSAL,
+        severity=RuleSeverity.CRITICAL,
+        paranoia_level=1,
+        pattern=r"(?:\.\./|\.\.\\|\.\.%2f|\.\.%5c)",
+        target=LocationTarget.QUERY_PARAM,
+        cwe_id="CWE-22",
+        description="Detects path traversal sequences in query parameters (LFI).",
+        remediation="Sanitize query parameters against strict path whitelists.",
+    ),
+    WAFRule(
+        rule_id="RULE-TRAV-005",
+        name="Directory Path Climbing in Request Body",
+        category=AttackType.TRAVERSAL,
+        severity=RuleSeverity.CRITICAL,
+        paranoia_level=1,
+        pattern=r"(?:\.\./|\.\.\\|\.\.%2f|\.\.%5c)",
+        target=LocationTarget.BODY,
+        cwe_id="CWE-22",
+        description="Detects path traversal sequences in POST body payloads.",
+        remediation="Do not pass body parameters directly to file loading functions.",
+    ),
+]

@@ -1,0 +1,205 @@
+name: Docker Hub
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: clickdevtech/hysteria-panel
+
+permissions:
+  contents: write
+
+jobs:
+  build-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: cc-agent/go.sum
+
+      - name: Build cc-agent
+        working-directory: cc-agent
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o cc-agent-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o cc-agent-linux-arm64 .
+
+      - name: Test celerity-probe
+        working-directory: probe
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Build celerity-probe
+        working-directory: probe
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -ldflags="-s -w" -o "celerity-probe-$os-$arch" .
+          done
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=windows GOARCH="$arch" \
+              go build -ldflags="-s -w" -o "celerity-probe-windows-$arch.exe" .
+          done
+          # Routers (OpenWRT) have no FPU, so MIPS has to be soft-float.
+          for arch in mips mipsle; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GOMIPS=softfloat \
+              go build -ldflags="-s -w" -o "celerity-probe-linux-$arch" .
+          done
+          cp install.sh celerity-probe-install.sh
+          cp install.ps1 celerity-probe-install.ps1
+
+      - name: Upload agent binaries as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-agent-binaries
+          path: |
+            cc-agent/cc-agent-linux-amd64
+            cc-agent/cc-agent-linux-arm64
+
+      - name: Upload probe binaries as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: celerity-probe-binaries
+          path: |
+            probe/celerity-probe-linux-amd64
+            probe/celerity-probe-linux-arm64
+            probe/celerity-probe-linux-mips
+            probe/celerity-probe-linux-mipsle
+            probe/celerity-probe-darwin-amd64
+            probe/celerity-probe-darwin-arm64
+            probe/celerity-probe-windows-amd64.exe
+            probe/celerity-probe-windows-arm64.exe
+
+      - name: Publish to GitHub Release (on tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          append_body: true
+          body: |
+            ## CC Agent binaries
+
+            Lightweight Go agent for managing Xray on nodes.
+            Downloaded automatically during node auto-setup from the panel.
+
+            | File | Architecture |
+            |------|-------------|
+            | `cc-agent-linux-amd64` | x86_64 (most VPS) |
+            | `cc-agent-linux-arm64` | ARM64 |
+
+            ## Celerity Probe binaries
+
+            External diagnostic probe. Installed by the operator on their own
+            host; holds only client subscription credentials and no node access.
+            The install command with a single-use token is generated in the panel.
+
+            | File | Platform |
+            |------|----------|
+            | `celerity-probe-linux-amd64` | Linux x86_64 |
+            | `celerity-probe-linux-arm64` | Linux ARM64 |
+            | `celerity-probe-linux-mipsle` | OpenWRT MIPS little-endian (ramips, mt7621) |
+            | `celerity-probe-linux-mips` | OpenWRT MIPS big-endian (ath79) |
+            | `celerity-probe-darwin-amd64` | macOS Intel |
+            | `celerity-probe-darwin-arm64` | macOS Apple Silicon |
+            | `celerity-probe-windows-amd64.exe` | Windows x86_64 |
+            | `celerity-probe-windows-arm64.exe` | Windows ARM64 |
+
+            > Panel source code is distributed via Docker Hub: `clickdevtech/hysteria-panel`
+          files: |
+            cc-agent/cc-agent-linux-amd64
+            cc-agent/cc-agent-linux-arm64
+            probe/celerity-probe-linux-amd64
+            probe/celerity-probe-linux-arm64
+            probe/celerity-probe-linux-mips
+            probe/celerity-probe-linux-mipsle
+            probe/celerity-probe-darwin-amd64
+            probe/celerity-probe-darwin-arm64
+            probe/celerity-probe-windows-amd64.exe
+            probe/celerity-probe-windows-arm64.exe
+            probe/celerity-probe-install.sh
+            probe/celerity-probe-install.ps1
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: build-agent
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-and-push-updater:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: clickdevtech/celerity-updater
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push updater
+        uses: docker/build-push-action@v5
+        with:
+          context: ./updater
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+

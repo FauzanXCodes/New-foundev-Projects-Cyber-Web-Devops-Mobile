@@ -1,0 +1,14 @@
+﻿{
+    "id":  "wi-fi-security-auditor-lab",
+    "name":  "Wi-Fi Security Auditor (lab)",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/Haseebjamal40/wifi-security-auditor",
+    "stack":  "Python; Scapy; airodump-ng",
+    "goal":  "Enumerate APs, detect open/WEP, flag rogue APs; capture must stay in an authorised lab.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "__init__.py",
+    "expectedFileCount":  10,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  25
+}

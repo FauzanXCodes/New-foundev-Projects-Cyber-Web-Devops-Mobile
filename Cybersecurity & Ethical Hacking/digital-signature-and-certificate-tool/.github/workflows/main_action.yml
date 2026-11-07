@@ -1,0 +1,163 @@
+name: CI
+
+# Pull requests targeting main or the 3.0 integration branch, and main itself
+# after a merge.
+#
+# `feat/v3` is there for the length of the 3.0 line (#313). The work arrives as
+# pull requests against that branch rather than against main, and without this
+# none of them is tested: a workflow filtered to main simply does not run, and
+# the pull request that finally merges the branch would be the first time CI
+# saw any of it.
+#
+# The second is not the duplication it looks like. A pull request is tested
+# against its own branch, not against main with it merged, so two branches that
+# are each green can still produce a main that is not: on 2026-08-11 two of them
+# were merged an hour apart, both touching the same test helper, and the merged
+# result was only verified because someone ran the suite by hand.
+#
+# It is also what makes the README's test badge able to say anything: a badge
+# reports the default branch, and until now the default branch had never been
+# built.
+on:
+  pull_request:
+    branches: [ main, feat/v3 ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  # head_ref is empty on a push, so fall back to the ref: without it every
+  # push to main would share one group and cancel the run before it.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Superseding a pull request's run is a saving; superseding a main build is a
+  # merge that never got verified, which is the whole reason main is built.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Laravel 13 supports PHP 8.3-8.5 and the package floor is 8.4.
+        # Laravel 12 is not supported: it requires symfony/process ^7.2 while
+        # Pest 5 requires ^8.1, so the two cannot be installed together, and
+        # Laravel 12 leaves support in 2027 anyway. See docs/decisions/0005-php-and-laravel-floor.md.
+        php: [ '8.4', '8.5' ]
+
+    name: PHP ${{ matrix.php }} - Laravel 13
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, dom, fileinfo, openssl, json, gd, imagick, bcmath, sqlite3
+          coverage: pcov
+
+      - name: Validate PHP and Composer
+        run: |
+          php -v
+          composer -V
+          composer validate --strict
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --prefer-stable --no-interaction --no-progress
+
+      # setup-php sets COMPOSER_NO_AUDIT, so advisories were silently not
+      # checked. For a signing package a known vulnerability in the tree is
+      # worth blocking on, and --abandoned=ignore keeps the gate about
+      # vulnerabilities rather than about maintenance status.
+      - name: Audit dependencies
+        run: composer audit --abandoned=ignore
+
+      # composer test carries --fail-on-skipped: every check has to run
+      # somewhere, and a skip is how one quietly stops.
+      #
+      # No instruments are installed any more. veraPDF, qpdf, pyHanko and the
+      # Arlington model measure written bytes, and this package writes none:
+      # they run in lsnepomuceno/signet-pdf, where the writer is
+      # (docs/decisions/0039-the-core-lives-in-signet-pdf.md).
+      - name: Run tests
+        run: composer test
+
+  # laravel/ai and laravel/mcp are suggestions, and the two jobs around this one
+  # always have them, since they are dev requirements. This removes both and
+  # runs everything that does not need them, which is what turns "optional"
+  # from a claim into a check: a class outside src/Ai or src/Mcp naming either
+  # SDK fails here, and nowhere else would
+  # (docs/decisions/0040-agents-read-through-mcp-and-sign-through-the-ai-sdk.md).
+  #
+  # `project` goes with the SDK groups because its walks load every class in
+  # the tree, including the ones that cannot load without an SDK. Its rules are
+  # about the source, and the job above checks them with everything installed.
+  #
+  # One flag per group: Pest reads `--exclude-group=a,b` as a single group
+  # named "a,b" and excludes nothing.
+  without-agents:
+    name: Without the optional SDKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, dom, fileinfo, openssl, json, gd, imagick, bcmath, sqlite3
+          coverage: none
+
+      - name: Install dependencies, without laravel/ai and laravel/mcp
+        run: |
+          composer update --prefer-dist --prefer-stable --no-interaction --no-progress
+          composer remove --dev laravel/ai laravel/mcp --no-interaction --no-progress
+
+      - name: Prove neither SDK is installed
+        run: |
+          php -r 'require "vendor/autoload.php"; exit(interface_exists(Laravel\Ai\Contracts\Tool::class) || class_exists(Laravel\Mcp\Server\Tool::class) ? 1 : 0);'
+
+      - name: Run the tests that need neither SDK
+        run: vendor/bin/pest --fail-on-skipped --exclude-group=mcp --exclude-group=ai --exclude-group=project
+
+  quality:
+    name: Code style and static analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, dom, fileinfo, openssl, json, gd, imagick, bcmath, sqlite3
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --prefer-stable --no-interaction --no-progress
+
+      - name: Check code style
+        run: vendor/bin/pint --test
+
+      - name: Check dependencies
+        run: vendor/bin/composer-dependency-analyser
+
+      - name: Check composer.json formatting
+        run: composer normalize --dry-run
+
+      - name: Run static analysis
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      # src/ is fully typed as of PR 5; the gate keeps it that way.
+      - name: Check type coverage
+        run: vendor/bin/pest --type-coverage --min=100

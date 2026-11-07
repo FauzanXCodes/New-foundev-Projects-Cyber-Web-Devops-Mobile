@@ -1,0 +1,14 @@
+﻿{
+    "id":  "server-monitoring-dashboard",
+    "name":  "Server Monitoring Dashboard",
+    "domain":  "Cloud, DevOps \u0026 Networking",
+    "repository":  "https://github.com/mdawar/nats-dashboard",
+    "stack":  "Prometheus; Grafana; Node Exporter",
+    "goal":  "CPU/RAM/disk/network panels, alert rules and a simulated incident.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "astro.config.mjs",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  152
+}

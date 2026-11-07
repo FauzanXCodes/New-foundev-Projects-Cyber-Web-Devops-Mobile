@@ -1,0 +1,118 @@
+<div class="tracemon-content">
+    <div class="blubble bubble-one {{#env.onlyGraph}}no-border{{/env.onlyGraph}}">
+        {{^env.onlyGraph}}
+        <div class="loading">
+            <div class="line"></div>
+            <div class="line"></div>
+            <div class="line"></div>
+        </div>
+        <div class="error-message"></div>
+
+        <div class="annotation-tooltip"><div class="annotation-tooltip-content"></div></div>
+
+        <div class="tracemon-header">
+            <div class="tracemon-title">
+                <div class="padded-text">{{lang.title}}</div>
+            </div>
+            <div class="tracemon-right-controllers">
+
+                <div class="right-controller tracemon-search">
+                    <div>{{>search}}</div>
+                </div>
+
+                <div class="right-controller  bootstrap-slider reproduction-speed">
+                    <div class="input-label">speed: <span class="value-slider">{{env.reproductionspeed}}</span></div>
+                    <input type="text"/>
+                </div>
+
+                <div class="right-controller bootstrap-slider hops-number" style="display: none">
+
+                    <div class="input-label">hops: <span class="value-slider">{{maxpossiblehops}}</span></div>
+
+                    <input type="text" class="hops-number-slider"/>
+
+                </div>
+
+                <div class="btn-group right-controller" role="group" aria-label="...">
+                    <button type="button" class="bwd-button btn btn-primary"><span class="glyphicon glyphicon-fast-backward" aria-hidden="true"></span></button>
+
+                    <button type="button" class="play-button btn btn-primary"><span class="glyphicon glyphicon-play" aria-hidden="true"></span></button>
+                    <button type="button" class="pause-button btn btn-primary"><span class="glyphicon glyphicon-pause" aria-hidden="true"></span></button>
+
+                    <button type="button" class="ffwd-button btn btn-primary"><span class="glyphicon glyphicon-fast-forward" aria-hidden="true"></span></button>
+                </div>
+
+            </div>
+        </div>
+        {{>probes-selection}}
+        <div class="tracemon-subheader">
+            <div class="controller-line-left">
+                Traceroutes to <span class="value-target">{{values.target}}</span> from <span class="value-number-probes">{{values.numberProbes}}</span> of <span class="value-total-probes">{{values.totalProbes}}</span> probes [<span class="clickable click-select-probe">select</span>]
+                at <span class="current-instant">{{env.finalQueryParams.instant}}</span>
+            </div>
+
+
+            <div class="controller-line-right">
+                Nodes label:
+                <label class="radio-inline"><input type="radio" class="label-level" name="optradio" value="auto">{{lang.labelOptions.auto}}</label>
+                <label class="radio-inline"><input type="radio" class="label-level" name="optradio" value="reverse-lookup">{{lang.labelOptions.reverseLookup}}</label>
+                <label class="radio-inline"><input type="radio" class="label-level" name="optradio" value="geo">{{lang.labelOptions.country}}</label>
+            </div>
+            <!--<div class="controller-line-left">{{lang.hostGroupedBy}} {{>select-view}}</div>-->
+
+        </div>
+        {{/env.onlyGraph}}
+        <div class="svg-div">
+            <svg class="tracemon-svg"></svg>
+        </div>
+        <div class="graph-legend-div">
+            <svg class="graph-legend-svg">
+                <circle tabindex="0" title="" class="node source" r="6" cx="50" cy="10"></circle> <text x="58" y="14">Source</text>
+                <circle tabindex="0" title="" class="node target" r="6" cx="110" cy="10"></circle> <text x="118" y="14">Target</text>
+                <circle tabindex="0" title="" class="node" r="6" cx="170" cy="10"></circle> <text x="178" y="14">Host</text>
+                <circle tabindex="0" title="" class="node ixp" r="6" cx="220" cy="10"></circle> <text x="228" y="14">IXP</text>
+                <circle tabindex="0" title="" class="node private" r="6" cx="260" cy="10"></circle> <text x="268" y="14">Private IP</text>
+                <circle tabindex="0" title="" class="node null" r="6" cx="340" cy="10"></circle> <text x="348" y="14">No response</text>
+
+                <path class="path" d="M455,10 482,10"></path> <text x="484" y="14">Connected</text>
+                <path class="edge disconnected" d="M570,10 600,10"></path> <text x="603" y="14">Disconnected</text>
+            </svg>
+        </div>
+
+        {{#env.mainView.latencymon.enabled}}
+        <div class="module-separation"></div>
+        <div class="latencymon-chart"></div>
+        <div class="legend_latencymon">
+            <span><img src="{{env.widgetUrl}}view/img/legend_normal.jpg"> {{lang.latency}}</span>
+            <span><img src="{{env.widgetUrl}}view/img/legend_ps.jpg"> {{lang.traceroutesDontReach}}</span>
+            <span><img src="{{env.widgetUrl}}view/img/legend_compps.jpg"> {{lang.allTraceroutesDontReach}}</span>
+        </div>
+        {{/env.mainView.latencymon.enabled}}
+
+    </div>
+    {{^env.onlyGraph}}
+    <svg class="time-selection-cone"></svg>
+    <div class="blubble bubble-two">
+        <div class="range-timeline">
+            <div class="timeline-controller"></div>
+        </div>
+        <div class="tracemon-footer">
+            <div class="tracemon-about footer-item">
+                <a href="https://labs.ripe.net/Members/massimo_candela/tracemon-traceroute-visualisation-network-debugging-tool" title="About TraceMON">About TraceMON</a>
+            </div>
+            <div class="tracemon-embed footer-item">
+                <a href="https://atlas.ripe.net/docs/tools-tracemon/#embed" title="Embed in your page">Embed in your page</a>
+            </div>
+            <div class="tracemon-documentation footer-item">
+                <a href="https://atlas.ripe.net/docs/tools-tracemon/" title="Documentation">Documentation</a>
+            </div>
+        </div>
+    </div>
+    {{/env.onlyGraph}}
+    {{#env.onlyGraph}}
+    <div class="tracemon-about footer-item">
+        <a href="RIPElabs-article" title="About TraceMON">About TraceMON</a>
+    </div>
+    {{/env.onlyGraph}}
+
+</div>

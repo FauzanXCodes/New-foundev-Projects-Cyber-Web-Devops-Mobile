@@ -1,0 +1,362 @@
+"""Button platform for the OpenWrt Router integration.
+
+Provides:
+    - Reload WiFi button  (triggers network.reload on the router)
+    - Reboot button       (triggers system.reboot on the router)
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import ClassVar
+
+from homeassistant.components.button import (
+    ButtonDeviceClass,
+    ButtonEntity,
+    ButtonEntityDescription,
+)
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from . import OpenWrtConfigEntry
+from .api import OpenWrtAPI
+from .const import (
+    CONF_PROTOCOL,
+    DEFAULT_PROTOCOL,
+    DEFAULT_SERVICES,
+    DOMAIN,
+    SUFFIX_CHECK_UPDATES,
+    SUFFIX_PERFORM_UPDATES,
+    SUFFIX_REBOOT,
+    SUFFIX_RELOAD_WIFI,
+    url_scheme_for,
+)
+from .coordinator import OpenWrtCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, kw_only=True)
+class OpenWrtButtonEntityDescription(ButtonEntityDescription):
+    """Extended button description (reserved for future per-button config)."""
+
+
+BUTTON_DESCRIPTIONS: tuple[OpenWrtButtonEntityDescription, ...] = (
+    OpenWrtButtonEntityDescription(
+        key=SUFFIX_RELOAD_WIFI,
+        translation_key="reload_wifi",
+        device_class=ButtonDeviceClass.RESTART,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:wifi-sync",
+    ),
+    OpenWrtButtonEntityDescription(
+        key=SUFFIX_CHECK_UPDATES,
+        translation_key="check_updates",
+        device_class=ButtonDeviceClass.UPDATE,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:package-search",
+    ),
+    OpenWrtButtonEntityDescription(
+        key=SUFFIX_PERFORM_UPDATES,
+        translation_key="perform_updates",
+        device_class=ButtonDeviceClass.UPDATE,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:package-up",
+    ),
+    OpenWrtButtonEntityDescription(
+        key=SUFFIX_REBOOT,
+        translation_key="reboot",
+        device_class=ButtonDeviceClass.RESTART,
+        entity_category=EntityCategory.CONFIG,
+        icon="mdi:restart",
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: OpenWrtConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up OpenWrt button entities from a config entry.
+
+    Args:
+        hass: Home Assistant instance.
+        entry: Config entry carrying runtime_data.
+        async_add_entities: Callback to register new entities with HA.
+    """
+    coordinator: OpenWrtCoordinator = entry.runtime_data.coordinator
+    api: OpenWrtAPI = entry.runtime_data.api
+
+    entities: list[OpenWrtButtonEntity | OpenWrtServiceRestartButton] = [
+        OpenWrtButtonEntity(
+            coordinator=coordinator,
+            api=api,
+            entry=entry,
+            description=description,
+        )
+        for description in BUTTON_DESCRIPTIONS
+    ]
+
+    # --- Service restart buttons (one per detected service) ---
+    if coordinator.data:
+        detected_names = {s["name"] for s in coordinator.data.services}
+        for svc_name in DEFAULT_SERVICES:
+            if svc_name in detected_names:
+                entities.append(
+                    OpenWrtServiceRestartButton(
+                        coordinator=coordinator,
+                        api=api,
+                        entry=entry,
+                        service_name=svc_name,
+                    )
+                )
+
+    async_add_entities(entities)
+    _LOGGER.debug("Added %d OpenWrt button entities", len(entities))
+
+
+class OpenWrtButtonEntity(ButtonEntity):
+    """A button that triggers an action directly on the router.
+
+    Unlike sensors and switches, buttons do not subscribe to the coordinator
+    because they have no persistent state to display.  They hold a reference
+    to the API client directly.
+    """
+
+    entity_description: OpenWrtButtonEntityDescription
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: OpenWrtCoordinator,
+        api: OpenWrtAPI,
+        entry: OpenWrtConfigEntry,
+        description: OpenWrtButtonEntityDescription,
+    ) -> None:
+        """Initialise the button entity.
+
+        Args:
+            coordinator: Coordinator (used for device_info and refresh after press).
+            api: API client for write operations.
+            entry: Config entry.
+            description: Entity description.
+        """
+        self.entity_description = description
+        self._coordinator = coordinator
+        self._api = api
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to group this entity under the router device card."""
+        router_info = self._coordinator.router_info
+        release = router_info.get("release", {})
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=router_info.get("hostname") or self._entry.title,
+            manufacturer="OpenWrt",
+            model=router_info.get("model", "OpenWrt Router"),
+            sw_version=release.get("version", ""),
+            configuration_url=(
+                f"{url_scheme_for(self._entry.data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL))}://"
+                f"{self._entry.data['host']}:{self._entry.data['port']}"
+            ),
+        )
+
+    async def async_press(self) -> None:
+        """Handle a button press.
+
+        Routes to the appropriate action based on button type:
+        - reload_wifi: Reload WiFi configuration
+        - check_updates: Check for available package updates
+        - perform_updates: Trigger package updates
+        - reboot: Reboot the router
+        """
+        button_key = self.entity_description.key
+        _LOGGER.debug(
+            "Button pressed: %s on %s",
+            button_key,
+            self._entry.data.get("host"),
+        )
+
+        if button_key == SUFFIX_RELOAD_WIFI:
+            await self._press_reload_wifi()
+        elif button_key == SUFFIX_CHECK_UPDATES:
+            await self._press_check_updates()
+        elif button_key == SUFFIX_PERFORM_UPDATES:
+            await self._press_perform_updates()
+        elif button_key == SUFFIX_REBOOT:
+            await self._press_reboot()
+        else:
+            _LOGGER.warning("Unknown button key: %s", button_key)
+
+    async def _press_reload_wifi(self) -> None:
+        """Handle reload WiFi button press."""
+        success = await self._api.reload_wifi()
+        if success:
+            _LOGGER.info(
+                "WiFi reloaded successfully on %s", self._entry.data.get("host")
+            )
+        else:
+            _LOGGER.warning(
+                "WiFi reload command was not confirmed by %s – "
+                "network.reload may not be available on this router",
+                self._entry.data.get("host"),
+            )
+
+        # Refresh coordinator data after reload (config may have changed)
+        await self._coordinator.async_request_refresh()
+
+    async def _press_reboot(self) -> None:
+        """Handle reboot button press.
+
+        No coordinator refresh afterwards: the router is on its way down and
+        every poll would only time out. The next scheduled poll picks the
+        router back up once it is reachable again.
+        """
+        _LOGGER.info("Rebooting %s", self._entry.data.get("host"))
+
+        try:
+            success = await self._api.reboot()
+        except Exception:
+            # A press must never raise into HA — SSH helpers can throw
+            # more than the OpenWrt* API errors.
+            _LOGGER.exception("Error rebooting %s", self._entry.data.get("host"))
+            return
+
+        if success:
+            _LOGGER.info("Reboot triggered on %s", self._entry.data.get("host"))
+        else:
+            _LOGGER.warning(
+                "Reboot was not accepted by %s – neither ubus system/reboot nor "
+                "the SSH fallback succeeded",
+                self._entry.data.get("host"),
+            )
+
+    async def _press_check_updates(self) -> None:
+        """Handle check for updates button press."""
+        _LOGGER.info(
+            "Checking for available updates on %s", self._entry.data.get("host")
+        )
+
+        try:
+            await self._api.get_available_updates()
+            # Trigger coordinator refresh — it will fetch updates_available itself
+            await self._coordinator.async_request_refresh()
+            updates = self._coordinator.data.updates_available or {}
+
+            update_count = len(updates.get("system", [])) + len(
+                updates.get("addons", [])
+            )
+            if update_count > 0:
+                _LOGGER.info(
+                    "Found %d available updates on %s: %d system, %d addons",
+                    update_count,
+                    self._entry.data.get("host"),
+                    len(updates.get("system", [])),
+                    len(updates.get("addons", [])),
+                )
+            else:
+                _LOGGER.info("No updates available on %s", self._entry.data.get("host"))
+        except Exception:
+            # A press must never raise into HA — SSH helpers can throw
+            # more than the OpenWrt* API errors.
+            _LOGGER.exception(
+                "Error checking for updates on %s", self._entry.data.get("host")
+            )
+
+    async def _press_perform_updates(self) -> None:
+        """Handle perform updates button press.
+
+        Note: This button should ideally be paired with a service selector
+        to choose between 'system', 'addons', or 'both' updates.
+        For now, we perform 'both' by default.
+        """
+        update_type = "both"  # TODO: Allow user to select via service call
+        _LOGGER.info(
+            "Initiating %s package updates on %s",
+            update_type,
+            self._entry.data.get("host"),
+        )
+
+        try:
+            result = await self._api.perform_update(update_type=update_type)
+            if result.get("status") == "initiated":
+                _LOGGER.info(
+                    "Update initiated on %s: %s",
+                    self._entry.data.get("host"),
+                    result.get("message"),
+                )
+            else:
+                _LOGGER.error(
+                    "Update failed on %s: %s",
+                    self._entry.data.get("host"),
+                    result.get("message"),
+                )
+        except Exception:
+            # A press must never raise into HA — SSH helpers can throw
+            # more than the OpenWrt* API errors.
+            _LOGGER.exception(
+                "Error performing updates on %s", self._entry.data.get("host")
+            )
+
+
+class OpenWrtServiceRestartButton(ButtonEntity):
+    """A button that restarts a single procd/rc service on the router."""
+
+    _attr_has_entity_name = False
+    _attr_device_class = ButtonDeviceClass.RESTART
+
+    _SERVICE_ICONS: ClassVar[dict[str, str]] = {
+        "dnsmasq": "mdi:dns",
+        "dropbear": "mdi:console-network",
+        "firewall": "mdi:wall-fire",
+        "network": "mdi:lan",
+        "uhttpd": "mdi:web",
+        "wpad": "mdi:wifi-lock",
+    }
+
+    def __init__(
+        self,
+        coordinator: OpenWrtCoordinator,
+        api: OpenWrtAPI,
+        entry: OpenWrtConfigEntry,
+        service_name: str,
+    ) -> None:
+        self._coordinator = coordinator
+        self._api = api
+        self._entry = entry
+        self._service_name = service_name
+        self._attr_unique_id = f"{entry.entry_id}_service_{service_name}_restart"
+        self._attr_name = f"Restart: {service_name}"
+        self._attr_icon = self._SERVICE_ICONS.get(service_name, "mdi:restart")
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        router_info = self._coordinator.router_info
+        release = router_info.get("release", {})
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=router_info.get("hostname") or self._entry.title,
+            manufacturer="OpenWrt",
+            model=router_info.get("model", "OpenWrt Router"),
+            sw_version=release.get("version", ""),
+            configuration_url=(
+                f"{url_scheme_for(self._entry.data.get(CONF_PROTOCOL, DEFAULT_PROTOCOL))}://"
+                f"{self._entry.data['host']}:{self._entry.data['port']}"
+            ),
+        )
+
+    async def async_press(self) -> None:
+        _LOGGER.info("Restarting service %s", self._service_name)
+        success = await self._api.control_service(self._service_name, "restart")
+        if success:
+            _LOGGER.info("Service %s restarted successfully", self._service_name)
+        else:
+            _LOGGER.warning("Failed to restart service %s", self._service_name)
+        await self._coordinator.async_request_refresh()

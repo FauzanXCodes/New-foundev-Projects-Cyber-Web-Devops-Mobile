@@ -1,0 +1,167 @@
+<div class="page-header">
+    <a href="/panel/nodes" class="btn btn-back"><i class="ti ti-chevron-left"></i> <%= t('common.backToList') %></a>
+</div>
+
+<% if (error) { %>
+<div class="alert alert-error" style="margin-bottom:16px;"><i class="ti ti-alert-circle"></i> <%= error %></div>
+<% } %>
+<div class="alert alert-error" id="nodeFormError" style="display:none;margin-bottom:16px;" role="alert">
+    <i class="ti ti-alert-circle"></i> <span id="nodeFormErrorText"></span>
+</div>
+
+<%
+const hysteriaDocsByLang = {
+    en: {
+        portHopping: 'https://v2.hysteria.network/docs/advanced/Port-Hopping/',
+        acme: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#tls',
+        acmeDnsConfig: 'https://v2.hysteria.network/docs/advanced/ACME-DNS-Config/',
+        stats: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#traffic-stats-api-http',
+        obfuscation: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#obfuscation',
+        masquerade: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#masquerade',
+        bandwidth: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#bandwidth',
+        speedTest: 'https://v2.hysteria.network/docs/advanced/Speed-Test/',
+        udp: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#udp',
+        sniff: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#protocol-sniffing',
+        quic: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#quic-parameters',
+        resolver: 'https://v2.hysteria.network/docs/advanced/Full-Server-Config/#resolver',
+        acl: 'https://v2.hysteria.network/docs/advanced/ACL/',
+    },
+    ru: {
+        portHopping: 'https://v2.hysteria.network/ru/docs/advanced/Port-Hopping/',
+        acme: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#tls',
+        acmeDnsConfig: 'https://v2.hysteria.network/ru/docs/advanced/ACME-DNS-Config/',
+        stats: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#api-http',
+        obfuscation: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#_2',
+        masquerade: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#_13',
+        bandwidth: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#_3',
+        speedTest: 'https://v2.hysteria.network/ru/docs/advanced/Speed-Test/',
+        udp: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#udp',
+        sniff: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#_11',
+        quic: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#quic',
+        resolver: 'https://v2.hysteria.network/ru/docs/advanced/Full-Server-Config/#_10',
+        acl: 'https://v2.hysteria.network/ru/docs/advanced/ACL/',
+    },
+};
+const hysteriaDocs = hysteriaDocsByLang[lang] || hysteriaDocsByLang.en || {};
+function docsHref(section) {
+    return hysteriaDocs[section] || '';
+}
+function escAttr(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+function renderDocsIcon(section) {
+    const href = docsHref(section);
+    if (!href) return '';
+    const label = escAttr(t('nodes.docsLink'));
+    return `<a class="docs-hint-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${label}" aria-label="${label}">ⓘ</a>`;
+}
+const acmeAdvancedEnabled = !!(
+    (node?.acme?.listenHost && node.acme.listenHost !== '0.0.0.0') ||
+    node?.acme?.type ||
+    node?.acme?.httpAltPort ||
+    node?.acme?.tlsAltPort ||
+    node?.acme?.dnsName ||
+    (node?.acme?.dnsConfig && Object.keys(node.acme.dnsConfig || {}).length > 0)
+);
+const bandwidthEnabled = !!(node?.bandwidth?.up || node?.bandwidth?.down || node?.ignoreClientBandwidth);
+const udpOptionsEnabled = !!(node?.disableUDP || node?.udpIdleTimeout);
+const sniffAdvancedEnabled = !!(
+    node?.sniff?.enabled ||
+    (node?.sniff?.timeout && node.sniff.timeout !== '2s') ||
+    node?.sniff?.rewriteDomain ||
+    (node?.sniff?.tcpPorts && node.sniff.tcpPorts !== '80,443,8000-9000') ||
+    (node?.sniff?.udpPorts && node.sniff.udpPorts !== '443,80,53')
+);
+const quicSectionEnabled = !!(
+    node?.quic?.enabled ||
+    (node?.quic?.initStreamReceiveWindow != null && Number(node.quic.initStreamReceiveWindow) !== 8388608) ||
+    (node?.quic?.maxStreamReceiveWindow != null && Number(node.quic.maxStreamReceiveWindow) !== 8388608) ||
+    (node?.quic?.initConnReceiveWindow != null && Number(node.quic.initConnReceiveWindow) !== 20971520) ||
+    (node?.quic?.maxConnReceiveWindow != null && Number(node.quic.maxConnReceiveWindow) !== 20971520) ||
+    (node?.quic?.maxIdleTimeout && node.quic.maxIdleTimeout !== '60s') ||
+    (node?.quic?.maxIncomingStreams != null && Number(node.quic.maxIncomingStreams) !== 256) ||
+    node?.quic?.disablePathMTUDiscovery
+);
+const aclSectionEnabled = node ? (node?.acl?.enabled !== false) : true;
+const sniffBaseEnabled = node?.sniff?.enable !== false;
+const aclDefaultInlineRules = ['reject(geoip:cn)', 'reject(geoip:private)'];
+const aclInlineRulesValue = (node?.aclRules && node.aclRules.length > 0)
+    ? node.aclRules.join('\n')
+    : aclDefaultInlineRules.join('\n');
+const sniDomainActive = !!String(node?.domain || '').trim();
+const sniVisibleInitially = node?.type !== 'xray' && !sniDomainActive;
+const outboundsAclReason = node?.type === 'hysteria' && node?.acl?.enabled === false ? 'disabled' : '';
+const outboundsAclLocked = outboundsAclReason === 'disabled';
+
+// Expose to EJS partials (included templates run in separate scope)
+Object.assign(locals, {
+    renderDocsIcon, docsHref, escAttr, hysteriaDocs,
+    acmeAdvancedEnabled, bandwidthEnabled, udpOptionsEnabled,
+    sniffAdvancedEnabled, quicSectionEnabled, aclSectionEnabled,
+    sniffBaseEnabled, aclDefaultInlineRules, aclInlineRulesValue,
+    sniDomainActive, sniVisibleInitially, outboundsAclReason, outboundsAclLocked,
+});
+%>
+
+<div class="card">
+    <div class="card-header">
+        <h2><%= node?._id ? t('nodes.editNode') : t('nodes.newNode') %></h2>
+    </div>
+    <div class="card-body">
+        <form id="nodeForm" method="POST" action="/panel/nodes<%= node?._id ? '/' + node._id : '' %>" class="form">
+            <input type="hidden" name="useTlsFiles" value="<%= node?.useTlsFiles ? '1' : '0' %>">
+
+            <%# Every pane stays in the DOM: hidden fields are still submitted and
+                the server parses them unconditionally. %>
+            <div class="nf-tabbed" id="nfTabbed" data-node-type="<%= node?.type || 'hysteria' %>">
+                <%- include('partials/node-form/rail') %>
+
+                <div class="nf-panes">
+                    <%- include('partials/node-form/basic') %>
+
+                    <%- include('partials/node-form/network') %>
+
+                    <%- include('partials/node-form/hysteria') %>
+
+                    <%- include('partials/node-form/xray') %>
+
+                    <%- include('partials/node-form/virtual') %>
+
+                    <%- include('partials/node-form/cdn') %>
+
+                    <%- include('partials/node-form/access') %>
+
+                    <%- include('partials/node-form/limits') %>
+                </div>
+            </div>
+
+            <div class="nf-savebar">
+                <span class="nf-savebar__state" id="nodeFormDirty" style="display:none;">
+                    <span class="nf-dirty-dot"></span>
+                    <%= t('nodes.unsavedChanges') %>
+                </span>
+                <label class="checkbox-label">
+                    <input type="checkbox" name="active" <%= node?.active !== false ? 'checked' : '' %>>
+                    <span class="checkbox-text"><%= t('nodes.nodeActive') %></span>
+                </label>
+                <div class="nf-savebar__actions">
+                    <a href="/panel/nodes" class="btn"><%= t('common.cancel') %></a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="ti <%= node?._id ? 'ti-device-floppy' : 'ti-plus' %>"></i>
+                        <%= node?._id ? t('nodes.saveNode') : t('nodes.createNode') %>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<%- include('partials/node-form/management') %>
+
+<%- include('partials/node-form/probes') %>
+
+<%- include('partials/node-form/scripts') %>

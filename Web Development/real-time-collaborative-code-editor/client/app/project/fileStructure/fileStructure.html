@@ -1,0 +1,47 @@
+<script type="text/ng-template" id="fileStructureTree">
+  <div class='{{ file.type }}'>
+    <!-- Folder -->
+    <div class='folder-container' ng-if="file.type === 'folder'">
+      <div class="fa fa-cog">
+        <ul class="hidden-fs-menu">
+          <li ng-click="">Rename</li>
+          <li ng-click="fs.openMoveFileModal(file.name, file.path, file.type)">Move {{file.type}}</li>
+          <li ng-click="">Delete {{file.type}}</li>
+        </ul>
+      </div>
+      <div class='inner-container file-level-{{file.level}}'>
+        <span class='glyphicon glyphicon-{{ file.type }} glyphicon-{{ file.type }}-open' aria-hidden='true'></span>
+        <span>{{ file.name }}</span>
+      </div>
+    </div>
+    <!-- File -->
+    <div class='file-container' ng-if="file.type === 'file'">
+      <div class="fa fa-cog">
+        <ul class="hidden-fs-menu">
+          <li ng-click="">Rename</li>
+          <li ng-click="fs.openMoveFileModal(file.name, file.path, file.type)">Move {{file.type}}</li>
+          <li ng-click="">Delete {{file.type}}</li>
+        </ul>
+      </div>
+      <div class="inner-container file-level-{{file.level}}">
+        <a ui-sref='document({ documentPath: file.path })'>
+          <span class='glyphicon glyphicon-{{ file.type }} glyphicon-{{ file.type }}-open' aria-hidden='true'></span>
+          <span>{{ file.name }}</span>
+        </a>
+      </div>
+    </div>
+    <!-- Recursive File Listing -->
+    <ul ng-if="Object.keys(file.files).length !== 0" class="nested-folder">
+      <li  ng-repeat="file in file.files" ng-include="'fileStructureTree'">
+      </li>
+    </ul>
+  </div>
+</script>
+
+<!-- file structure uses vm from projectController -->
+<div ng-controller="FileStructureController as fs">
+  <h4 class='project-file-structure-header'>Files</h4>
+  <ul class='project-file-structure-list'>
+    <li ng-repeat="file in fs.files" ng-include="'fileStructureTree'"></li>
+  </ul>
+</div>

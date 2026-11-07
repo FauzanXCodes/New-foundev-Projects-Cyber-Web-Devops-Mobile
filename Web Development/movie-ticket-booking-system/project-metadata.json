@@ -1,0 +1,14 @@
+﻿{
+    "id":  "movie-ticket-booking-system",
+    "name":  "Movie Ticket Booking System",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/michalzaq12/movie-ticket-booking-system",
+    "stack":  "Java Spring; MySQL",
+    "goal":  "Seat-map selection, showtime scheduling, booking lock during payment and cancellation.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "frontend/index.html",
+    "expectedFileCount":  39,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  82
+}

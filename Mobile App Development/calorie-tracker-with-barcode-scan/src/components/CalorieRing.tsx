@@ -1,0 +1,351 @@
+import { View, Text, StyleSheet } from "react-native"
+import { Gesture, GestureDetector } from "react-native-gesture-handler"
+import Svg, { Rect } from "react-native-svg"
+import { useTheme } from "@/hooks/useTheme"
+import { useThemedStyles } from "@/hooks/useThemedStyles"
+import { formatThousands } from "@/utils/format"
+import { getSwipeDirection } from "@/utils/swipe"
+import { computeMacroRatios } from "@/utils/nutrients"
+import { chipTint } from "@/theme.helpers"
+import { spacing, fonts, type ColorPalette, radii } from "@/theme"
+
+type Props = {
+  consumed: number
+  goal: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  size?: number
+  onSwipeLeft?: () => void
+  onSwipeRight?: () => void
+}
+
+export function CalorieRing({
+  consumed,
+  goal,
+  protein = 0,
+  carbs = 0,
+  fat = 0,
+  size = 132,
+  onSwipeLeft,
+  onSwipeRight,
+}: Props) {
+  const { colors } = useTheme()
+  const styles = useThemedStyles(createStyles)
+
+  const swipePan = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX([-15, 15])
+    .failOffsetY([-12, 12])
+    .onEnd((event) => {
+      const direction = getSwipeDirection(event.translationX, event.translationY)
+      if (direction === "left") onSwipeLeft?.()
+      else if (direction === "right") onSwipeRight?.()
+    })
+
+  const remaining = Math.max(goal - consumed, 0)
+  const over = goal > 0 && consumed > goal ? consumed - goal : 0
+  const progress = goal > 0 ? Math.min(consumed / goal, 1) : 0
+  const scale = size / 132
+  const strokeWidth = Math.max(Math.round(10 * scale), 8)
+
+  // Square ring rendered with SVG for pixel-perfect corners. The previous
+  // four-View strip approach owned one corner per strip, which left a
+  // sub-pixel gap or double-paint at the seam when a macro segment ended
+  // exactly on a corner. SVG's stroke follows the centerline continuously,
+  // so the corners are a single miter join with no seam, and the dash
+  // pattern can be offset precisely for the macro split.
+  const T = strokeWidth
+  const S = size
+  const inset = T / 2
+  const rectW = Math.max(S - T, 0)
+  const rectH = Math.max(S - T, 0)
+  const perimeter = 2 * (rectW + rectH)
+  const fillTotal = perimeter * progress
+
+  const { macroKcal: macroSumKcal, proteinPct, carbsPct } = computeMacroRatios(protein, carbs, fat)
+
+  // Macro segments along the perimeter. When no macros are logged the whole
+  // fill is breakfast blue so the user still sees progress.
+  const segments =
+    macroSumKcal > 0
+      ? [
+          { len: fillTotal * (proteinPct / 100), color: colors.breakfast },
+          { len: fillTotal * (carbsPct / 100), color: colors.lunch },
+          {
+            len: fillTotal - fillTotal * (proteinPct / 100) - fillTotal * (carbsPct / 100),
+            color: colors.dinner,
+          },
+        ].filter((s) => s.len > 0.5)
+      : fillTotal > 0.5
+        ? [{ len: fillTotal, color: colors.breakfast }]
+        : []
+
+  let offset = 0
+  const svgSegments = segments.map((seg) => {
+    const o = offset
+    offset += seg.len
+    return { ...seg, offset: o }
+  })
+
+  const innerSize = Math.max(size - 2 * strokeWidth - 6, 0)
+
+  return (
+    <View style={styles.container}>
+      <GestureDetector gesture={swipePan}>
+        <View
+          style={[styles.ringWrap, { width: size, height: size }]}
+          accessibilityLabel="Daily calories. Swipe left for next day, right for previous day."
+          accessibilityHint="Swipes left or right to change the selected day"
+        >
+          <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={styles.gaugeSvg}>
+            <Rect
+              x={inset}
+              y={inset}
+              width={rectW}
+              height={rectH}
+              fill="none"
+              stroke={chipTint(colors.primary, 0.18)}
+              strokeWidth={T}
+            />
+            {svgSegments.map((seg, index) => (
+              <Rect
+                key={index}
+                x={inset}
+                y={inset}
+                width={rectW}
+                height={rectH}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={T}
+                strokeDasharray={`${seg.len} ${perimeter - seg.len}`}
+                strokeDashoffset={-seg.offset}
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+                strokeMiterlimit={4}
+              />
+            ))}
+          </Svg>
+
+          <View style={[styles.ringCenter, { width: innerSize, height: innerSize }]}>
+            <Text
+              maxFontSizeMultiplier={1.15}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+              style={[
+                styles.remainingValue,
+                over > 0 && { color: colors.danger },
+                { fontSize: Math.min(26 * scale, 30) },
+              ]}
+            >
+              {over > 0
+                ? formatThousands(Math.round(over))
+                : formatThousands(Math.round(remaining))}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={[styles.remainingLabel, { fontSize: Math.max(Math.round(11 * scale), 10) }]}
+            >
+              {over > 0 ? "kcal over" : "kcal left"}
+            </Text>
+            {over > 0 ? (
+              <Text
+                numberOfLines={1}
+                style={{
+                  fontSize: 10 * scale,
+                  fontFamily: fonts.mono,
+                  color: colors.textMuted,
+                  letterSpacing: 0.3,
+                  marginTop: 2,
+                }}
+              >
+                Adjust tomorrow
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      </GestureDetector>
+
+      <View style={styles.statsRow}>
+        <View
+          style={[
+            styles.statPill,
+            { backgroundColor: chipTint(colors.primary, 0.14), borderColor: colors.primary },
+          ]}
+        >
+          <Text style={styles.statValue}>{formatThousands(Math.round(consumed))}</Text>
+          <Text style={styles.statLabel}>EATEN</Text>
+        </View>
+        <Text style={styles.separator}>·</Text>
+        <View
+          style={[
+            styles.statPill,
+            {
+              backgroundColor: chipTint(colors.success ?? colors.primary, 0.14),
+              borderColor: colors.success ?? colors.primary,
+            },
+          ]}
+        >
+          <Text style={styles.statValue}>{formatThousands(Math.round(goal))}</Text>
+          <Text style={styles.statLabel}>GOAL</Text>
+        </View>
+      </View>
+
+      <View style={styles.legendRow}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.breakfast }]} />
+          <Text style={styles.legendLabel}>PROT</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.lunch }]} />
+          <Text style={styles.legendLabel}>CARB</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.dinner }]} />
+          <Text style={styles.legendLabel}>FAT</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: colors.snack }]} />
+          <Text style={styles.legendLabel}>SNCK</Text>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+const createStyles = (colors: ColorPalette) =>
+  StyleSheet.create({
+    container: {
+      padding: spacing.lg,
+      paddingBottom: spacing.sm,
+      alignItems: "center",
+      borderRadius: radii.none,
+      borderWidth: 0,
+      boxShadow: "none",
+      elevation: 0,
+    },
+    ringWrap: {
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+    },
+    gaugeSvg: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+    },
+    gaugeTrack: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: radii.none,
+      boxShadow: "none",
+      elevation: 0,
+    },
+    gaugeStrip: {
+      position: "absolute",
+      overflow: "hidden",
+    },
+    ringCenter: {
+      position: "absolute",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    remainingValue: {
+      fontSize: 26,
+      fontWeight: "800",
+      color: colors.text,
+      letterSpacing: 0.4,
+      fontFamily: fonts.mono,
+      fontVariant: ["tabular-nums"],
+      textTransform: "uppercase",
+      textAlign: "center",
+    },
+    remainingLabel: {
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 2,
+      fontWeight: "700",
+      fontFamily: fonts.mono,
+      fontVariant: ["tabular-nums"],
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    statsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.md,
+      marginTop: spacing.md,
+      borderRadius: radii.none,
+    },
+    statPill: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 6,
+      borderWidth: 1,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    legendRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 10,
+      flexWrap: "wrap",
+      paddingHorizontal: 8,
+    },
+    legendItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    legendDot: {
+      width: 10,
+      height: 10,
+      borderWidth: 1,
+      borderColor: "rgba(0,0,0,0.25)",
+    },
+    legendLabel: {
+      fontSize: 10,
+      fontWeight: "700",
+      fontFamily: fonts.mono,
+      color: colors.textMuted,
+      letterSpacing: 0.6,
+    },
+    statValue: {
+      fontSize: 16,
+      fontWeight: "800",
+      color: colors.text,
+      fontFamily: fonts.mono,
+      fontVariant: ["tabular-nums"],
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    statLabel: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontWeight: "700",
+      fontFamily: fonts.mono,
+      fontVariant: ["tabular-nums"],
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+    },
+    separator: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.textMuted,
+      fontFamily: fonts.mono,
+    },
+    dot: {
+      width: 4,
+      height: 4,
+      borderRadius: radii.none,
+      backgroundColor: colors.border,
+      borderWidth: 0,
+    },
+  })

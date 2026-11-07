@@ -1,0 +1,14 @@
+﻿{
+    "id":  "student-buy-sell-marketplace-app",
+    "name":  "Student Buy/Sell Marketplace App",
+    "domain":  "Mobile App Development",
+    "repository":  "https://github.com/jcasa28/PanthersMarketplace",
+    "stack":  "Flutter; Firebase Storage",
+    "goal":  "Post items with photos, chat with seller, category filters and campus-only scope.",
+    "license":  "Unknown",
+    "licenseWarning":  null,
+    "entry":  "AuthViewModel.swift",
+    "expectedFileCount":  38,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  79
+}

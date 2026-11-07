@@ -1,0 +1,991 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A dependency-free AWS FinOps planning workbench for modelling multi-service sample cloud costs, budget health, scenarios, and exports."
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#0b1119" />
+    <link rel="manifest" href="site.webmanifest" />
+    <link rel="icon" href="icons/cloud-cost-calculator.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://lorenzodarioben-lgtm.github.io/cloud-cost-calculator/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Cloud Cost Calculator" />
+    <meta
+      property="og:description"
+      content="Plan sample AWS spend, inspect budget health, compare scenarios, and export estimates."
+    />
+    <meta property="og:url" content="https://lorenzodarioben-lgtm.github.io/cloud-cost-calculator/" />
+    <title>Cloud Cost Calculator</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var saved = localStorage.getItem('cloud-cost-calculator-theme');
+          var pref = saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system';
+          var prefersDark =
+            pref === 'dark' ||
+            (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var theme = prefersDark ? 'dark' : 'light';
+          var root = document.documentElement;
+          root.setAttribute('data-theme', theme);
+          root.setAttribute('data-theme-pref', pref);
+          root.style.colorScheme = theme;
+        } catch (e) {
+          /* default styling applies */
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="src/styles.css" />
+    <script type="module" src="src/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#calculator">Skip to calculator</a>
+
+    <header class="app-bar" aria-label="Site header">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true">AWS</span>
+        <span class="brand-name">Cloud Cost Calculator</span>
+      </a>
+
+      <nav class="app-nav" aria-label="Page navigation">
+        <a href="#calculator">Calculator</a>
+        <a href="#scenarios-title">Scenarios</a>
+        <a href="docs/pricing-assumptions.md">Assumptions</a>
+      </nav>
+
+      <div class="theme-toggle" role="group" aria-label="Colour theme" data-theme-toggle>
+        <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+    </header>
+
+    <main class="page-shell" id="top">
+      <section class="page-header">
+        <p class="kicker">AWS FinOps planning workbench</p>
+        <h1 class="page-title">Plan cloud spend before the bill lands.</h1>
+        <p class="page-subtitle">
+          Model EC2, EBS, S3, RDS, and data transfer across regions, track budget health, compare
+          scenarios, and export the result.
+        </p>
+        <p class="disclaimer-chip">Sample pricing for learning. Not a live or official AWS quote.</p>
+      </section>
+
+      <section class="calculator-section" id="calculator" aria-label="Cloud cost calculator">
+        <div class="section-intro">
+          <h2>Build a monthly estimate</h2>
+          <p>Pick a workload, tune the sample rates, and the forecast updates as you type.</p>
+        </div>
+
+        <div class="calculator-grid">
+          <form class="card form-card" data-calculator-form>
+            <div class="card-heading">
+              <div>
+                <p class="section-kicker">Configuration</p>
+                <h3>Workload inputs</h3>
+              </div>
+            </div>
+
+            <div class="field field-full estimate-name-field">
+              <label for="estimate-name">Estimate name</label>
+              <input
+                id="estimate-name"
+                name="estimate-name"
+                type="text"
+                maxlength="60"
+                autocomplete="off"
+                placeholder="Estimate"
+                aria-describedby="estimate-name-hint"
+              />
+              <p id="estimate-name-hint" class="field-hint">
+                Used for local saves and download names. It is not included in share links.
+              </p>
+            </div>
+
+            <div class="preset-bar">
+              <span class="preset-bar-label" id="preset-bar-label">Start from a preset</span>
+              <div class="preset-buttons" role="group" aria-labelledby="preset-bar-label" data-preset-buttons></div>
+            </div>
+
+            <div class="field field-full region-field">
+              <label for="region">Sample region</label>
+              <select id="region" name="region" aria-describedby="region-hint"></select>
+              <p id="region-hint" class="field-hint">
+                Curated sample rates for this region, not a live AWS quote.
+              </p>
+            </div>
+
+            <div class="form-section planning-section">
+              <div class="section-heading">
+                <span class="section-number">07</span>
+                <div>
+                  <h4>Planning profile</h4>
+                  <p>Make the assumptions and review context explicit.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="planning-horizon">Planning horizon (months)</label>
+                  <input
+                    id="planning-horizon"
+                    name="planning-horizon"
+                    type="number"
+                    min="1"
+                    max="60"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="monthly-growth">Monthly cost change (%)</label>
+                  <input
+                    id="monthly-growth"
+                    name="monthly-growth"
+                    type="number"
+                    min="-20"
+                    max="20"
+                    step="0.1"
+                    inputmode="decimal"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="contingency-percent">Contingency buffer (%)</label>
+                  <input
+                    id="contingency-percent"
+                    name="contingency-percent"
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.5"
+                    inputmode="decimal"
+                    aria-describedby="contingency-hint"
+                  />
+                </div>
+
+                <div class="planning-subsection field-full">
+                  <h5>Commitment and rate sensitivity</h5>
+                  <p>Optional what-if assumptions for eligible EC2 and RDS usage. They do not fetch prices or recommend a purchase.</p>
+                </div>
+
+                <div class="field">
+                  <label for="rate-variance-percent">Rate sensitivity (+/- %)</label>
+                  <input
+                    id="rate-variance-percent"
+                    name="rate-variance-percent"
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.5"
+                    inputmode="decimal"
+                    aria-describedby="commitment-risk-hint"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="ec2-coverage-percent">EC2 commitment coverage (%)</label>
+                  <input
+                    id="ec2-coverage-percent"
+                    name="ec2-coverage-percent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    inputmode="decimal"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="ec2-discount-percent">EC2 discount on covered cost (%)</label>
+                  <input
+                    id="ec2-discount-percent"
+                    name="ec2-discount-percent"
+                    type="number"
+                    min="0"
+                    max="80"
+                    step="1"
+                    inputmode="decimal"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="rds-coverage-percent">RDS commitment coverage (%)</label>
+                  <input
+                    id="rds-coverage-percent"
+                    name="rds-coverage-percent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    inputmode="decimal"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="rds-discount-percent">RDS discount on covered cost (%)</label>
+                  <input
+                    id="rds-discount-percent"
+                    name="rds-discount-percent"
+                    type="number"
+                    min="0"
+                    max="80"
+                    step="1"
+                    inputmode="decimal"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="estimate-owner">Estimate owner</label>
+                  <input id="estimate-owner" name="estimate-owner" type="text" maxlength="80" autocomplete="organization" />
+                </div>
+
+                <div class="field">
+                  <label for="cost-center">Cost centre</label>
+                  <input id="cost-center" name="cost-center" type="text" maxlength="60" autocomplete="off" />
+                </div>
+
+                <div class="field">
+                  <label for="estimate-notes">Review note</label>
+                  <textarea id="estimate-notes" name="estimate-notes" maxlength="1000" rows="3" autocomplete="off"></textarea>
+                </div>
+
+                <p id="contingency-hint" class="field-hint field-full">
+                  The buffer is a visible planning reserve, not an AWS service or a promise about future pricing.
+                  Use a negative monthly cost change to model a planned reduction.
+                  Owner, cost centre, and review note travel with JSON exports and share links; leave them blank if sensitive.
+                </p>
+                <p id="commitment-risk-hint" class="field-hint field-full">
+                  Coverage applies only to eligible modeled compute. Sensitivity varies the resulting monthly plan above and below the base case.
+                </p>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="section-heading">
+                <span class="section-number">01</span>
+                <div>
+                  <h4>EC2 compute</h4>
+                  <p>Estimate monthly instance runtime.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field field-full">
+                  <label for="ec2-instance">Instance type</label>
+                  <select id="ec2-instance" name="ec2-instance"></select>
+                </div>
+
+                <div class="field">
+                  <label for="ec2-quantity">Instances</label>
+                  <input
+                    id="ec2-quantity"
+                    name="ec2-quantity"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="ec2-hours">Monthly runtime hours</label>
+                  <input
+                    id="ec2-hours"
+                    name="ec2-hours"
+                    type="number"
+                    min="0"
+                    max="744"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+
+                <div class="field field-full">
+                  <label for="ec2-rate">EC2 rate / hour (USD)</label>
+                  <input id="ec2-rate" name="ec2-rate" type="number" min="0" max="10" step="0.0001" inputmode="decimal" />
+                </div>
+              </div>
+
+              <div class="preset-row" aria-label="Runtime presets">
+                <button type="button" data-hours-preset="40">Development · 40h</button>
+                <button type="button" data-hours-preset="160">Part-time · 160h</button>
+                <button type="button" data-hours-preset="260">Business hours · 260h</button>
+                <button type="button" data-hours-preset="730">Always-on · 730h</button>
+              </div>
+            </div>
+
+            <div class="form-section" data-service-section="ebs">
+              <div class="section-heading">
+                <span class="section-number">02</span>
+                <div>
+                  <h4>EBS storage</h4>
+                  <p>Estimate provisioned block storage for the month.</p>
+                </div>
+                <label class="service-toggle">
+                  <input type="checkbox" id="ebs-enabled" name="ebs-enabled" checked />
+                  <span>Include</span>
+                </label>
+              </div>
+
+              <div class="field-grid" data-service-fields="ebs">
+                <div class="field field-full">
+                  <label for="storage-type">Volume type</label>
+                  <select id="storage-type" name="storage-type"></select>
+                </div>
+
+                <div class="field">
+                  <label for="ebs-volumes">Volumes</label>
+                  <input
+                    id="ebs-volumes"
+                    name="ebs-volumes"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="storage-gb">Storage per volume (GB)</label>
+                  <input id="storage-gb" name="storage-gb" type="number" min="0" max="16384" step="1" inputmode="numeric" />
+                </div>
+
+                <div class="field field-full">
+                  <label for="storage-rate">EBS rate / GB-month (USD)</label>
+                  <input id="storage-rate" name="storage-rate" type="number" min="0" max="10" step="0.001" inputmode="decimal" />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section" data-service-section="s3">
+              <div class="section-heading">
+                <span class="section-number">03</span>
+                <div>
+                  <h4>S3 object storage</h4>
+                  <p>Optional. Simplified storage and request model.</p>
+                </div>
+                <label class="service-toggle">
+                  <input type="checkbox" id="s3-enabled" name="s3-enabled" />
+                  <span>Include</span>
+                </label>
+              </div>
+
+              <div class="field-grid" data-service-fields="s3">
+                <div class="field field-full">
+                  <label for="s3-class">Storage class</label>
+                  <select id="s3-class" name="s3-class"></select>
+                </div>
+
+                <div class="field">
+                  <label for="s3-storage">Storage (GB)</label>
+                  <input id="s3-storage" name="s3-storage" type="number" min="0" max="1000000" step="1" inputmode="numeric" />
+                </div>
+
+                <div class="field">
+                  <label for="s3-rate">S3 rate / GB-month (USD)</label>
+                  <input id="s3-rate" name="s3-rate" type="number" min="0" max="10" step="0.0001" inputmode="decimal" />
+                </div>
+
+                <div class="field">
+                  <label for="s3-requests">Monthly requests</label>
+                  <input
+                    id="s3-requests"
+                    name="s3-requests"
+                    type="number"
+                    min="0"
+                    max="10000000000"
+                    step="1000"
+                    inputmode="numeric"
+                    aria-describedby="s3-requests-hint"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="s3-request-rate">Request rate / 1,000 (USD)</label>
+                  <input id="s3-request-rate" name="s3-request-rate" type="number" min="0" max="1" step="0.0001" inputmode="decimal" />
+                </div>
+
+                <p id="s3-requests-hint" class="field-hint field-full">
+                  Requests use one blended GET/PUT sample rate per 1,000 requests. Real S3 prices GET,
+                  PUT, and other request types separately.
+                </p>
+              </div>
+            </div>
+
+            <div class="form-section" data-service-section="rds">
+              <div class="section-heading">
+                <span class="section-number">04</span>
+                <div>
+                  <h4>RDS database</h4>
+                  <p>Optional. Instance runtime plus database storage.</p>
+                </div>
+                <label class="service-toggle">
+                  <input type="checkbox" id="rds-enabled" name="rds-enabled" />
+                  <span>Include</span>
+                </label>
+              </div>
+
+              <div class="field-grid" data-service-fields="rds">
+                <div class="field">
+                  <label for="rds-engine">Engine</label>
+                  <select id="rds-engine" name="rds-engine">
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                    <option value="mariadb">MariaDB</option>
+                    <option value="sqlserver">SQL Server</option>
+                    <option value="oracle">Oracle</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="rds-class">Instance class</label>
+                  <select id="rds-class" name="rds-class"></select>
+                </div>
+
+                <div class="field">
+                  <label for="rds-quantity">Instances</label>
+                  <input id="rds-quantity" name="rds-quantity" type="number" min="1" max="100" step="1" inputmode="numeric" />
+                </div>
+
+                <div class="field">
+                  <label for="rds-hours">Monthly runtime hours</label>
+                  <input id="rds-hours" name="rds-hours" type="number" min="0" max="744" step="1" inputmode="numeric" />
+                </div>
+
+                <div class="field">
+                  <label for="rds-rate">Instance rate / hour (USD)</label>
+                  <input id="rds-rate" name="rds-rate" type="number" min="0" max="10" step="0.0001" inputmode="decimal" />
+                </div>
+
+                <div class="field">
+                  <label for="rds-storage">Database storage (GB)</label>
+                  <input id="rds-storage" name="rds-storage" type="number" min="0" max="16384" step="1" inputmode="numeric" />
+                </div>
+
+                <div class="field field-full">
+                  <label for="rds-storage-rate">Storage rate / GB-month (USD)</label>
+                  <input id="rds-storage-rate" name="rds-storage-rate" type="number" min="0" max="10" step="0.0001" inputmode="decimal" />
+                </div>
+
+                <p class="field-hint field-full">
+                  Sample model prices instance runtime and storage only. It excludes backups,
+                  snapshots, Multi-AZ duplication, provisioned I/O, data transfer, and commercial
+                  engine licensing.
+                </p>
+              </div>
+            </div>
+
+            <div class="form-section" data-service-section="dataTransfer">
+              <div class="section-heading">
+                <span class="section-number">05</span>
+                <div>
+                  <h4>Data transfer</h4>
+                  <p>Optional. Simplified outbound (egress) estimate.</p>
+                </div>
+                <label class="service-toggle">
+                  <input type="checkbox" id="dataTransfer-enabled" name="dataTransfer-enabled" />
+                  <span>Include</span>
+                </label>
+              </div>
+
+              <div class="field-grid" data-service-fields="dataTransfer">
+                <div class="field">
+                  <label for="dt-gb">Outbound (GB / month)</label>
+                  <input id="dt-gb" name="dt-gb" type="number" min="0" max="1000000" step="1" inputmode="numeric" />
+                </div>
+
+                <div class="field">
+                  <label for="dt-rate">Rate / GB (USD)</label>
+                  <input id="dt-rate" name="dt-rate" type="number" min="0" max="10" step="0.0001" inputmode="decimal" />
+                </div>
+
+                <p class="field-hint field-full">
+                  Flat per-GB sample for internet egress. Real AWS transfer pricing is tiered and
+                  depends on destination and service; inbound and in-region transfer are excluded.
+                </p>
+              </div>
+            </div>
+
+            <div class="form-section" data-service-section="additional">
+              <div class="section-heading">
+                <span class="section-number">06</span>
+                <div>
+                  <h4>Other AWS services</h4>
+                  <p>Optional monthly allowance for services outside this sample model.</p>
+                </div>
+                <label class="service-toggle">
+                  <input type="checkbox" id="additional-enabled" name="additional-enabled" />
+                  <span>Include</span>
+                </label>
+              </div>
+
+              <div class="field-grid" data-service-fields="additional">
+                <div class="field">
+                  <label for="additional-label">Allowance label</label>
+                  <input
+                    id="additional-label"
+                    name="additional-label"
+                    type="text"
+                    maxlength="60"
+                    autocomplete="off"
+                    placeholder="CloudWatch, support, backups"
+                  />
+                </div>
+
+                <div class="field">
+                  <label for="additional-cost">Monthly allowance (USD)</label>
+                  <input
+                    id="additional-cost"
+                    name="additional-cost"
+                    type="number"
+                    min="0"
+                    max="1000000"
+                    step="0.01"
+                    inputmode="decimal"
+                  />
+                </div>
+
+                <p class="field-hint field-full">
+                  Use this for services the workbench does not model. Add a transparent allowance
+                  rather than treating this simplified estimate as a complete bill.
+                </p>
+              </div>
+            </div>
+
+            <div class="form-section budget-section">
+              <div class="section-heading">
+                <span class="section-number section-number--budget">$</span>
+                <div>
+                  <h4>Budget guardrail</h4>
+                  <p>Set the maximum monthly spend you want to stay under.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field field-full">
+                  <label for="budget">Monthly budget (USD)</label>
+                  <input id="budget" name="budget" type="number" min="0" max="10000000" step="1" inputmode="decimal" />
+                </div>
+              </div>
+
+              <div class="actions">
+                <button class="reset-button" type="button" data-reset>Reset defaults</button>
+                <button class="reset-button" type="button" data-undo-reset hidden>Undo reset</button>
+              </div>
+            </div>
+          </form>
+
+          <aside class="card result-card" data-result-card data-status="healthy" aria-label="Estimate forecast">
+            <p class="sr-only" data-estimate-update role="status" aria-atomic="true"></p>
+            <div class="card-heading result-heading">
+              <div>
+                <p class="section-kicker">Forecast</p>
+                <h3>Monthly estimate</h3>
+              </div>
+              <span class="currency-tag">USD</span>
+            </div>
+
+            <div class="total-block">
+              <p class="total-label">Estimated monthly total</p>
+              <p class="total-value" data-total>$0.00</p>
+              <p class="total-annual"><span data-annual>$0.00</span> per year</p>
+              <p class="total-buffer" data-contingency-summary hidden></p>
+            </div>
+
+            <section class="commitment-impact" data-commitment-impact hidden aria-labelledby="commitment-impact-title">
+              <div>
+                <p class="section-kicker">Commitment impact</p>
+                <h3 id="commitment-impact-title">Net cost, with assumptions shown</h3>
+              </div>
+              <dl>
+                <div><dt>Gross modeled plan</dt><dd data-commitment-gross>$0.00</dd></div>
+                <div><dt>Modeled saving</dt><dd data-commitment-savings>$0.00</dd></div>
+                <div><dt>Commitment-adjusted plan</dt><dd data-commitment-net>$0.00</dd></div>
+              </dl>
+              <p data-commitment-summary></p>
+            </section>
+
+            <dl class="report-context" data-report-context hidden></dl>
+
+            <ul class="line-items" data-line-items></ul>
+
+            <section class="breakdown" aria-labelledby="breakdown-title">
+              <h4 id="breakdown-title" class="breakdown-title">Cost breakdown</h4>
+              <p class="breakdown-empty" data-breakdown-empty hidden>
+                Enable a service with usage to see the cost breakdown.
+              </p>
+              <div class="breakdown-body" data-breakdown-body>
+                <div class="breakdown-chart" data-breakdown-chart></div>
+                <ul class="breakdown-legend" data-breakdown-legend></ul>
+              </div>
+            </section>
+
+            <div class="budget-health" aria-label="Budget health">
+              <div class="health-head">
+                <span class="status-badge" data-status-badge>Healthy</span>
+                <span class="health-percent" data-budget-percent>—</span>
+              </div>
+              <div
+                class="progress"
+                role="progressbar"
+                aria-label="Budget used"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+                aria-valuetext="No budget set"
+                data-progress
+              >
+                <span class="progress-fill" data-progress-fill></span>
+              </div>
+              <p class="budget-message" data-budget-message aria-live="polite"></p>
+              <div class="health-grid">
+                <div>
+                  <span>Monthly budget</span>
+                  <strong data-budget-amount>$0.00</strong>
+                </div>
+                <div>
+                  <span data-remaining-label>Remaining</span>
+                  <strong data-remaining>$0.00</strong>
+                </div>
+              </div>
+            </div>
+
+            <section class="recommendations" aria-label="Cost recommendations">
+              <h4>Recommendations</h4>
+              <ul class="recommendation-list" data-recommendations></ul>
+            </section>
+
+            <section class="savings-plan" aria-labelledby="savings-plan-title">
+              <h4 id="savings-plan-title">Savings target</h4>
+              <p class="savings-summary" data-savings-summary aria-live="polite"></p>
+              <ul class="savings-targets" data-savings-targets></ul>
+            </section>
+
+            <div class="mini-dashboard" aria-label="Estimate summary labels">
+              <span data-region-tag>us-east-1</span>
+              <span>Linux/Unix</span>
+              <span>Sample pricing</span>
+            </div>
+
+            <p class="pricing-note" data-pricing-note></p>
+          </aside>
+        </div>
+
+        <div class="workspace">
+          <section class="card panel scenarios-panel" aria-labelledby="scenarios-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Scenarios</p>
+                <h3 id="scenarios-title">Saved scenarios</h3>
+              </div>
+              <div class="field scenario-filter-field">
+                <label class="sr-only" for="scenario-filter">Filter saved scenarios by decision status</label>
+                <select id="scenario-filter" name="scenario-filter"></select>
+              </div>
+            </div>
+
+            <form class="scenario-save" data-scenario-form>
+              <div class="field field-full">
+                <label for="scenario-name">Scenario name</label>
+                <input
+                  id="scenario-name"
+                  name="scenario-name"
+                  type="text"
+                  maxlength="60"
+                  autocomplete="off"
+                  placeholder="Production baseline"
+                />
+              </div>
+              <div class="field">
+                <label for="scenario-tag">Decision status</label>
+                <select id="scenario-tag" name="scenario-tag"></select>
+              </div>
+              <div class="field">
+                <label for="scenario-description">Decision note</label>
+                <input
+                  id="scenario-description"
+                  name="scenario-description"
+                  type="text"
+                  maxlength="240"
+                  autocomplete="off"
+                  placeholder="Why this version matters"
+                />
+              </div>
+              <button type="submit" class="primary-link" data-scenario-save>Save estimate</button>
+            </form>
+
+            <div class="scenario-feedback-row">
+              <p class="scenario-feedback" data-scenario-feedback role="status"></p>
+              <button type="button" class="secondary-link" data-scenario-undo hidden>Undo delete</button>
+              <button type="button" class="secondary-link" data-scenarios-clear>Clear saved scenarios</button>
+            </div>
+
+            <p class="scenario-empty" data-scenario-empty>
+              No saved scenarios yet. Save the current estimate to revisit or compare it later.
+            </p>
+            <p class="scenario-empty" data-scenario-filter-empty hidden>
+              No saved scenarios match this decision status. Choose another status to see the rest.
+            </p>
+            <ul class="scenario-list" data-scenario-list></ul>
+          </section>
+
+          <section class="card panel compare-panel" aria-labelledby="compare-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Compare</p>
+                <h3 id="compare-title">Scenario comparison</h3>
+              </div>
+              <div class="field compare-target-field">
+                <label class="sr-only" for="compare-target">Compare current estimate against</label>
+                <select id="compare-target" data-compare-target></select>
+              </div>
+            </div>
+
+            <p class="compare-empty" data-compare-empty>
+              Save at least one scenario to compare it against the current estimate.
+            </p>
+
+            <div class="compare-body" data-compare-body hidden>
+              <p class="compare-summary" data-compare-summary aria-live="polite"></p>
+              <p class="forecast-compare-summary" data-forecast-compare-summary aria-live="polite"></p>
+              <p class="policy-compare-summary" data-policy-compare-summary aria-live="polite"></p>
+              <table class="compare-table">
+                <caption class="sr-only">Per-service cost comparison</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Service</th>
+                    <th scope="col">Current</th>
+                    <th scope="col" data-compare-other-label>Saved</th>
+                    <th scope="col">Difference</th>
+                  </tr>
+                </thead>
+                <tbody data-compare-rows></tbody>
+                <tfoot data-compare-foot></tfoot>
+              </table>
+            </div>
+          </section>
+
+          <section class="card panel allocation-panel" aria-labelledby="allocation-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Allocation</p>
+                <h3 id="allocation-title">Cost allocation report</h3>
+              </div>
+            </div>
+
+            <p class="allocation-summary" data-allocation-summary aria-live="polite"></p>
+            <p class="compare-empty" data-allocation-empty hidden>
+              Enable a service with usage to see its share of the monthly estimate.
+            </p>
+            <div data-allocation-body>
+              <table class="allocation-table">
+                <caption class="sr-only">Monthly cost allocation by service</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Service</th>
+                    <th scope="col">Monthly</th>
+                    <th scope="col">Share</th>
+                    <th scope="col">Cumulative</th>
+                  </tr>
+                </thead>
+                <tbody data-allocation-rows></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card panel forecast-panel" aria-labelledby="forecast-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Forecast</p>
+                <h3 id="forecast-title">Planning cash flow</h3>
+              </div>
+              <button type="button" class="secondary-link" data-export-forecast-csv>Export forecast CSV</button>
+            </div>
+
+            <p class="forecast-summary" data-forecast-summary aria-live="polite"></p>
+            <div class="forecast-metrics" aria-label="Forecast summary">
+              <div><span>Horizon</span><strong data-forecast-horizon>12 months</strong></div>
+              <div><span>Monthly growth</span><strong data-forecast-growth>0%</strong></div>
+              <div><span>Final month</span><strong data-forecast-final>$0.00</strong></div>
+              <div><span>Average month</span><strong data-forecast-average>$0.00</strong></div>
+              <div><span>Horizon total</span><strong data-forecast-total>$0.00</strong></div>
+              <div><span>Over-budget months</span><strong data-forecast-budget-months>0</strong></div>
+              <div><span>Modeled commitment saving</span><strong data-forecast-commitment-savings>$0.00</strong></div>
+            </div>
+
+            <details class="forecast-details" open>
+              <summary>Show annual planning rollup</summary>
+              <table class="forecast-table">
+                <caption class="sr-only">Annual totals for the selected planning horizon</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Planning year</th>
+                    <th scope="col">Projected total</th>
+                    <th scope="col">Average month</th>
+                    <th scope="col">Commitment saving</th>
+                    <th scope="col">Budget status</th>
+                  </tr>
+                </thead>
+                <tbody data-forecast-annual-rows></tbody>
+              </table>
+            </details>
+
+            <details class="forecast-details">
+              <summary>Show month-by-month cash flow</summary>
+              <table class="forecast-table">
+                <caption class="sr-only">Projected monthly cloud costs over the planning horizon</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Month</th>
+                    <th scope="col">Projected cost</th>
+                    <th scope="col">Commitment saving</th>
+                    <th scope="col">Budget difference</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody data-forecast-rows></tbody>
+              </table>
+            </details>
+          </section>
+
+          <section class="card panel" aria-labelledby="budget-milestones-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Budget trajectory</p>
+                <h3 id="budget-milestones-title">Forecast warning milestones</h3>
+              </div>
+            </div>
+            <p class="forecast-summary" data-budget-milestone-summary aria-live="polite"></p>
+            <table class="forecast-table">
+              <caption class="sr-only">Forecast months when budget warning thresholds are first reached</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Threshold</th>
+                  <th scope="col">Budget used</th>
+                  <th scope="col">First reached</th>
+                  <th scope="col">Projected cost</th>
+                </tr>
+              </thead>
+              <tbody data-budget-milestone-rows></tbody>
+            </table>
+          </section>
+
+          <section class="card panel risk-panel" aria-labelledby="risk-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Rate sensitivity</p>
+                <h3 id="risk-title">Low, base, and high planning envelope</h3>
+              </div>
+              <button type="button" class="secondary-link" data-export-sensitivity-csv>Export sensitivity CSV</button>
+            </div>
+
+            <p class="forecast-summary" data-risk-summary aria-live="polite"></p>
+            <div class="forecast-metrics risk-metrics" aria-label="Rate sensitivity summary">
+              <div><span>Lower-rate case</span><strong data-risk-low>$0.00</strong></div>
+              <div><span>Current plan</span><strong data-risk-base>$0.00</strong></div>
+              <div><span>Higher-rate case</span><strong data-risk-high>$0.00</strong></div>
+            </div>
+
+            <details class="forecast-details">
+              <summary>Show low, base, and high budget cases</summary>
+              <table class="forecast-table risk-table">
+                <caption class="sr-only">Monthly rate sensitivity cases</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Case</th>
+                    <th scope="col">Monthly cost</th>
+                    <th scope="col">Budget difference</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody data-risk-rows></tbody>
+              </table>
+            </details>
+          </section>
+
+          <section class="card panel" aria-labelledby="rate-audit-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Rate review</p>
+                <h3 id="rate-audit-title">Editable rate audit</h3>
+              </div>
+            </div>
+            <p class="forecast-summary" data-rate-audit-summary aria-live="polite"></p>
+            <details class="forecast-details">
+              <summary>Show entered rates against bundled samples</summary>
+              <table class="forecast-table">
+                <caption class="sr-only">Enabled editable rates compared with bundled regional sample rates</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Rate</th>
+                    <th scope="col">Bundled sample</th>
+                    <th scope="col">Entered</th>
+                    <th scope="col">Difference</th>
+                  </tr>
+                </thead>
+                <tbody data-rate-audit-rows></tbody>
+              </table>
+            </details>
+          </section>
+
+          <section class="card panel readiness-panel" aria-labelledby="readiness-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Review support</p>
+                <h3 id="readiness-title">Decision readiness</h3>
+              </div>
+            </div>
+
+            <p class="forecast-summary" data-readiness-summary aria-live="polite"></p>
+            <ul class="readiness-list" data-readiness-checks aria-label="Decision readiness checks"></ul>
+          </section>
+
+          <section class="card panel share-panel" aria-labelledby="share-title">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Export &amp; share</p>
+                <h3 id="share-title">Take this estimate with you</h3>
+              </div>
+            </div>
+
+            <div class="share-actions">
+              <button type="button" class="secondary-link" data-export-json>Export JSON</button>
+              <button type="button" class="secondary-link" data-export-csv>Export CSV</button>
+              <button type="button" class="secondary-link" data-print-report>Print report</button>
+              <button type="button" class="secondary-link" data-copy-review-brief>Copy review brief</button>
+              <button type="button" class="secondary-link" data-share-native hidden>Share estimate</button>
+              <button type="button" class="secondary-link" data-copy-link>Copy share link</button>
+              <label class="import-label secondary-link">
+                Import JSON
+                <input type="file" accept="application/json,.json" data-import class="sr-only" />
+              </label>
+            </div>
+
+            <p class="share-feedback" data-share-feedback role="status" aria-live="polite"></p>
+          </section>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <p>
+          Static, dependency-free frontend. Pricing is simplified sample data for learning and
+          portfolio use, not an official AWS quote.
+        </p>
+        <nav class="footer-links" aria-label="Documentation">
+          <a href="docs/pricing-assumptions.md">Pricing assumptions</a>
+          <a href="docs/manual-test-checklist.md">Test checklist</a>
+          <a href="examples/scenarios.json">Example scenarios</a>
+        </nav>
+      </footer>
+    </main>
+  </body>
+</html>
+

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "e-commerce-store-with-admin-panel",
+    "name":  "E-commerce Store with Admin Panel",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/Kuzma02/Electronics-eCommerce-Shop-With-Admin-Dashboard-NextJS-NodeJS",
+    "stack":  "Next.js; Node; MongoDB",
+    "goal":  "Catalogue, cart, orders, coupons, inventory alerts and an admin CRUD dashboard.",
+    "license":  "MIT",
+    "licenseWarning":  null,
+    "entry":  "app/error.tsx",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  328
+}

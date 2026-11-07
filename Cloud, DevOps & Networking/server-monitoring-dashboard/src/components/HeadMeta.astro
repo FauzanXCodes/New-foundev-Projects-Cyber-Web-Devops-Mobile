@@ -1,0 +1,52 @@
+---
+import { site } from '~/config';
+import { removeExt } from '~/lib/utils';
+
+export interface Props {
+  title?: string;
+  description?: string;
+  keywords?: string[];
+  /** Page path (Used to set a custom canonical URL instead of the default page path). */
+  path?: string;
+}
+
+const {
+  title: pageTitle,
+  description,
+  keywords,
+  path = removeExt(Astro.url.pathname),
+} = Astro.props;
+
+const title = pageTitle ? `${pageTitle} - ${site.title}` : site.title;
+
+// Use the defined site name in the Astro config file or the URL but only in dev mode.
+const siteURL = Astro.site ?? (import.meta.env.DEV ? Astro.url : undefined);
+const canonicalURL = siteURL && new URL(path, siteURL);
+// The sitemap is not generated if the site config is not set.
+const hasSitemap = !!Astro.site;
+---
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<title>{title}</title>
+<meta name="title" content={title} />
+{description && <meta name="description" content={description} />}
+{keywords && <meta name="keywords" content={keywords.join(', ')} />}
+{canonicalURL && <link rel="canonical" href={canonicalURL} />}
+<meta name="generator" content={Astro.generator} />
+{hasSitemap && <link rel="sitemap" href="/sitemap-index.xml" />}
+
+<!-- Open Graph Meta Tags -->
+<meta property="og:type" content="website" />
+{canonicalURL && <meta property="og:url" content={canonicalURL} />}
+<meta property="og:title" content={title} />
+{description && <meta property="og:description" content={description} />}
+<meta property="og:site_name" content={site.title} />
+<meta property="og:locale" content="en_US" />
+
+<!-- Twitter Meta Tags -->
+<meta property="twitter:card" content="summary" />
+{canonicalURL && <meta property="twitter:url" content={canonicalURL} />}
+<meta property="twitter:title" content={title} />
+{description && <meta property="twitter:description" content={description} />}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "sql-injection-lab-and-fix",
+    "name":  "SQL Injection Lab \u0026 Fix",
+    "domain":  "Cybersecurity \u0026 Ethical Hacking",
+    "repository":  "https://github.com/OxNinja/SQLi-lab",
+    "stack":  "PHP; MySQL",
+    "goal":  "Deliberately vulnerable app, exploit walkthrough, then parameterised-query remediation with before/after proof.",
+    "license":  "Apache-2.0",
+    "licenseWarning":  null,
+    "entry":  "app/db/db.sql",
+    "expectedFileCount":  19,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  28
+}

@@ -1,0 +1,14 @@
+﻿{
+    "id":  "markdown-notes-app-with-offline-sync",
+    "name":  "Markdown Notes App with Offline Sync",
+    "domain":  "Web Development",
+    "repository":  "https://github.com/0xGG/crossnote-app",
+    "stack":  "PWA; IndexedDB; Supabase",
+    "goal":  "Offline-first editing, conflict resolution and full-text search across notes.",
+    "license":  "AGPL-3.0",
+    "licenseWarning":  null,
+    "entry":  "index.html",
+    "expectedFileCount":  80,
+    "downloadStatus":  "success",
+    "downloadedFileCount":  172
+}
